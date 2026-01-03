@@ -1,6 +1,7 @@
 """Approval Manager - the core API."""
 
 import asyncio
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -39,29 +40,33 @@ class ApprovalManager:
         if self._initialized:
             return
 
-        self.pyafk_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self.pyafk_dir.mkdir(parents=True, exist_ok=True)
 
-        if not self._config:
-            self._config = Config(self.pyafk_dir)
+            if not self._config:
+                self._config = Config(self.pyafk_dir)
 
-        self.storage = Storage(self._config.db_path)
-        await self.storage.connect()
+            self.storage = Storage(self._config.db_path)
+            await self.storage.connect()
 
-        self.rules = RulesEngine(self.storage)
+            self.rules = RulesEngine(self.storage)
 
-        if self._config.telegram_bot_token and self._config.telegram_chat_id:
-            self.notifier = TelegramNotifier(
-                bot_token=self._config.telegram_bot_token,
-                chat_id=self._config.telegram_chat_id,
-                timeout=self.timeout,
-                timeout_action=self.timeout_action,
-            )
-            self.poller = Poller(self.storage, self.notifier, self.pyafk_dir)
-        else:
-            self.notifier = ConsoleNotifier()
-            self.poller = None
+            if self._config.telegram_bot_token and self._config.telegram_chat_id:
+                self.notifier = TelegramNotifier(
+                    bot_token=self._config.telegram_bot_token,
+                    chat_id=self._config.telegram_chat_id,
+                    timeout=self.timeout,
+                    timeout_action=self.timeout_action,
+                )
+                self.poller = Poller(self.storage, self.notifier, self.pyafk_dir)
+            else:
+                self.notifier = ConsoleNotifier()
+                self.poller = None
 
-        self._initialized = True
+            self._initialized = True
+        except Exception:
+            await self.close()
+            raise
 
     async def close(self):
         """Close connections."""
@@ -136,7 +141,6 @@ class ApprovalManager:
 
     async def _wait_for_response(self, request_id: str) -> str:
         """Wait for approval response with polling."""
-        import time
         start = time.monotonic()
 
         while True:
@@ -155,7 +159,10 @@ class ApprovalManager:
                 return self.timeout_action
 
             if self.poller:
-                await self.poller.process_updates_once()
+                try:
+                    await self.poller.process_updates_once()
+                except Exception:
+                    pass  # Continue polling even if one iteration fails
 
             request = await self.storage.get_request(request_id)
             if request and request.status != "pending":
