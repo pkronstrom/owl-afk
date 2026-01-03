@@ -260,5 +260,254 @@ def hook(ctx, hook_type: str):
     click.echo(json.dumps(response))
 
 
+def _get_claude_settings_path() -> Path:
+    """Get path to Claude settings.json."""
+    return Path.home() / ".claude" / "settings.json"
+
+
+def _load_claude_settings(settings_path: Path) -> dict:
+    """Load Claude settings from file."""
+    if settings_path.exists():
+        try:
+            return json.loads(settings_path.read_text())
+        except (json.JSONDecodeError, IOError):
+            return {}
+    return {}
+
+
+def _save_claude_settings(settings_path: Path, settings: dict):
+    """Save Claude settings to file."""
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text(json.dumps(settings, indent=2))
+
+
+def _get_pyafk_hooks() -> dict:
+    """Get the hook configuration for pyafk."""
+    return {
+        "PreToolUse": [
+            {
+                "type": "command",
+                "command": "pyafk hook PreToolUse",
+            }
+        ],
+        "Stop": [
+            {
+                "type": "command",
+                "command": "pyafk hook Stop",
+            }
+        ],
+        "SessionStart": [
+            {
+                "type": "command",
+                "command": "pyafk hook SessionStart",
+            }
+        ],
+    }
+
+
+def _is_pyafk_hook(hook_entry: dict) -> bool:
+    """Check if a hook entry belongs to pyafk."""
+    command = hook_entry.get("command", "")
+    return "pyafk hook" in command
+
+
+@main.command("install")
+@click.pass_context
+def install_command(ctx):
+    """Install pyafk hooks into Claude Code."""
+    pyafk_dir = ctx.obj["pyafk_dir"]
+    settings_path = _get_claude_settings_path()
+
+    click.echo("pyafk Installation")
+    click.echo("==================")
+    click.echo()
+
+    # Ensure pyafk directory exists
+    pyafk_dir.mkdir(parents=True, exist_ok=True)
+    click.echo(f"pyafk directory: {pyafk_dir}")
+
+    # Load existing settings
+    settings = _load_claude_settings(settings_path)
+    existing_hooks = settings.get("hooks", {})
+
+    # Get pyafk hooks to install
+    pyafk_hooks = _get_pyafk_hooks()
+
+    # Merge hooks (add pyafk hooks, preserve others)
+    new_hooks = existing_hooks.copy()
+    for hook_type, hook_entries in pyafk_hooks.items():
+        if hook_type not in new_hooks:
+            new_hooks[hook_type] = []
+        # Remove any existing pyafk hooks for this type
+        new_hooks[hook_type] = [h for h in new_hooks[hook_type] if not _is_pyafk_hook(h)]
+        # Add the new pyafk hooks
+        new_hooks[hook_type].extend(hook_entries)
+
+    settings["hooks"] = new_hooks
+
+    click.echo()
+    click.echo("Will configure the following hooks:")
+    for hook_type in pyafk_hooks:
+        click.echo(f"  - {hook_type}: pyafk hook {hook_type}")
+    click.echo()
+    click.echo(f"Settings file: {settings_path}")
+    click.echo()
+
+    if not click.confirm("Proceed with installation?"):
+        click.echo("Installation cancelled.")
+        return
+
+    # Ensure claude dir exists
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Save settings
+    _save_claude_settings(settings_path, settings)
+    click.echo()
+    click.echo("Installation complete!")
+    click.echo()
+    click.echo("Next steps:")
+    click.echo("  1. Run 'pyafk telegram setup' to configure notifications")
+    click.echo("  2. Run 'pyafk on' to enable remote approvals")
+    click.echo("  3. Start Claude Code and go AFK!")
+
+
+@main.command("uninstall")
+@click.pass_context
+def uninstall_command(ctx):
+    """Uninstall pyafk hooks from Claude Code."""
+    pyafk_dir = ctx.obj["pyafk_dir"]
+    settings_path = _get_claude_settings_path()
+
+    click.echo("pyafk Uninstallation")
+    click.echo("====================")
+    click.echo()
+
+    # Remove hooks from Claude settings
+    settings = _load_claude_settings(settings_path)
+    hooks = settings.get("hooks", {})
+
+    # Remove pyafk hooks
+    hook_types_to_clean = ["PreToolUse", "Stop", "SessionStart"]
+    hooks_removed = False
+    for hook_type in hook_types_to_clean:
+        if hook_type in hooks:
+            original_count = len(hooks[hook_type])
+            hooks[hook_type] = [h for h in hooks[hook_type] if not _is_pyafk_hook(h)]
+            if len(hooks[hook_type]) < original_count:
+                hooks_removed = True
+            # Remove empty hook lists
+            if not hooks[hook_type]:
+                del hooks[hook_type]
+
+    if hooks:
+        settings["hooks"] = hooks
+    elif "hooks" in settings:
+        del settings["hooks"]
+
+    if hooks_removed:
+        _save_claude_settings(settings_path, settings)
+        click.echo("Removed pyafk hooks from Claude settings.")
+    else:
+        click.echo("No pyafk hooks found in Claude settings.")
+
+    click.echo()
+
+    # Ask about data
+    click.echo("What would you like to do with pyafk data?")
+    click.echo(f"  Data directory: {pyafk_dir}")
+
+    # Check what data exists
+    config = Config(pyafk_dir)
+    db_path = config.db_path
+    db_size = 0
+    rules_count = 0
+
+    if db_path.exists():
+        db_size = db_path.stat().st_size
+
+        async def _count_rules():
+            from pyafk.core.rules import RulesEngine
+            from pyafk.core.storage import Storage
+
+            storage = Storage(db_path)
+            await storage.connect()
+            try:
+                engine = RulesEngine(storage)
+                rules = await engine.list_rules()
+                return len(rules)
+            finally:
+                await storage.close()
+
+        try:
+            rules_count = asyncio.run(_count_rules())
+        except Exception:
+            pass
+
+    if db_size > 0 or pyafk_dir.exists():
+        click.echo()
+        click.echo("Data summary:")
+        if db_size > 0:
+            click.echo(f"  - Database: {db_size / 1024:.1f} KB")
+            click.echo(f"  - Rules: {rules_count}")
+        click.echo()
+
+    choice = click.prompt(
+        "[K]eep / [D]elete / [E]xport first",
+        type=click.Choice(["k", "d", "e", "K", "D", "E"], case_sensitive=False),
+        default="k",
+    )
+    choice = choice.lower()
+
+    if choice == "k":
+        click.echo("Data kept. You can remove it later with 'rm -rf ~/.pyafk'")
+    elif choice == "e":
+        # Export data
+        export_path = Path.home() / "pyafk_export.json"
+        try:
+            export_data = {"config": {}, "rules": []}
+            if config._config_file.exists():
+                export_data["config"] = json.loads(config._config_file.read_text())
+
+            async def _export_rules():
+                from pyafk.core.rules import RulesEngine
+                from pyafk.core.storage import Storage
+
+                storage = Storage(db_path)
+                await storage.connect()
+                try:
+                    engine = RulesEngine(storage)
+                    return await engine.list_rules()
+                finally:
+                    await storage.close()
+
+            if db_path.exists():
+                export_data["rules"] = asyncio.run(_export_rules())
+
+            export_path.write_text(json.dumps(export_data, indent=2))
+            click.echo(f"Data exported to: {export_path}")
+            click.echo("Data kept in place. Delete manually if desired.")
+        except Exception as e:
+            click.echo(f"Export failed: {e}")
+            click.echo("Data kept in place.")
+    elif choice == "d":
+        click.echo()
+        click.echo("The following will be deleted:")
+        if pyafk_dir.exists():
+            for item in pyafk_dir.iterdir():
+                click.echo(f"  - {item}")
+
+        if click.confirm("Are you sure you want to delete all pyafk data?"):
+            import shutil
+
+            if pyafk_dir.exists():
+                shutil.rmtree(pyafk_dir)
+            click.echo("Data deleted.")
+        else:
+            click.echo("Data kept.")
+
+    click.echo()
+    click.echo("Uninstallation complete.")
+
+
 if __name__ == "__main__":
     main()
