@@ -9,4 +9,5 @@ async def handle_stop(
     pyafk_dir: Optional[Path] = None,
 ) -> dict:
     """Handle Stop hook - notify that session ended."""
+    # TODO: Send summary to Telegram
     return {}

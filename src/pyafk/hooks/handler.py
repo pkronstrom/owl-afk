@@ -13,7 +13,16 @@ async def handle_hook(
     hook_input: dict,
     pyafk_dir: Optional[Path] = None,
 ) -> dict:
-    """Handle a Claude Code hook."""
+    """Handle a Claude Code hook.
+
+    Args:
+        hook_type: "PreToolUse", "Stop", or "SessionStart"
+        hook_input: Parsed JSON from stdin
+        pyafk_dir: Path to pyafk directory
+
+    Returns:
+        Response dict to output as JSON
+    """
     if hook_type == "PreToolUse":
         from pyafk.hooks.pretool import handle_pretool_use
         return await handle_pretool_use(hook_input, pyafk_dir)
@@ -25,3 +34,34 @@ async def handle_hook(
         return await handle_session_start(hook_input, pyafk_dir)
     else:
         return {"error": f"Unknown hook type: {hook_type}"}
+
+
+def main():
+    """CLI entry point for hooks."""
+    import asyncio
+
+    if len(sys.argv) < 3 or sys.argv[1] != "hook":
+        print(json.dumps({"error": "Usage: pyafk hook <HookType>"}))
+        sys.exit(1)
+
+    hook_type = sys.argv[2]
+
+    # Fast path check first
+    result = check_fast_path()
+    if result == FastPathResult.APPROVE:
+        print(json.dumps({"decision": "approve"}))
+        sys.exit(0)
+    elif result == FastPathResult.DENY:
+        print(json.dumps({"decision": "deny"}))
+        sys.exit(0)
+
+    # Read stdin
+    try:
+        hook_input = json.load(sys.stdin)
+    except json.JSONDecodeError:
+        print(json.dumps({"error": "Invalid JSON input"}))
+        sys.exit(1)
+
+    # Run async handler
+    response = asyncio.run(handle_hook(hook_type, hook_input))
+    print(json.dumps(response))

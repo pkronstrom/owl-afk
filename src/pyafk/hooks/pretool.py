@@ -12,7 +12,16 @@ async def handle_pretool_use(
     hook_input: dict,
     pyafk_dir: Optional[Path] = None,
 ) -> dict:
-    """Handle PreToolUse hook."""
+    """Handle PreToolUse hook.
+
+    Args:
+        hook_input: Dict with tool_name, tool_input, session_id, tool_context,
+            project_path fields from Claude Code
+        pyafk_dir: Path to pyafk directory
+
+    Returns:
+        Response dict with "decision" key ("approve" or "deny")
+    """
     fast_result = check_fast_path(pyafk_dir)
     if fast_result == FastPathResult.APPROVE:
         return {"decision": "approve"}

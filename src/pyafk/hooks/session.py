@@ -9,4 +9,5 @@ async def handle_session_start(
     pyafk_dir: Optional[Path] = None,
 ) -> dict:
     """Handle SessionStart hook - notify new session."""
+    # TODO: Send notification to Telegram
     return {}
