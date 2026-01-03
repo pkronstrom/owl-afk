@@ -3,6 +3,7 @@
 import asyncio
 import fcntl
 import os
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -24,7 +25,7 @@ class PollLock:
         """
         self.lock_path.parent.mkdir(parents=True, exist_ok=True)
 
-        start = asyncio.get_event_loop().time()
+        start = time.monotonic()
         while True:
             try:
                 self._fd = os.open(
@@ -37,10 +38,13 @@ class PollLock:
                 return True
             except (BlockingIOError, OSError):
                 if self._fd is not None:
-                    os.close(self._fd)
+                    try:
+                        os.close(self._fd)
+                    except OSError:
+                        pass
                     self._fd = None
 
-                elapsed = asyncio.get_event_loop().time() - start
+                elapsed = time.monotonic() - start
                 if elapsed >= timeout:
                     return False
 
@@ -121,6 +125,11 @@ class Poller:
         callback_id: str,
     ):
         """Handle approve/deny callback."""
+        request = await self.storage.get_request(request_id)
+        if not request:
+            await self.notifier.answer_callback(callback_id, "Request not found")
+            return
+
         status = "approved" if action == "approve" else "denied"
 
         await self.storage.resolve_request(
@@ -134,8 +143,7 @@ class Poller:
             f"{'Approved' if action == 'approve' else 'Denied'}",
         )
 
-        request = await self.storage.get_request(request_id)
-        if request and request.telegram_msg_id:
+        if request.telegram_msg_id:
             await self.notifier.edit_message(
                 request.telegram_msg_id,
                 f"{'Approved' if action == 'approve' else 'Denied'} {request.tool_name} - {status.upper()}",
@@ -143,7 +151,7 @@ class Poller:
 
         await self.storage.log_audit(
             event_type="response",
-            session_id=request.session_id if request else None,
+            session_id=request.session_id,
             details={
                 "request_id": request_id,
                 "action": action,
@@ -183,10 +191,10 @@ class Poller:
 
         try:
             self._running = True
-            start = asyncio.get_event_loop().time()
+            start = time.monotonic()
 
             while self._running:
-                elapsed = asyncio.get_event_loop().time() - start
+                elapsed = time.monotonic() - start
                 if elapsed >= timeout:
                     break
 
