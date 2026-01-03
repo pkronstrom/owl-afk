@@ -1,8 +1,8 @@
 """Auto-approve rules engine."""
 
-import fnmatch
 import json
 import re
+import time
 from typing import Optional
 
 from pyafk.core.storage import Storage
@@ -16,6 +16,9 @@ def matches_pattern(tool_call: str, pattern: str) -> bool:
     - Wildcard: "Bash(git *)" matches "Bash(git status)"
     - Glob: "Read(*.py)" matches "Read(/path/to/file.py)"
     """
+    if not pattern:
+        return False
+
     # Convert pattern to regex
     # Escape special regex chars except * and ?
     regex_pattern = ""
@@ -70,7 +73,6 @@ class RulesEngine:
 
     def __init__(self, storage: Storage):
         self.storage = storage
-        self._rules_cache: Optional[list] = None
 
     async def check(self, tool_name: str, tool_input: Optional[str] = None) -> Optional[str]:
         """Check if a tool call matches any rule.
@@ -100,7 +102,11 @@ class RulesEngine:
         created_via: str = "cli",
     ) -> int:
         """Add a new rule."""
-        import time
+        if action not in ("approve", "deny"):
+            raise ValueError(f"Invalid action: {action}")
+        if not pattern:
+            raise ValueError("Pattern cannot be empty")
+
         cursor = await self.storage._conn.execute(
             """
             INSERT INTO auto_approve_rules (pattern, action, priority, created_via, created_at)
