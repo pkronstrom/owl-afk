@@ -100,9 +100,12 @@ class TelegramNotifier(Notifier):
     ) -> dict:
         """Make a Telegram API request."""
         url = f"{self._base_url}/{method}"
-        async with httpx.AsyncClient() as client:
-            response = await client.post(url, data=data, timeout=30)
-            return response.json()
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(url, data=data, timeout=30)
+                return response.json()
+        except (httpx.HTTPError, json.JSONDecodeError) as e:
+            return {"ok": False, "error": str(e)}
 
     async def send_approval_request(
         self,
@@ -148,8 +151,8 @@ class TelegramNotifier(Notifier):
             },
         )
 
-        if result.get("ok"):
-            return result["result"]["message_id"]
+        if result.get("ok") and "result" in result:
+            return result["result"].get("message_id")
         return None
 
     async def wait_for_response(
@@ -193,6 +196,6 @@ class TelegramNotifier(Notifier):
             data["offset"] = offset
 
         result = await self._api_request("getUpdates", data=data)
-        if result.get("ok"):
+        if result.get("ok") and "result" in result:
             return result.get("result", [])
         return []
