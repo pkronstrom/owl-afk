@@ -2,7 +2,6 @@
 
 import json
 import os
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -14,15 +13,8 @@ def get_pyafk_dir() -> Path:
     return Path.home() / ".pyafk"
 
 
-@dataclass
 class Config:
     """Application configuration."""
-
-    pyafk_dir: Path
-    telegram_bot_token: Optional[str] = None
-    telegram_chat_id: Optional[str] = None
-    timeout_seconds: int = 3600
-    timeout_action: str = "deny"  # deny, approve, wait
 
     def __init__(self, pyafk_dir: Optional[Path] = None):
         """Load config from directory."""
