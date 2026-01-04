@@ -97,7 +97,35 @@ class ApprovalManager:
             project_path=project_path,
         )
 
-        rule_result = await self.rules.check(tool_name, tool_input)
+        # For Bash commands with chains, use chain rule checking
+        rule_result = None
+        is_chain = False
+        chain_commands = []
+
+        if tool_name == "Bash" and tool_input:
+            import json
+            try:
+                data = json.loads(tool_input)
+                if "command" in data:
+                    cmd = data["command"]
+                    # Use chain rule checking if poller is available
+                    if self.poller:
+                        rule_result = await self.poller._check_chain_rules(cmd)
+
+                        # Check if this is actually a chain (multiple commands)
+                        from pyafk.core.command_parser import CommandParser
+                        parser = CommandParser()
+                        # Use split_chain to get the individual command strings
+                        chain_commands = parser.split_chain(cmd)
+                        if len(chain_commands) > 1:
+                            is_chain = True
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        # If no chain result, use regular rule checking
+        if rule_result is None:
+            rule_result = await self.rules.check(tool_name, tool_input)
+
         if rule_result:
             await self.storage.log_audit(
                 event_type="auto_response",
@@ -118,15 +146,26 @@ class ApprovalManager:
             description=description,
         )
 
-        msg_id = await self.notifier.send_approval_request(
-            request_id=request_id,
-            session_id=session_id,
-            tool_name=tool_name,
-            tool_input=tool_input,
-            context=context,
-            description=description,
-            project_path=project_path,
-        )
+        # Use chain approval UI for multi-command chains
+        if is_chain and chain_commands and isinstance(self.notifier, TelegramNotifier):
+            msg_id = await self.notifier.send_chain_approval_request(
+                request_id=request_id,
+                session_id=session_id,
+                commands=chain_commands,
+                project_path=project_path,
+                description=description,
+            )
+        else:
+            # Use regular approval UI
+            msg_id = await self.notifier.send_approval_request(
+                request_id=request_id,
+                session_id=session_id,
+                tool_name=tool_name,
+                tool_input=tool_input,
+                context=context,
+                description=description,
+                project_path=project_path,
+            )
 
         if msg_id:
             await self.storage.set_telegram_msg_id(request_id, msg_id)
