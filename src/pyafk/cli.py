@@ -286,20 +286,34 @@ def _get_pyafk_hooks() -> dict:
     return {
         "PreToolUse": [
             {
-                "type": "command",
-                "command": "pyafk hook PreToolUse",
+                "matcher": "Bash|Edit|Write|MultiEdit|WebFetch|Skill|mcp__.*",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "pyafk hook PreToolUse",
+                        "timeout": 3600,
+                    }
+                ],
             }
         ],
         "Stop": [
             {
-                "type": "command",
-                "command": "pyafk hook Stop",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "pyafk hook Stop",
+                    }
+                ],
             }
         ],
         "SessionStart": [
             {
-                "type": "command",
-                "command": "pyafk hook SessionStart",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "pyafk hook SessionStart",
+                    }
+                ],
             }
         ],
     }
@@ -307,8 +321,15 @@ def _get_pyafk_hooks() -> dict:
 
 def _is_pyafk_hook(hook_entry: dict) -> bool:
     """Check if a hook entry belongs to pyafk."""
+    # Check direct command
     command = hook_entry.get("command", "")
-    return "pyafk hook" in command
+    if "pyafk hook" in command:
+        return True
+    # Check nested hooks array
+    for hook in hook_entry.get("hooks", []):
+        if "pyafk hook" in hook.get("command", ""):
+            return True
+    return False
 
 
 @main.command("install")
