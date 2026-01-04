@@ -18,12 +18,12 @@ def test_format_approval_message():
         context="User wants to see changes",
         timeout=3600,
         timeout_action="deny",
+        project_path="/home/user/myproject",
     )
 
-    assert "Bash" in msg
+    assert "[Bash]" in msg
     assert "git status" in msg
-    assert "session-456" in msg
-    assert "60m" in msg  # timeout formatted
+    assert "myproject" in msg  # project dir name
 
 
 def test_format_approval_message_truncates_long_input():

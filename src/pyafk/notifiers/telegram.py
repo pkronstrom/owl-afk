@@ -17,53 +17,43 @@ def format_approval_message(
     context: Optional[str] = None,
     timeout: int = 3600,
     timeout_action: str = "deny",
+    project_path: Optional[str] = None,
 ) -> str:
-    """Format a tool request for Telegram display."""
-    # Format timeout - always show in minutes for consistency
-    timeout_str = f"{timeout // 60}m"
-
-    # Parse and format tool input
-    input_display = ""
+    """Format a compact tool request for Telegram display."""
+    # Extract the key info from tool_input
+    input_summary = ""
     if tool_input:
         try:
             data = json.loads(tool_input)
             if "command" in data:
-                cmd = data["command"]
-                if len(cmd) > 500:
-                    cmd = cmd[:500] + "..."
-                input_display = f"\n<b>Command:</b>\n<code>{_escape_html(cmd)}</code>"
+                input_summary = data["command"]
             elif "file_path" in data:
-                input_display = f"\n<b>File:</b> <code>{_escape_html(data['file_path'])}</code>"
+                input_summary = data["file_path"]
+            elif "content" in data:
+                # For Write tool, show file path if available
+                input_summary = data.get("file_path", "(content)")
             else:
-                input_str = json.dumps(data, indent=2)
-                if len(input_str) > 500:
-                    input_str = input_str[:500] + "..."
-                input_display = f"\n<b>Input:</b>\n<code>{_escape_html(input_str)}</code>"
+                # Show first key=value or truncated JSON
+                input_summary = json.dumps(data)
         except (json.JSONDecodeError, TypeError):
-            if len(tool_input) > 500:
-                tool_input = tool_input[:500] + "..."
-            input_display = f"\n<b>Input:</b> <code>{_escape_html(tool_input)}</code>"
+            input_summary = str(tool_input)
 
-    # Build message
+    # Truncate input if too long
+    if len(input_summary) > 200:
+        input_summary = input_summary[:200] + "..."
+
+    # Project identifier - use last dir name or short session id
+    if project_path:
+        project_id = project_path.rstrip("/").split("/")[-1]
+    else:
+        project_id = session_id[:8]
+
+    # Compact format: [Tool] input_summary
+    # with project on separate line
     lines = [
-        f"<b>Tool Request</b> [<code>{session_id}</code>]",
-        "",
-        f"<b>Tool:</b> {_escape_html(tool_name)}",
+        f"<b>[{_escape_html(tool_name)}]</b> <code>{_escape_html(input_summary)}</code>",
+        f"📁 {_escape_html(project_id)}",
     ]
-
-    if description:
-        lines.append(f"<b>Description:</b> {_escape_html(description)}")
-
-    lines.append(input_display)
-
-    if context:
-        lines.append(f"\n<b>Context:</b> {_escape_html(context)}")
-
-    lines.extend([
-        "",
-        "-" * 20,
-        f"Timeout: {timeout_str} ({timeout_action})",
-    ])
 
     return "\n".join(lines)
 
@@ -115,6 +105,7 @@ class TelegramNotifier(Notifier):
         tool_input: Optional[str] = None,
         context: Optional[str] = None,
         description: Optional[str] = None,
+        project_path: Optional[str] = None,
     ) -> Optional[int]:
         """Send approval request to Telegram."""
         message = format_approval_message(
@@ -126,6 +117,7 @@ class TelegramNotifier(Notifier):
             context=context,
             timeout=self.timeout,
             timeout_action=self.timeout_action,
+            project_path=project_path,
         )
 
         keyboard = {

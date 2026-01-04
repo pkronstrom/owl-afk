@@ -27,8 +27,7 @@ async def test_console_notifier_send(capsys):
     )
 
     captured = capsys.readouterr()
-    assert "Bash" in captured.out
-    assert "req-123" in captured.out
+    assert "[Bash]" in captured.out
     assert msg_id is not None
 
 

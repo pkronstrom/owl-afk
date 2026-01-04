@@ -27,22 +27,16 @@ class ConsoleNotifier(Notifier):
         tool_input: Optional[str] = None,
         context: Optional[str] = None,
         description: Optional[str] = None,
+        project_path: Optional[str] = None,
     ) -> Optional[int]:
         """Print approval request to console."""
         self._message_counter += 1
 
-        print("\n" + "=" * 50)
-        print(f"APPROVAL REQUEST [{request_id}]")
-        print("=" * 50)
-        print(f"Session: {session_id}")
-        print(f"Tool: {tool_name}")
-        if description:
-            print(f"Description: {description}")
-        if tool_input:
-            print(f"Input: {tool_input[:200]}...")
-        if context:
-            print(f"Context: {context}")
-        print("=" * 50 + "\n")
+        # Compact format matching Telegram style
+        input_summary = tool_input[:100] if tool_input else ""
+        project_id = project_path.rstrip("/").split("/")[-1] if project_path else session_id[:8]
+        print(f"[{tool_name}] {input_summary}")
+        print(f"  📁 {project_id}")
 
         return self._message_counter
 

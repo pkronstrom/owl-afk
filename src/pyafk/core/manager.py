@@ -125,6 +125,7 @@ class ApprovalManager:
             tool_input=tool_input,
             context=context,
             description=description,
+            project_path=project_path,
         )
 
         if msg_id:

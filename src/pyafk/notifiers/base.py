@@ -16,6 +16,7 @@ class Notifier(ABC):
         tool_input: Optional[str] = None,
         context: Optional[str] = None,
         description: Optional[str] = None,
+        project_path: Optional[str] = None,
     ) -> Optional[int]:
         """Send an approval request notification.
 
