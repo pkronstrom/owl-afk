@@ -24,6 +24,7 @@ dev = [
 
 [project.scripts]
 pyafk = "pyafk.cli:main"
+afk = "pyafk.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pyafk"]
