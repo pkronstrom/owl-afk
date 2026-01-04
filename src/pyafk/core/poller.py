@@ -197,9 +197,14 @@ class Poller:
         )
 
         if request.telegram_msg_id:
+            # Format: [project] tool_summary ✅/❌
+            session = await self.storage.get_session(request.session_id)
+            project_id = self._format_project_id(session.project_path if session else None, request.session_id)
+            tool_summary = self._format_tool_summary(request.tool_name, request.tool_input)
+            emoji = "✅" if action == "approve" else "❌"
             await self.notifier.edit_message(
                 request.telegram_msg_id,
-                f"{'Approved' if action == 'approve' else 'Denied'} {request.tool_name} - {status.upper()}",
+                f"<i>{project_id}</i>\n{emoji} <b>[{request.tool_name}]</b> <code>{tool_summary}</code>",
             )
 
         await self.storage.log_audit(
@@ -368,6 +373,44 @@ class Poller:
         prompt_msg_id = await self.notifier.send_continue_prompt()
         if prompt_msg_id:
             await self.storage.set_subagent_continue_prompt(subagent_id, prompt_msg_id)
+
+    def _format_project_id(self, project_path: Optional[str], session_id: str) -> str:
+        """Format project path for display."""
+        if project_path:
+            parts = project_path.rstrip("/").split("/")
+            return "/".join(parts[-2:]) if len(parts) >= 2 else parts[-1]
+        return session_id[:8]
+
+    def _format_tool_summary(self, tool_name: str, tool_input: Optional[str]) -> str:
+        """Format tool input for display."""
+        import json
+
+        if not tool_input:
+            return ""
+
+        try:
+            data = json.loads(tool_input)
+        except (json.JSONDecodeError, TypeError):
+            return str(tool_input)[:100]
+
+        # Extract the most relevant field
+        if "command" in data:
+            summary = data["command"]
+        elif "file_path" in data:
+            summary = data["file_path"]
+        elif "path" in data:
+            summary = data["path"]
+        elif "url" in data:
+            summary = data["url"]
+        else:
+            summary = json.dumps(data)
+
+        # Truncate if too long
+        if len(summary) > 100:
+            summary = summary[:100] + "..."
+
+        # Escape HTML
+        return summary.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
     def _create_rule_pattern(self, tool_name: str, tool_input: Optional[str]) -> str:
         """Create a smart rule pattern from tool and input."""
