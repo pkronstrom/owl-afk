@@ -226,7 +226,12 @@ class CommandParser:
         if wrapper_result:
             nested_node = None
             if wrapper_result["nested_cmd"]:
-                nested_node = self.parse_single_command(wrapper_result["nested_cmd"])
+                # Only parse the first command in the chain as the nested command
+                nested_cmd_str = wrapper_result["nested_cmd"]
+                chain_parts = self.split_chain(nested_cmd_str)
+                if chain_parts:
+                    first_cmd = chain_parts[0]
+                    nested_node = self.parse_single_command(first_cmd)
 
             return CommandNode(
                 type=CommandType.WRAPPER,
