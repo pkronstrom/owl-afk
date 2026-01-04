@@ -179,11 +179,34 @@ class CommandParser:
         remaining_tokens = tokens[param_count + 1 :]
         nested_cmd = " ".join(remaining_tokens) if remaining_tokens else None
 
+        # Strip surrounding quotes from nested command if present
+        if nested_cmd:
+            if (nested_cmd.startswith('"') and nested_cmd.endswith('"')) or (
+                nested_cmd.startswith("'") and nested_cmd.endswith("'")
+            ):
+                nested_cmd = nested_cmd[1:-1]
+
         return {
             "name": first_token,
             "params": params,
             "nested_cmd": nested_cmd,
         }
+
+    def parse(self, cmd: str) -> List[CommandNode]:
+        """Parse a complete bash command string into a list of CommandNode objects.
+
+        Splits the command by chain operators (&&, ||, ;, |) and parses each
+        individual command. Respects quotes so chained commands inside quotes
+        are not split.
+
+        Args:
+            cmd: The complete command string to parse.
+
+        Returns:
+            List of CommandNode objects, one per chained command.
+        """
+        commands = self.split_chain(cmd)
+        return [self.parse_single_command(cmd_str) for cmd_str in commands]
 
     def parse_single_command(self, cmd: str) -> CommandNode:
         """Parse a single command string into a CommandNode tree.

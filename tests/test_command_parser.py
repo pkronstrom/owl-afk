@@ -128,3 +128,61 @@ def test_detect_vcs_git():
     assert node.name == "git"
     assert node.args == ["log"]
     assert node.nested is None
+
+
+def test_parse_single_command_simple():
+    """parse() should parse simple commands into a single-element list."""
+    parser = CommandParser()
+    result = parser.parse("rm file.txt")
+
+    assert len(result) == 1
+    assert result[0].type == CommandType.FILE_OP
+    assert result[0].name == "rm"
+    assert result[0].args == ["file.txt"]
+
+
+def test_parse_command_chain():
+    """parse() should split command chains into separate CommandNode objects."""
+    parser = CommandParser()
+    result = parser.parse("cd ~/project && npm test && git log")
+
+    assert len(result) == 3
+    assert result[0].name == "cd"
+    assert result[0].type == CommandType.GENERIC
+    assert result[0].args == ["~/project"]
+
+    assert result[1].name == "npm"
+    assert result[1].type == CommandType.GENERIC
+    assert result[1].args == ["test"]
+
+    assert result[2].name == "git"
+    assert result[2].type == CommandType.VCS
+    assert result[2].args == ["log"]
+
+
+def test_parse_ssh_with_chain():
+    """parse() should handle ssh wrapper with nested chain as single node."""
+    parser = CommandParser()
+    result = parser.parse('ssh aarni "cd ~/p && git log"')
+
+    assert len(result) == 1
+    assert result[0].type == CommandType.WRAPPER
+    assert result[0].name == "ssh"
+    assert result[0].params.get("host") == "aarni"
+    assert result[0].nested is not None
+    assert result[0].nested.name == "cd"
+
+
+def test_parse_pipe_command():
+    """parse() should split piped commands into separate CommandNode objects."""
+    parser = CommandParser()
+    result = parser.parse("cat file | grep pattern")
+
+    assert len(result) == 2
+    assert result[0].name == "cat"
+    assert result[0].type == CommandType.FILE_OP
+    assert result[0].args == ["file"]
+
+    assert result[1].name == "grep"
+    assert result[1].type == CommandType.FILE_OP
+    assert result[1].args == ["pattern"]
