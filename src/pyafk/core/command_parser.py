@@ -268,6 +268,85 @@ class CommandParser:
             full_cmd=cmd,
         )
 
+    def generate_patterns(self, node: CommandNode) -> List[str]:
+        """Generate approval patterns from a CommandNode.
+
+        Creates patterns from most specific to most general. For simple commands,
+        returns [full_command, command_name + " *"]. For wrappers, returns
+        patterns with wrapper context plus unwrapped nested patterns.
+
+        Args:
+            node: The CommandNode to generate patterns from.
+
+        Returns:
+            List of patterns from specific to general.
+        """
+        if node.type == CommandType.WRAPPER:
+            return self._generate_wrapper_patterns(node)
+        else:
+            return self._generate_simple_patterns(node)
+
+    def _generate_simple_patterns(self, node: CommandNode) -> List[str]:
+        """Generate patterns for non-wrapper commands.
+
+        Args:
+            node: The CommandNode to generate patterns from.
+
+        Returns:
+            List of patterns from specific to general.
+        """
+        patterns = []
+
+        # Full command pattern
+        patterns.append(node.full_cmd)
+
+        # Wildcard pattern: command_name *
+        if node.name:
+            patterns.append(f"{node.name} *")
+
+        return patterns
+
+    def _generate_wrapper_patterns(self, node: CommandNode) -> List[str]:
+        """Generate patterns for wrapper commands.
+
+        Args:
+            node: The CommandNode to generate patterns from.
+
+        Returns:
+            List of patterns from specific to general.
+        """
+        patterns = []
+
+        if not node.nested:
+            # Wrapper with no nested command, just full command and wildcard
+            patterns.append(node.full_cmd)
+            if node.name:
+                patterns.append(f"{node.name} *")
+            return patterns
+
+        # Get nested command patterns
+        nested_patterns = self.generate_patterns(node.nested)
+
+        # Build wrapper context: "wrapper_name param1 param2 ..."
+        wrapper_parts = [node.name]
+        for param_key in WRAPPERS[node.name]["param_keys"]:
+            if param_key in node.params:
+                wrapper_parts.append(node.params[param_key])
+
+        wrapper_prefix = " ".join(wrapper_parts)
+
+        # Add patterns with wrapper context
+        for nested_pattern in nested_patterns:
+            patterns.append(f"{wrapper_prefix} {nested_pattern}")
+
+        # Add wrapper with wildcard for nested command
+        patterns.append(f"{wrapper_prefix} *")
+
+        # Add unwrapped nested patterns
+        patterns.extend(nested_patterns)
+
+        return patterns
+
 
 @dataclass
 class CommandNode:

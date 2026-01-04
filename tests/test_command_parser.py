@@ -186,3 +186,81 @@ def test_parse_pipe_command():
     assert result[1].name == "grep"
     assert result[1].type == CommandType.FILE_OP
     assert result[1].args == ["pattern"]
+
+
+def test_generate_patterns_simple_command():
+    """generate_patterns should create patterns from specific to general for simple commands."""
+    parser = CommandParser()
+    node = parser.parse_single_command("rm file.txt")
+
+    patterns = parser.generate_patterns(node)
+
+    assert len(patterns) == 2
+    assert patterns[0] == "rm file.txt"
+    assert patterns[1] == "rm *"
+
+
+def test_generate_patterns_file_op():
+    """generate_patterns should handle file operations with multiple arguments."""
+    parser = CommandParser()
+    node = parser.parse_single_command("cp file1 file2")
+
+    patterns = parser.generate_patterns(node)
+
+    assert len(patterns) == 2
+    assert patterns[0] == "cp file1 file2"
+    assert patterns[1] == "cp *"
+
+
+def test_generate_patterns_vcs():
+    """generate_patterns should handle VCS commands."""
+    parser = CommandParser()
+    node = parser.parse_single_command("git log")
+
+    patterns = parser.generate_patterns(node)
+
+    assert len(patterns) == 2
+    assert patterns[0] == "git log"
+    assert patterns[1] == "git *"
+
+
+def test_generate_patterns_generic():
+    """generate_patterns should handle generic commands."""
+    parser = CommandParser()
+    node = parser.parse_single_command("npm test")
+
+    patterns = parser.generate_patterns(node)
+
+    assert len(patterns) == 2
+    assert patterns[0] == "npm test"
+    assert patterns[1] == "npm *"
+
+
+def test_generate_patterns_wrapper_ssh():
+    """generate_patterns should handle ssh wrapper with nested command."""
+    parser = CommandParser()
+    node = parser.parse_single_command("ssh aarni git log")
+
+    patterns = parser.generate_patterns(node)
+
+    assert len(patterns) == 5
+    assert patterns[0] == "ssh aarni git log"
+    assert patterns[1] == "ssh aarni git *"
+    assert patterns[2] == "ssh aarni *"
+    assert patterns[3] == "git log"
+    assert patterns[4] == "git *"
+
+
+def test_generate_patterns_wrapper_docker():
+    """generate_patterns should handle docker wrapper with nested command."""
+    parser = CommandParser()
+    node = parser.parse_single_command("docker exec myapp npm test")
+
+    patterns = parser.generate_patterns(node)
+
+    assert len(patterns) == 5
+    assert patterns[0] == "docker exec myapp npm test"
+    assert patterns[1] == "docker exec myapp npm *"
+    assert patterns[2] == "docker exec myapp *"
+    assert patterns[3] == "npm test"
+    assert patterns[4] == "npm *"
