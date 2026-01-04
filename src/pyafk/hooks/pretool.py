@@ -8,6 +8,22 @@ from pyafk.core.manager import ApprovalManager
 from pyafk.fast_path import FastPathResult, check_fast_path
 
 
+def _make_response(decision: str, reason: str = "") -> dict:
+    """Build hook response in Claude Code's expected format.
+
+    Args:
+        decision: "allow" or "deny"
+        reason: Optional reason for the decision
+    """
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": decision,
+            "permissionDecisionReason": reason,
+        }
+    }
+
+
 async def handle_pretool_use(
     hook_input: dict,
     pyafk_dir: Optional[Path] = None,
@@ -20,15 +36,15 @@ async def handle_pretool_use(
         pyafk_dir: Path to pyafk directory
 
     Returns:
-        Response dict with "decision" key ("approve" or "deny")
+        Response dict with hookSpecificOutput for Claude Code
     """
     import sys
 
     fast_result = check_fast_path(pyafk_dir)
     if fast_result == FastPathResult.APPROVE:
-        return {"decision": "approve"}
+        return _make_response("allow", "pyafk fast path: approve all")
     elif fast_result == FastPathResult.DENY:
-        return {"decision": "deny"}
+        return _make_response("deny", "pyafk fast path: deny all")
 
     tool_name = hook_input.get("tool_name", "Unknown")
     tool_input = hook_input.get("tool_input")
@@ -63,6 +79,9 @@ async def handle_pretool_use(
             description=description,
             project_path=project_path,
         )
-        return {"decision": result}
+        # Map internal result to Claude Code's expected values
+        decision = "allow" if result == "approve" else "deny"
+        reason = f"pyafk: {'allowed' if decision == 'allow' else 'denied'} via Telegram"
+        return _make_response(decision, reason)
     finally:
         await manager.close()
