@@ -22,6 +22,8 @@ async def handle_pretool_use(
     Returns:
         Response dict with "decision" key ("approve" or "deny")
     """
+    import sys
+
     fast_result = check_fast_path(pyafk_dir)
     if fast_result == FastPathResult.APPROVE:
         return {"decision": "approve"}
@@ -30,6 +32,9 @@ async def handle_pretool_use(
 
     tool_name = hook_input.get("tool_name", "Unknown")
     tool_input = hook_input.get("tool_input")
+
+    # Debug: log to stderr what we're processing
+    print(f"[pyafk] Processing: {tool_name}", file=sys.stderr)
     session_id = hook_input.get("session_id", "unknown")
     context = hook_input.get("tool_context")
 

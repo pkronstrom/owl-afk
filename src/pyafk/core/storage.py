@@ -115,6 +115,8 @@ class Storage:
         # Enable WAL mode for concurrent access
         await self._conn.execute("PRAGMA journal_mode=WAL")
         await self._conn.execute("PRAGMA busy_timeout=5000")
+        await self._conn.execute("PRAGMA synchronous=NORMAL")
+        await self._conn.execute("PRAGMA temp_store=memory")
 
         # Create tables
         await self._conn.executescript(SCHEMA)
