@@ -2,6 +2,7 @@
 
 import asyncio
 import fcntl
+import json
 import os
 import time
 from pathlib import Path
@@ -578,6 +579,53 @@ class Poller:
                 unique.append((pattern, label))
 
         return unique
+
+    async def _check_chain_rules(self, cmd: str) -> Optional[str]:
+        """Check if a bash command chain matches any rules.
+
+        Returns:
+            "approve" if ALL commands match allow rules
+            "deny" if ANY command matches deny rule
+            None if manual approval needed
+        """
+        from pyafk.core.rules import RulesEngine
+
+        # Parse the command into chain nodes
+        parser = CommandParser()
+        nodes = parser.parse(cmd)
+
+        # Check each command in the chain
+        engine = RulesEngine(self.storage)
+        has_unmatched = False
+
+        for node in nodes:
+            # Generate patterns for this command
+            patterns = parser.generate_patterns(node)
+
+            # Check if any pattern matches a rule
+            matched = False
+            for pattern in patterns:
+                # Check the pattern as a Bash command
+                rule_result = await engine.check("Bash", json.dumps({"command": pattern}))
+
+                if rule_result == "deny":
+                    # Any deny rule in the chain means deny the whole chain
+                    return "deny"
+                elif rule_result == "approve":
+                    # This command matched an allow rule
+                    matched = True
+                    break
+
+            if not matched:
+                # This command didn't match any rule
+                has_unmatched = True
+
+        # If all commands matched allow rules, approve the whole chain
+        if not has_unmatched:
+            return "approve"
+
+        # Some commands didn't match any rule - need manual approval
+        return None
 
     def _format_project_id(self, project_path: Optional[str], session_id: str) -> str:
         """Format project path for display."""
