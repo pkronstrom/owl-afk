@@ -440,3 +440,262 @@ class TelegramNotifier(Notifier):
         except Exception:
             pass
         return None
+
+    async def send_chain_approval_request(
+        self,
+        request_id: str,
+        session_id: str,
+        commands: list[str],
+        project_path: Optional[str] = None,
+        description: Optional[str] = None,
+    ) -> Optional[int]:
+        """Send chain approval request with stacked command list.
+
+        Args:
+            request_id: The approval request ID
+            session_id: The session ID
+            commands: List of commands in the chain
+            project_path: Optional project path for display
+            description: Optional description of the chain
+
+        Returns:
+            Message ID if successful
+
+        Raises:
+            ValueError: If commands list is empty
+        """
+        # Validate commands list
+        if not commands:
+            raise ValueError("Cannot create chain approval with empty commands")
+        # Format project identifier
+        if project_path:
+            parts = project_path.rstrip("/").split("/")
+            project_id = "/".join(parts[-2:]) if len(parts) >= 2 else parts[-1]
+        else:
+            project_id = session_id[:8]
+
+        # Build the message with stacked command list
+        lines = [f"<i>{_escape_html(project_id)}</i>"]
+
+        if description:
+            desc = description[:100] + "..." if len(description) > 100 else description
+            lines.append(f"<i>{_escape_html(desc)}</i>")
+
+        lines.append("<b>Command chain approval:</b>\n")
+
+        # Show all commands with progress markers
+        # Handle message length limit (Telegram: 4096 chars max)
+        # If too many commands, truncate the middle
+        MAX_MESSAGE_LENGTH = 4000  # Leave buffer for formatting
+
+        # Build command list first to check length
+        cmd_lines = []
+        for idx, cmd in enumerate(commands):
+            if idx == 0:
+                # First command is current
+                marker = "→"
+            else:
+                # Rest are pending
+                marker = " "
+
+            # Truncate long commands
+            cmd_display = cmd if len(cmd) <= 60 else cmd[:60] + "..."
+            cmd_lines.append(f"{marker} <code>{_escape_html(cmd_display)}</code>")
+
+        # Check if message would be too long
+        temp_message = "\n".join(lines + cmd_lines)
+        if len(temp_message) > MAX_MESSAGE_LENGTH:
+            # Truncate command list: show first 20, ellipsis, last 10
+            if len(commands) > 30:
+                truncated_cmd_lines = []
+                for idx in range(min(20, len(commands))):
+                    cmd = commands[idx]
+                    marker = "→" if idx == 0 else " "
+                    cmd_display = cmd if len(cmd) <= 60 else cmd[:60] + "..."
+                    truncated_cmd_lines.append(f"{marker} <code>{_escape_html(cmd_display)}</code>")
+
+                truncated_cmd_lines.append(f"<i>... {len(commands) - 30} more commands ...</i>")
+
+                for idx in range(len(commands) - 10, len(commands)):
+                    cmd = commands[idx]
+                    marker = " "
+                    cmd_display = cmd if len(cmd) <= 60 else cmd[:60] + "..."
+                    truncated_cmd_lines.append(f"{marker} <code>{_escape_html(cmd_display)}</code>")
+
+                cmd_lines = truncated_cmd_lines
+
+        lines.extend(cmd_lines)
+        message = "\n".join(lines)
+
+        # Keyboard for first command
+        keyboard = {
+            "inline_keyboard": [
+                [
+                    {"text": "✅ Approve", "callback_data": f"chain_approve:{request_id}:0"},
+                    {"text": "❌ Deny", "callback_data": f"chain_deny:{request_id}"},
+                ],
+                [
+                    {"text": "📝 Rule", "callback_data": f"chain_rule:{request_id}:0"},
+                ],
+            ]
+        }
+
+        result = await self._api_request(
+            "sendMessage",
+            data={
+                "chat_id": self.chat_id,
+                "text": message,
+                "parse_mode": "HTML",
+                "reply_markup": json.dumps(keyboard),
+            },
+        )
+
+        if result.get("ok") and "result" in result:
+            return result["result"].get("message_id")
+        return None
+
+    async def update_chain_progress(
+        self,
+        message_id: int,
+        request_id: str,
+        session_id: str,
+        commands: list[str],
+        current_idx: int,
+        approved_indices: list[int],
+        project_path: Optional[str] = None,
+        description: Optional[str] = None,
+        final_approve: bool = False,
+        denied: bool = False,
+    ) -> None:
+        """Update chain approval message with progress.
+
+        Args:
+            message_id: The Telegram message to edit
+            request_id: The approval request ID
+            session_id: The session ID
+            commands: List of commands in the chain
+            current_idx: Index of current command being reviewed
+            approved_indices: List of indices that have been approved
+            project_path: Optional project path for display
+            description: Optional description
+            final_approve: If True, show final "Approve All" confirmation
+            denied: If True, show denial state
+
+        Raises:
+            ValueError: If current_idx is out of bounds
+        """
+        # Validate current_idx
+        if current_idx < 0 or current_idx >= len(commands):
+            raise ValueError(
+                f"current_idx {current_idx} out of bounds for {len(commands)} commands"
+            )
+        # Format project identifier
+        if project_path:
+            parts = project_path.rstrip("/").split("/")
+            project_id = "/".join(parts[-2:]) if len(parts) >= 2 else parts[-1]
+        else:
+            project_id = session_id[:8]
+
+        # Build the message with stacked command list
+        lines = [f"<i>{_escape_html(project_id)}</i>"]
+
+        if description:
+            desc = description[:100] + "..." if len(description) > 100 else description
+            lines.append(f"<i>{_escape_html(desc)}</i>")
+
+        lines.append("<b>Command chain approval:</b>\n")
+
+        # Show all commands with progress markers
+        # Handle message length limit (Telegram: 4096 chars max)
+        MAX_MESSAGE_LENGTH = 4000  # Leave buffer for formatting
+
+        # Build command list first to check length
+        cmd_lines = []
+        for idx, cmd in enumerate(commands):
+            if idx in approved_indices:
+                marker = "✓"
+            elif idx == current_idx and not denied:
+                marker = "→"
+            else:
+                marker = " "
+
+            # Truncate long commands
+            cmd_display = cmd if len(cmd) <= 60 else cmd[:60] + "..."
+            cmd_lines.append(f"{marker} <code>{_escape_html(cmd_display)}</code>")
+
+        # Check if message would be too long
+        temp_message = "\n".join(lines + cmd_lines)
+        if len(temp_message) > MAX_MESSAGE_LENGTH:
+            # Truncate command list: show first 20, current, last 10
+            if len(commands) > 30:
+                truncated_cmd_lines = []
+                # First 20 commands
+                for idx in range(min(20, len(commands))):
+                    cmd = commands[idx]
+                    if idx in approved_indices:
+                        marker = "✓"
+                    elif idx == current_idx and not denied:
+                        marker = "→"
+                    else:
+                        marker = " "
+                    cmd_display = cmd if len(cmd) <= 60 else cmd[:60] + "..."
+                    truncated_cmd_lines.append(f"{marker} <code>{_escape_html(cmd_display)}</code>")
+
+                # Add ellipsis
+                truncated_cmd_lines.append(f"<i>... {len(commands) - 30} more commands ...</i>")
+
+                # Last 10 commands
+                for idx in range(len(commands) - 10, len(commands)):
+                    cmd = commands[idx]
+                    if idx in approved_indices:
+                        marker = "✓"
+                    elif idx == current_idx and not denied:
+                        marker = "→"
+                    else:
+                        marker = " "
+                    cmd_display = cmd if len(cmd) <= 60 else cmd[:60] + "..."
+                    truncated_cmd_lines.append(f"{marker} <code>{_escape_html(cmd_display)}</code>")
+
+                cmd_lines = truncated_cmd_lines
+
+        lines.extend(cmd_lines)
+        message = "\n".join(lines)
+
+        # Determine keyboard based on state
+        if denied:
+            # Chain was denied - no keyboard
+            keyboard = {"inline_keyboard": []}
+        elif final_approve:
+            # All commands approved - show final approval button
+            keyboard = {
+                "inline_keyboard": [
+                    [
+                        {"text": "✅ Approve All", "callback_data": f"chain_approve_all:{request_id}"},
+                        {"text": "❌ Cancel", "callback_data": f"chain_deny:{request_id}"},
+                    ],
+                ]
+            }
+        else:
+            # Show keyboard for current command
+            keyboard = {
+                "inline_keyboard": [
+                    [
+                        {"text": "✅ Approve", "callback_data": f"chain_approve:{request_id}:{current_idx}"},
+                        {"text": "❌ Deny", "callback_data": f"chain_deny:{request_id}"},
+                    ],
+                    [
+                        {"text": "📝 Rule", "callback_data": f"chain_rule:{request_id}:{current_idx}"},
+                    ],
+                ]
+            }
+
+        await self._api_request(
+            "editMessageText",
+            data={
+                "chat_id": self.chat_id,
+                "message_id": message_id,
+                "text": message,
+                "parse_mode": "HTML",
+                "reply_markup": json.dumps(keyboard),
+            },
+        )
