@@ -71,7 +71,7 @@ async def handle_pretool_use(
 
     manager = ApprovalManager(pyafk_dir=pyafk_dir)
     try:
-        result = await manager.request_approval(
+        result, denial_reason = await manager.request_approval(
             session_id=session_id,
             tool_name=tool_name,
             tool_input=tool_input_str,
@@ -81,7 +81,10 @@ async def handle_pretool_use(
         )
         # Map internal result to Claude Code's expected values
         decision = "allow" if result == "approve" else "deny"
-        reason = f"pyafk: {'allowed' if decision == 'allow' else 'denied'} via Telegram"
+        if denial_reason:
+            reason = f"pyafk: denied - {denial_reason}"
+        else:
+            reason = f"pyafk: {'allowed' if decision == 'allow' else 'denied'} via Telegram"
         return _make_response(decision, reason)
     finally:
         await manager.close()

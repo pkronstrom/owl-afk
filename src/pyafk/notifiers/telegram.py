@@ -130,6 +130,7 @@ class TelegramNotifier(Notifier):
                 [
                     {"text": "✅ Approve", "callback_data": f"approve:{request_id}"},
                     {"text": "❌ Deny", "callback_data": f"deny:{request_id}"},
+                    {"text": "💬", "callback_data": f"deny_msg:{request_id}"},
                 ],
                 [
                     {"text": "📝 Rule", "callback_data": f"add_rule:{request_id}"},
@@ -197,3 +198,17 @@ class TelegramNotifier(Notifier):
         if result.get("ok") and "result" in result:
             return result.get("result", [])
         return []
+
+    async def send_feedback_prompt(self, tool_name: str) -> Optional[int]:
+        """Send a message asking for denial feedback with force_reply."""
+        result = await self._api_request(
+            "sendMessage",
+            data={
+                "chat_id": self.chat_id,
+                "text": f"💬 Reply with feedback for denying {tool_name}:",
+                "reply_markup": json.dumps({"force_reply": True, "selective": True}),
+            },
+        )
+        if result.get("ok") and "result" in result:
+            return result["result"].get("message_id")
+        return None

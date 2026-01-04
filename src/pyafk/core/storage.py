@@ -24,6 +24,7 @@ class Request:
     created_at: float
     resolved_at: Optional[float]
     resolved_by: Optional[str]
+    denial_reason: Optional[str] = None
 
 
 @dataclass
@@ -58,7 +59,14 @@ CREATE TABLE IF NOT EXISTS requests (
     telegram_msg_id INTEGER,
     created_at      REAL,
     resolved_at     REAL,
-    resolved_by     TEXT
+    resolved_by     TEXT,
+    denial_reason   TEXT
+);
+
+CREATE TABLE IF NOT EXISTS pending_feedback (
+    prompt_msg_id   INTEGER PRIMARY KEY,
+    request_id      TEXT NOT NULL,
+    created_at      REAL
 );
 
 CREATE TABLE IF NOT EXISTS sessions (
@@ -175,15 +183,16 @@ class Storage:
         request_id: str,
         status: str,
         resolved_by: str,
+        denial_reason: Optional[str] = None,
     ):
         """Update request status."""
         now = time.time()
         await self._conn.execute(
             """
-            UPDATE requests SET status = ?, resolved_at = ?, resolved_by = ?
+            UPDATE requests SET status = ?, resolved_at = ?, resolved_by = ?, denial_reason = ?
             WHERE id = ?
             """,
-            (status, now, resolved_by, request_id),
+            (status, now, resolved_by, denial_reason, request_id),
         )
         await self._conn.commit()
 
@@ -200,6 +209,37 @@ class Storage:
         await self._conn.execute(
             "UPDATE requests SET telegram_msg_id = ? WHERE id = ?",
             (msg_id, request_id),
+        )
+        await self._conn.commit()
+
+    # Pending feedback
+
+    async def set_pending_feedback(self, prompt_msg_id: int, request_id: str):
+        """Track a feedback prompt message."""
+        now = time.time()
+        await self._conn.execute(
+            """
+            INSERT OR REPLACE INTO pending_feedback (prompt_msg_id, request_id, created_at)
+            VALUES (?, ?, ?)
+            """,
+            (prompt_msg_id, request_id, now),
+        )
+        await self._conn.commit()
+
+    async def get_pending_feedback(self, prompt_msg_id: int) -> Optional[str]:
+        """Get request_id for a feedback prompt message."""
+        cursor = await self._conn.execute(
+            "SELECT request_id FROM pending_feedback WHERE prompt_msg_id = ?",
+            (prompt_msg_id,),
+        )
+        row = await cursor.fetchone()
+        return row["request_id"] if row else None
+
+    async def clear_pending_feedback(self, prompt_msg_id: int):
+        """Remove a pending feedback entry."""
+        await self._conn.execute(
+            "DELETE FROM pending_feedback WHERE prompt_msg_id = ?",
+            (prompt_msg_id,),
         )
         await self._conn.commit()
 

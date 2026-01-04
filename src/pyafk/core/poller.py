@@ -98,8 +98,27 @@ class Poller:
             if "callback_query" in update:
                 await self._handle_callback(update["callback_query"])
                 processed += 1
+            elif "message" in update:
+                # Check if this is a reply to a feedback prompt
+                await self._handle_message(update["message"])
+                processed += 1
 
         return processed
+
+    async def _handle_message(self, message: dict):
+        """Handle a text message - check if it's feedback for a denial."""
+        reply_to = message.get("reply_to_message", {})
+        reply_msg_id = reply_to.get("message_id")
+        if not reply_msg_id:
+            return
+
+        # Check if this is a reply to a feedback prompt we sent
+        request_id = await self.storage.get_pending_feedback(reply_msg_id)
+        if not request_id:
+            return
+
+        feedback = message.get("text", "")
+        await self._handle_deny_with_feedback(request_id, feedback, reply_msg_id)
 
     async def _handle_callback(self, callback: dict):
         """Handle a callback query from inline button."""
@@ -115,6 +134,8 @@ class Poller:
 
         if action in ("approve", "deny"):
             await self._handle_approval(target_id, action, callback_id, message_id)
+        elif action == "deny_msg":
+            await self._handle_deny_msg(target_id, callback_id, message_id)
         elif action == "approve_all":
             # Format: approve_all:session_id:tool_name
             parts = target_id.split(":", 1)
@@ -165,6 +186,67 @@ class Poller:
                 "request_id": request_id,
                 "action": action,
                 "resolved_by": "user",
+            },
+        )
+
+    async def _handle_deny_msg(
+        self,
+        request_id: str,
+        callback_id: str,
+        message_id: Optional[int] = None,
+    ):
+        """Handle deny with message button - prompt for feedback."""
+        request = await self.storage.get_request(request_id)
+        if not request:
+            await self.notifier.answer_callback(callback_id, "Request not found")
+            if message_id:
+                await self.notifier.edit_message(message_id, "⚠️ Request expired")
+            return
+
+        # Send feedback prompt
+        prompt_msg_id = await self.notifier.send_feedback_prompt(request.tool_name)
+        if prompt_msg_id:
+            await self.storage.set_pending_feedback(prompt_msg_id, request_id)
+
+        await self.notifier.answer_callback(callback_id, "Reply with feedback")
+
+    async def _handle_deny_with_feedback(
+        self,
+        request_id: str,
+        feedback: str,
+        prompt_msg_id: int,
+    ):
+        """Handle denial with user feedback."""
+        request = await self.storage.get_request(request_id)
+        if not request:
+            return
+
+        # Clear the pending feedback entry
+        await self.storage.clear_pending_feedback(prompt_msg_id)
+
+        # Resolve the request with denial reason
+        await self.storage.resolve_request(
+            request_id=request_id,
+            status="denied",
+            resolved_by="user:feedback",
+            denial_reason=feedback,
+        )
+
+        # Update the original message
+        if request.telegram_msg_id:
+            await self.notifier.edit_message(
+                request.telegram_msg_id,
+                f"❌ DENIED - {request.tool_name}\n💬 {feedback}",
+            )
+
+        await self.storage.log_audit(
+            event_type="response",
+            session_id=request.session_id,
+            details={
+                "request_id": request_id,
+                "action": "deny",
+                "resolved_by": "user:feedback",
+                "feedback": feedback,
             },
         )
 

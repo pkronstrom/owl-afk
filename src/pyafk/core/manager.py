@@ -83,11 +83,11 @@ class ApprovalManager:
         context: Optional[str] = None,
         description: Optional[str] = None,
         project_path: Optional[str] = None,
-    ) -> str:
+    ) -> tuple[str, Optional[str]]:
         """Request approval for a tool call.
 
         Returns:
-            "approve" or "deny"
+            Tuple of (decision, denial_reason) where decision is "approve" or "deny"
         """
         if not self._initialized:
             await self.initialize()
@@ -108,7 +108,7 @@ class ApprovalManager:
                     "reason": "rule_match",
                 },
             )
-            return rule_result
+            return (rule_result, None)
 
         request_id = await self.storage.create_request(
             session_id=session_id,
@@ -140,8 +140,12 @@ class ApprovalManager:
         result = await self._wait_for_response(request_id)
         return result
 
-    async def _wait_for_response(self, request_id: str) -> str:
-        """Wait for approval response with polling."""
+    async def _wait_for_response(self, request_id: str) -> tuple[str, Optional[str]]:
+        """Wait for approval response with polling.
+
+        Returns:
+            Tuple of (decision, denial_reason)
+        """
         start = time.monotonic()
 
         while True:
@@ -157,7 +161,7 @@ class ApprovalManager:
                     event_type="timeout",
                     details={"request_id": request_id, "action": self.timeout_action},
                 )
-                return self.timeout_action
+                return (self.timeout_action, None)
 
             if self.poller:
                 try:
@@ -168,8 +172,8 @@ class ApprovalManager:
             request = await self.storage.get_request(request_id)
             if request and request.status != "pending":
                 if request.status == "approved":
-                    return "approve"
+                    return ("approve", None)
                 else:
-                    return "deny"
+                    return ("deny", request.denial_reason)
 
             await asyncio.sleep(0.5)
