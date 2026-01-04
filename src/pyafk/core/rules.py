@@ -101,11 +101,20 @@ class RulesEngine:
         priority: int = 0,
         created_via: str = "cli",
     ) -> int:
-        """Add a new rule."""
+        """Add a new rule. Returns existing rule ID if duplicate."""
         if action not in ("approve", "deny"):
             raise ValueError(f"Invalid action: {action}")
         if not pattern:
             raise ValueError("Pattern cannot be empty")
+
+        # Check for existing rule with same pattern and action
+        cursor = await self.storage._conn.execute(
+            "SELECT id FROM auto_approve_rules WHERE pattern = ? AND action = ?",
+            (pattern, action),
+        )
+        existing = await cursor.fetchone()
+        if existing:
+            return existing[0]  # Return existing rule ID
 
         cursor = await self.storage._conn.execute(
             """
