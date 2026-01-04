@@ -103,7 +103,7 @@ class CommandParser:
         return commands
 
     def _smart_split(self, cmd: str) -> List[str]:
-        """Split command into tokens respecting quotes and parentheses.
+        """Split command into tokens respecting quotes.
 
         Args:
             cmd: The command string to split.
