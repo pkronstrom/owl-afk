@@ -106,7 +106,7 @@ class Poller:
         return processed
 
     async def _handle_message(self, message: dict):
-        """Handle a text message - check if it's feedback for a denial."""
+        """Handle a text message - check if it's feedback for a denial or subagent."""
         reply_to = message.get("reply_to_message", {})
         reply_msg_id = reply_to.get("message_id")
         if not reply_msg_id:
@@ -118,7 +118,26 @@ class Poller:
             return
 
         feedback = message.get("text", "")
-        await self._handle_deny_with_feedback(request_id, feedback, reply_msg_id)
+
+        # Check if this is for a subagent
+        if request_id.startswith("subagent:"):
+            subagent_id = request_id[9:]  # Strip "subagent:" prefix
+            await self._handle_subagent_feedback(subagent_id, feedback, reply_msg_id)
+        else:
+            await self._handle_deny_with_feedback(request_id, feedback, reply_msg_id)
+
+    async def _handle_subagent_feedback(
+        self,
+        subagent_id: str,
+        instructions: str,
+        prompt_msg_id: int,
+    ):
+        """Handle subagent continue instructions."""
+        # Clear the pending feedback entry
+        await self.storage.clear_pending_feedback(prompt_msg_id)
+
+        # Resolve the subagent with continue status and instructions
+        await self.storage.resolve_subagent(subagent_id, "continue", instructions)
 
     async def _handle_callback(self, callback: dict):
         """Handle a callback query from inline button."""
@@ -144,6 +163,10 @@ class Poller:
             await self._handle_approve_all(session_id, tool_name, callback_id)
         elif action == "add_rule":
             await self._handle_add_rule(target_id, callback_id, message_id)
+        elif action == "subagent_ok":
+            await self._handle_subagent_ok(target_id, callback_id, message_id)
+        elif action == "subagent_continue":
+            await self._handle_subagent_continue(target_id, callback_id, message_id)
 
     async def _handle_approval(
         self,
@@ -314,6 +337,37 @@ class Poller:
             callback_id,
             f"Rule: {pattern}",
         )
+
+    async def _handle_subagent_ok(
+        self,
+        subagent_id: str,
+        callback_id: str,
+        message_id: Optional[int] = None,
+    ):
+        """Handle subagent OK button - let subagent stop normally."""
+        await self.storage.resolve_subagent(subagent_id, "ok")
+
+        await self.notifier.answer_callback(callback_id, "OK")
+
+        if message_id:
+            await self.notifier.edit_message(
+                message_id,
+                "✅ Subagent finished",
+            )
+
+    async def _handle_subagent_continue(
+        self,
+        subagent_id: str,
+        callback_id: str,
+        message_id: Optional[int] = None,
+    ):
+        """Handle subagent Continue button - prompt for instructions."""
+        await self.notifier.answer_callback(callback_id, "Reply with instructions")
+
+        # Send continue prompt
+        prompt_msg_id = await self.notifier.send_continue_prompt()
+        if prompt_msg_id:
+            await self.storage.set_subagent_continue_prompt(subagent_id, prompt_msg_id)
 
     def _create_rule_pattern(self, tool_name: str, tool_input: Optional[str]) -> str:
         """Create a smart rule pattern from tool and input."""

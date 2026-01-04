@@ -1,0 +1,77 @@
+"""PermissionRequest hook handler."""
+
+import json
+from pathlib import Path
+from typing import Optional
+
+
+def _make_response(decision: str, reason: str = "") -> dict:
+    """Build hook response in Claude Code's expected format."""
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PermissionRequest",
+            "permissionDecision": decision,
+            "permissionDecisionReason": reason,
+        }
+    }
+
+
+async def handle_permission_request(
+    hook_input: dict,
+    pyafk_dir: Optional[Path] = None,
+) -> dict:
+    """Handle PermissionRequest hook.
+
+    This is a fallback that intercepts permission dialogs.
+    Routes to the same approval system as PreToolUse.
+
+    Args:
+        hook_input: Dict with tool_name, tool_input, session_id fields
+        pyafk_dir: Path to pyafk directory
+
+    Returns:
+        Response dict with hookSpecificOutput for Claude Code
+    """
+    import sys
+
+    from pyafk.core.manager import ApprovalManager
+    from pyafk.fast_path import FastPathResult, check_fast_path
+
+    fast_result = check_fast_path(pyafk_dir)
+    if fast_result == FastPathResult.APPROVE:
+        return _make_response("allow", "pyafk fast path: approve all")
+    elif fast_result == FastPathResult.DENY:
+        return _make_response("deny", "pyafk fast path: deny all")
+
+    tool_name = hook_input.get("tool_name", "Unknown")
+    tool_input = hook_input.get("tool_input")
+
+    print(f"[pyafk] PermissionRequest: {tool_name}", file=sys.stderr)
+    session_id = hook_input.get("session_id", "unknown")
+
+    if isinstance(tool_input, dict):
+        description = tool_input.get("description")
+        tool_input_str = json.dumps(tool_input)
+    else:
+        description = None
+        tool_input_str = str(tool_input) if tool_input else None
+
+    project_path = hook_input.get("cwd")
+
+    manager = ApprovalManager(pyafk_dir=pyafk_dir)
+    try:
+        result, denial_reason = await manager.request_approval(
+            session_id=session_id,
+            tool_name=tool_name,
+            tool_input=tool_input_str,
+            description=description,
+            project_path=project_path,
+        )
+        decision = "allow" if result == "approve" else "deny"
+        if denial_reason:
+            reason = f"pyafk: denied - {denial_reason}"
+        else:
+            reason = f"pyafk: {'allowed' if decision == 'allow' else 'denied'} via Telegram"
+        return _make_response(decision, reason)
+    finally:
+        await manager.close()

@@ -16,7 +16,7 @@ async def handle_hook(
     """Handle a Claude Code hook.
 
     Args:
-        hook_type: "PreToolUse", "Stop", or "SessionStart"
+        hook_type: Hook event name
         hook_input: Parsed JSON from stdin
         pyafk_dir: Path to pyafk directory
 
@@ -26,6 +26,12 @@ async def handle_hook(
     if hook_type == "PreToolUse":
         from pyafk.hooks.pretool import handle_pretool_use
         return await handle_pretool_use(hook_input, pyafk_dir)
+    elif hook_type == "PermissionRequest":
+        from pyafk.hooks.permission import handle_permission_request
+        return await handle_permission_request(hook_input, pyafk_dir)
+    elif hook_type == "SubagentStop":
+        from pyafk.hooks.subagent import handle_subagent_stop
+        return await handle_subagent_stop(hook_input, pyafk_dir)
     elif hook_type == "Stop":
         from pyafk.hooks.stop import handle_stop
         return await handle_stop(hook_input, pyafk_dir)

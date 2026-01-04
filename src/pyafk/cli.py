@@ -328,6 +328,29 @@ def _get_pyafk_hooks() -> dict:
                 ],
             }
         ],
+        "PermissionRequest": [
+            {
+                "matcher": "Bash|Edit|Write|MultiEdit|WebFetch|Skill|mcp__.*",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "pyafk hook PermissionRequest",
+                        "timeout": 3600,
+                    }
+                ],
+            }
+        ],
+        "SubagentStop": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "pyafk hook SubagentStop",
+                        "timeout": 3600,
+                    }
+                ],
+            }
+        ],
         "Stop": [
             {
                 "hooks": [
@@ -440,7 +463,7 @@ def uninstall_command(ctx):
     hooks = settings.get("hooks", {})
 
     # Remove pyafk hooks
-    hook_types_to_clean = ["PreToolUse", "Stop", "SessionStart"]
+    hook_types_to_clean = ["PreToolUse", "PermissionRequest", "SubagentStop", "Stop", "SessionStart"]
     hooks_removed = False
     for hook_type in hook_types_to_clean:
         if hook_type in hooks:

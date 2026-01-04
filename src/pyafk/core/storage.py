@@ -69,6 +69,14 @@ CREATE TABLE IF NOT EXISTS pending_feedback (
     created_at      REAL
 );
 
+CREATE TABLE IF NOT EXISTS pending_subagent (
+    subagent_id     TEXT PRIMARY KEY,
+    telegram_msg_id INTEGER,
+    status          TEXT DEFAULT 'pending',
+    response        TEXT,
+    created_at      REAL
+);
+
 CREATE TABLE IF NOT EXISTS sessions (
     session_id      TEXT PRIMARY KEY,
     project_path    TEXT,
@@ -240,6 +248,48 @@ class Storage:
         await self._conn.execute(
             "DELETE FROM pending_feedback WHERE prompt_msg_id = ?",
             (prompt_msg_id,),
+        )
+        await self._conn.commit()
+
+    # Pending subagent responses
+
+    async def create_pending_subagent(self, subagent_id: str, telegram_msg_id: Optional[int] = None):
+        """Create a pending subagent entry."""
+        now = time.time()
+        await self._conn.execute(
+            """
+            INSERT OR REPLACE INTO pending_subagent (subagent_id, telegram_msg_id, status, created_at)
+            VALUES (?, ?, 'pending', ?)
+            """,
+            (subagent_id, telegram_msg_id, now),
+        )
+        await self._conn.commit()
+
+    async def get_pending_subagent(self, subagent_id: str) -> Optional[dict]:
+        """Get pending subagent entry."""
+        cursor = await self._conn.execute(
+            "SELECT * FROM pending_subagent WHERE subagent_id = ?",
+            (subagent_id,),
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+    async def resolve_subagent(self, subagent_id: str, status: str, response: Optional[str] = None):
+        """Resolve a pending subagent."""
+        await self._conn.execute(
+            "UPDATE pending_subagent SET status = ?, response = ? WHERE subagent_id = ?",
+            (status, response, subagent_id),
+        )
+        await self._conn.commit()
+
+    async def set_subagent_continue_prompt(self, subagent_id: str, prompt_msg_id: int):
+        """Track the continue prompt message for a subagent."""
+        await self._conn.execute(
+            """
+            INSERT OR REPLACE INTO pending_feedback (prompt_msg_id, request_id, created_at)
+            VALUES (?, ?, ?)
+            """,
+            (prompt_msg_id, f"subagent:{subagent_id}", time.time()),
         )
         await self._conn.commit()
 

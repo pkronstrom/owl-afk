@@ -212,3 +212,84 @@ class TelegramNotifier(Notifier):
         if result.get("ok") and "result" in result:
             return result["result"].get("message_id")
         return None
+
+    async def send_subagent_stop(
+        self,
+        subagent_id: str,
+        output_summary: str,
+        project_path: Optional[str] = None,
+    ) -> Optional[int]:
+        """Send subagent completion notification with continue option."""
+        # Format project path
+        if project_path:
+            parts = project_path.rstrip("/").split("/")
+            project_id = "/".join(parts[-2:]) if len(parts) >= 2 else parts[-1]
+        else:
+            project_id = subagent_id[:8]
+
+        # Truncate output if too long (Telegram limit ~4096 chars)
+        if len(output_summary) > 3000:
+            output_summary = output_summary[-3000:]
+            output_summary = "..." + output_summary
+
+        text = f"<i>{_escape_html(project_id)}</i>\n<b>🤖 Subagent finished</b>\n\n<code>{_escape_html(output_summary)}</code>"
+
+        keyboard = {
+            "inline_keyboard": [
+                [
+                    {"text": "✅ OK", "callback_data": f"subagent_ok:{subagent_id}"},
+                    {"text": "💬 Continue", "callback_data": f"subagent_continue:{subagent_id}"},
+                ],
+            ]
+        }
+
+        result = await self._api_request(
+            "sendMessage",
+            data={
+                "chat_id": self.chat_id,
+                "text": text,
+                "parse_mode": "HTML",
+                "reply_markup": json.dumps(keyboard),
+            },
+        )
+
+        if result.get("ok") and "result" in result:
+            return result["result"].get("message_id")
+        return None
+
+    async def send_continue_prompt(self) -> Optional[int]:
+        """Send a message asking for continuation instructions."""
+        result = await self._api_request(
+            "sendMessage",
+            data={
+                "chat_id": self.chat_id,
+                "text": "💬 Reply with instructions for the agent:",
+                "reply_markup": json.dumps({"force_reply": True, "selective": True}),
+            },
+        )
+        if result.get("ok") and "result" in result:
+            return result["result"].get("message_id")
+        return None
+
+    async def send_document(self, file_path: Path, caption: str = "") -> Optional[int]:
+        """Send a file as a document."""
+        import aiofiles
+
+        url = f"{self._base_url}/sendDocument"
+        try:
+            async with aiofiles.open(file_path, "rb") as f:
+                file_content = await f.read()
+
+            async with httpx.AsyncClient() as client:
+                files = {"document": (file_path.name, file_content)}
+                data = {"chat_id": self.chat_id}
+                if caption:
+                    data["caption"] = caption
+                response = await client.post(url, data=data, files=files, timeout=30)
+                result = response.json()
+
+            if result.get("ok") and "result" in result:
+                return result["result"].get("message_id")
+        except Exception:
+            pass
+        return None

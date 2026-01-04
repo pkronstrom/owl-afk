@@ -12,6 +12,7 @@ license = "MIT"
 authors = [{ name = "bembu" }]
 dependencies = [
     "aiosqlite>=0.19.0",
+    "aiofiles>=23.0.0",
     "httpx>=0.25.0",
     "click>=8.0.0",
 ]
