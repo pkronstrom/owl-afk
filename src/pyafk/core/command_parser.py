@@ -14,6 +14,75 @@ class CommandType(Enum):
     GENERIC = "generic"
 
 
+class CommandParser:
+    """Parser for bash commands with chain splitting and quote handling."""
+
+    def split_chain(self, cmd: str) -> List[str]:
+        """Split a command chain into individual commands.
+
+        Respects quotes and shell operators (&&, ||, ;, |).
+
+        Args:
+            cmd: The command string to split.
+
+        Returns:
+            List of individual commands.
+        """
+        commands = []
+        current_cmd = []
+        in_double_quote = False
+        in_single_quote = False
+        i = 0
+
+        while i < len(cmd):
+            char = cmd[i]
+
+            # Handle quotes
+            if char == '"' and not in_single_quote:
+                in_double_quote = not in_double_quote
+                current_cmd.append(char)
+                i += 1
+            elif char == "'" and not in_double_quote:
+                in_single_quote = not in_single_quote
+                current_cmd.append(char)
+                i += 1
+            # Handle operators only when not in quotes
+            elif not in_double_quote and not in_single_quote:
+                # Check for two-character operators first
+                if i + 1 < len(cmd):
+                    two_char = cmd[i : i + 2]
+                    if two_char in ("&&", "||"):
+                        # Save current command
+                        cmd_str = "".join(current_cmd).strip()
+                        if cmd_str:
+                            commands.append(cmd_str)
+                        current_cmd = []
+                        i += 2
+                        continue
+
+                # Check for single-character operators
+                if char in (";", "|"):
+                    # Save current command
+                    cmd_str = "".join(current_cmd).strip()
+                    if cmd_str:
+                        commands.append(cmd_str)
+                    current_cmd = []
+                    i += 1
+                else:
+                    current_cmd.append(char)
+                    i += 1
+            else:
+                current_cmd.append(char)
+                i += 1
+
+        # Don't forget the last command
+        cmd_str = "".join(current_cmd).strip()
+        if cmd_str:
+            commands.append(cmd_str)
+
+        return commands
+
+
 @dataclass
 class CommandNode:
     """A node in the command parse tree.

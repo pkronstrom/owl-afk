@@ -2,7 +2,7 @@
 
 import pytest
 
-from pyafk.core.command_parser import CommandNode, CommandType
+from pyafk.core.command_parser import CommandNode, CommandParser, CommandType
 
 
 def test_command_node_simple_command():
@@ -46,3 +46,36 @@ def test_command_node_with_nested():
     assert wrapper.nested is not None
     assert wrapper.nested.name == "bash"
     assert wrapper.full_cmd == "ssh -p 2222 user@host bash script.sh"
+
+
+def test_split_chain_single_command():
+    """CommandParser should handle single commands."""
+    parser = CommandParser()
+    result = parser.split_chain("git log")
+    assert len(result) == 1
+    assert result[0] == "git log"
+
+
+def test_split_chain_multiple_commands():
+    """CommandParser should split multiple commands joined by &&."""
+    parser = CommandParser()
+    result = parser.split_chain("cd ~/project && npm test && git log")
+    assert len(result) == 3
+    assert result[0] == "cd ~/project"
+    assert result[1] == "npm test"
+    assert result[2] == "git log"
+
+
+def test_split_chain_ignores_operators_in_quotes():
+    """CommandParser should ignore operators inside quotes."""
+    parser = CommandParser()
+    result = parser.split_chain('ssh aarni "cd ~/p && git log"')
+    assert len(result) == 1
+    assert result[0] == 'ssh aarni "cd ~/p && git log"'
+
+
+def test_split_chain_pipe_semicolon():
+    """CommandParser should split on pipe and semicolon operators."""
+    parser = CommandParser()
+    result = parser.split_chain("cat file | grep pattern; echo done")
+    assert len(result) == 3
