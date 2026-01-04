@@ -170,6 +170,12 @@ class Poller:
                 status="approved",
                 resolved_by="user:approve_all",
             )
+            # Update the Telegram message
+            if request.telegram_msg_id:
+                await self.notifier.edit_message(
+                    request.telegram_msg_id,
+                    f"✅ APPROVED (all) - {request.tool_name}",
+                )
 
         await self.notifier.answer_callback(
             callback_id,
@@ -177,10 +183,23 @@ class Poller:
         )
 
     async def _handle_add_rule(self, request_id: str, callback_id: str):
-        """Handle add rule button."""
+        """Handle add rule button - creates auto-approve rule for tool."""
+        request = await self.storage.get_request(request_id)
+        if not request:
+            await self.notifier.answer_callback(callback_id, "Request not found")
+            return
+
+        # Create rule pattern from tool name
+        pattern = f"{request.tool_name}(*)"
+
+        # Add the rule
+        from pyafk.core.rules import RulesEngine
+        engine = RulesEngine(self.storage)
+        await engine.add_rule(pattern, "approve", priority=0, created_via="telegram")
+
         await self.notifier.answer_callback(
             callback_id,
-            "Rule creation coming soon",
+            f"Rule added: auto-approve {pattern}",
         )
 
     async def poll_loop(self, timeout: float = 30.0):
