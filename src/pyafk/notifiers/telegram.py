@@ -81,6 +81,37 @@ def _escape_markdown(text: str) -> str:
     return text
 
 
+def _truncate_pattern_label(pattern: str, max_len: int = 40) -> str:
+    """Truncate pattern for button label, preserving distinctive ending."""
+    if len(pattern) <= max_len:
+        return pattern
+
+    # For patterns with paths, show command + ... + ending
+    # e.g., "rm /Users/bembu/.pyafk/test_file.txt" -> "rm .../test_file.txt"
+    parts = pattern.split(" ", 1)
+    if len(parts) == 2:
+        cmd, path = parts
+        # Keep enough room for "cmd .../ending"
+        available = max_len - len(cmd) - 5  # " .../" takes 5 chars
+        if available > 10:
+            # Try to show last path component(s)
+            path_parts = path.rstrip("/").rsplit("/", 2)
+            if len(path_parts) >= 2:
+                ending = "/".join(path_parts[-2:])
+                if len(ending) <= available:
+                    return f"{cmd} .../{ending}"
+                # Just show last component
+                ending = path_parts[-1]
+                if len(ending) <= available:
+                    return f"{cmd} .../{ending}"
+            # Fallback: show end of path
+            return f"{cmd} ...{path[-(available):]}"
+
+    # Fallback: show start...end
+    half = (max_len - 3) // 2
+    return f"{pattern[:half]}...{pattern[-half:]}"
+
+
 class TelegramNotifier(Notifier):
     """Telegram Bot API notifier."""
 
@@ -187,6 +218,41 @@ class TelegramNotifier(Notifier):
             data["reply_markup"] = json.dumps({"inline_keyboard": []})
         await self._api_request("editMessageText", data=data)
 
+    async def edit_message_with_rule_keyboard(
+        self,
+        message_id: int,
+        original_text: str,
+        request_id: str,
+        patterns: list[tuple[str, str]],
+    ):
+        """Edit message to show rule pattern options inline.
+
+        Args:
+            patterns: List of (pattern, label) tuples
+        """
+        # Build keyboard with one button per pattern
+        buttons = []
+        for idx, (pattern, label) in enumerate(patterns):
+            buttons.append([{"text": label, "callback_data": f"add_rule_pattern:{request_id}:{idx}"}])
+        # Add approve and cancel buttons at the bottom
+        buttons.append([
+            {"text": "✅ Approve", "callback_data": f"approve:{request_id}"},
+            {"text": "↩️ Cancel", "callback_data": f"cancel_rule:{request_id}"},
+        ])
+
+        keyboard = {"inline_keyboard": buttons}
+
+        await self._api_request(
+            "editMessageText",
+            data={
+                "chat_id": self.chat_id,
+                "message_id": message_id,
+                "text": f"{original_text}\n\n📝 <b>Approve rule pattern:</b>",
+                "parse_mode": "HTML",
+                "reply_markup": json.dumps(keyboard),
+            },
+        )
+
     async def answer_callback(self, callback_id: str, text: str = ""):
         """Answer a callback query."""
         await self._api_request(
@@ -194,6 +260,53 @@ class TelegramNotifier(Notifier):
             data={
                 "callback_query_id": callback_id,
                 "text": text,
+            },
+        )
+
+    async def restore_approval_keyboard(
+        self,
+        message_id: int,
+        request_id: str,
+        session_id: str,
+        tool_name: str,
+        tool_input: Optional[str] = None,
+        project_path: Optional[str] = None,
+    ):
+        """Restore the original approval message and keyboard."""
+        # Rebuild the message
+        message = format_approval_message(
+            request_id=request_id,
+            session_id=session_id,
+            tool_name=tool_name,
+            tool_input=tool_input,
+            timeout=self.timeout,
+            timeout_action=self.timeout_action,
+            project_path=project_path,
+        )
+
+        # Rebuild the keyboard
+        keyboard = {
+            "inline_keyboard": [
+                [
+                    {"text": "✅ Approve", "callback_data": f"approve:{request_id}"},
+                    {"text": "📝 Rule", "callback_data": f"add_rule:{request_id}"},
+                    {"text": f"⏩ All {tool_name}", "callback_data": f"approve_all:{session_id}:{tool_name}"},
+                ],
+                [
+                    {"text": "❌ Deny", "callback_data": f"deny:{request_id}"},
+                    {"text": "💬 Deny+Msg", "callback_data": f"deny_msg:{request_id}"},
+                ],
+            ]
+        }
+
+        await self._api_request(
+            "editMessageText",
+            data={
+                "chat_id": self.chat_id,
+                "message_id": message_id,
+                "text": message,
+                "parse_mode": "HTML",
+                "reply_markup": json.dumps(keyboard),
             },
         )
 
@@ -273,8 +386,7 @@ class TelegramNotifier(Notifier):
         # Build keyboard with one button per pattern
         buttons = []
         for idx, pattern in enumerate(patterns):
-            # Truncate pattern for button text if too long
-            label = pattern if len(pattern) <= 40 else pattern[:37] + "..."
+            label = _truncate_pattern_label(pattern, max_len=40)
             buttons.append([{"text": label, "callback_data": f"add_rule_pattern:{request_id}:{idx}"}])
 
         keyboard = {"inline_keyboard": buttons}

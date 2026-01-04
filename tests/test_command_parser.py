@@ -79,3 +79,52 @@ def test_split_chain_pipe_semicolon():
     parser = CommandParser()
     result = parser.split_chain("cat file | grep pattern; echo done")
     assert len(result) == 3
+
+
+def test_parse_wrapper_ssh():
+    """CommandParser should detect ssh wrapper with host parameter."""
+    parser = CommandParser()
+    node = parser.parse_single_command("ssh aarni git log")
+
+    assert node.type == CommandType.WRAPPER
+    assert node.name == "ssh"
+    assert node.params.get("host") == "aarni"
+    assert node.nested is not None
+    assert node.nested.name == "git"
+    assert node.nested.type == CommandType.VCS
+
+
+def test_parse_wrapper_docker():
+    """CommandParser should detect docker wrapper with action and container params."""
+    parser = CommandParser()
+    node = parser.parse_single_command("docker exec mycontainer npm test")
+
+    assert node.type == CommandType.WRAPPER
+    assert node.name == "docker"
+    assert node.params.get("action") == "exec"
+    assert node.params.get("container") == "mycontainer"
+    assert node.nested is not None
+    assert node.nested.name == "npm"
+    assert node.nested.type == CommandType.GENERIC
+
+
+def test_detect_file_op():
+    """CommandParser should detect file operation commands."""
+    parser = CommandParser()
+    node = parser.parse_single_command("rm file.txt")
+
+    assert node.type == CommandType.FILE_OP
+    assert node.name == "rm"
+    assert node.args == ["file.txt"]
+    assert node.nested is None
+
+
+def test_detect_vcs_git():
+    """CommandParser should detect git version control commands."""
+    parser = CommandParser()
+    node = parser.parse_single_command("git log")
+
+    assert node.type == CommandType.VCS
+    assert node.name == "git"
+    assert node.args == ["log"]
+    assert node.nested is None
