@@ -114,7 +114,11 @@ class Poller:
         if action in ("approve", "deny"):
             await self._handle_approval(target_id, action, callback_id)
         elif action == "approve_all":
-            await self._handle_approve_all(target_id, callback_id)
+            # Format: approve_all:session_id:tool_name
+            parts = target_id.split(":", 1)
+            session_id = parts[0]
+            tool_name = parts[1] if len(parts) > 1 else None
+            await self._handle_approve_all(session_id, tool_name, callback_id)
         elif action == "add_rule":
             await self._handle_add_rule(target_id, callback_id)
 
@@ -159,12 +163,17 @@ class Poller:
             },
         )
 
-    async def _handle_approve_all(self, session_id: str, callback_id: str):
-        """Approve all pending requests for a session."""
+    async def _handle_approve_all(self, session_id: str, tool_name: Optional[str], callback_id: str):
+        """Approve all pending requests for a session and tool type."""
         pending = await self.storage.get_pending_requests()
-        session_pending = [r for r in pending if r.session_id == session_id]
 
-        for request in session_pending:
+        # Filter by session and tool type
+        to_approve = [
+            r for r in pending
+            if r.session_id == session_id and (tool_name is None or r.tool_name == tool_name)
+        ]
+
+        for request in to_approve:
             await self.storage.resolve_request(
                 request_id=request.id,
                 status="approved",
@@ -177,9 +186,10 @@ class Poller:
                     f"✅ APPROVED (all) - {request.tool_name}",
                 )
 
+        tool_label = tool_name or "all"
         await self.notifier.answer_callback(
             callback_id,
-            f"Approved {len(session_pending)} requests",
+            f"Approved {len(to_approve)} {tool_label}",
         )
 
     async def _handle_add_rule(self, request_id: str, callback_id: str):

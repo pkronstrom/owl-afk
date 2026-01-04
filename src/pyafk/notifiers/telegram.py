@@ -128,7 +128,7 @@ class TelegramNotifier(Notifier):
                     {"text": "Deny", "callback_data": f"deny:{request_id}"},
                 ],
                 [
-                    {"text": "Approve All", "callback_data": f"approve_all:{session_id}"},
+                    {"text": f"Approve All {tool_name}", "callback_data": f"approve_all:{session_id}:{tool_name}"},
                     {"text": "Add Rule", "callback_data": f"add_rule:{request_id}"},
                 ],
             ]

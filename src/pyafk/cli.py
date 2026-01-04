@@ -260,6 +260,38 @@ def hook(ctx, hook_type: str):
     click.echo(json.dumps(response))
 
 
+@main.command("reset")
+@click.option("--force", is_flag=True, help="Skip confirmation")
+@click.pass_context
+def reset_command(ctx, force):
+    """Reset pyafk - clear database and rules."""
+    pyafk_dir = ctx.obj["pyafk_dir"]
+    db_path = pyafk_dir / "pyafk.db"
+
+    if not db_path.exists():
+        click.echo("Nothing to reset - database doesn't exist.")
+        return
+
+    # Show what will be deleted
+    db_size = db_path.stat().st_size
+    click.echo(f"This will delete:")
+    click.echo(f"  - Database: {db_size / 1024:.1f} KB")
+    click.echo(f"  - All pending requests")
+    click.echo(f"  - All auto-approve rules")
+    click.echo(f"  - All session history")
+    click.echo()
+    click.echo("Config (Telegram credentials) will be kept.")
+    click.echo()
+
+    if not force:
+        if not click.confirm("Proceed with reset?"):
+            click.echo("Cancelled.")
+            return
+
+    db_path.unlink()
+    click.echo("Reset complete.")
+
+
 def _get_claude_settings_path() -> Path:
     """Get path to Claude settings.json."""
     return Path.home() / ".claude" / "settings.json"
