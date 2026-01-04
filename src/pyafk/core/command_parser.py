@@ -38,13 +38,40 @@ class CommandNode:
 
 # Registry of wrapper types that can contain nested commands
 WRAPPERS = {
-    "ssh": {"type": CommandType.WRAPPER, "description": "SSH remote execution"},
-    "docker": {"type": CommandType.WRAPPER, "description": "Docker container execution"},
-    "sudo": {"type": CommandType.WRAPPER, "description": "Sudo privilege escalation"},
-    "nix-shell": {"type": CommandType.WRAPPER, "description": "Nix shell environment"},
-    "kubectl": {"type": CommandType.WRAPPER, "description": "Kubernetes command execution"},
-    "screen": {"type": CommandType.WRAPPER, "description": "Screen session command"},
-    "tmux": {"type": CommandType.WRAPPER, "description": "Tmux session command"},
-    "env": {"type": CommandType.WRAPPER, "description": "Environment variable wrapper"},
-    "timeout": {"type": CommandType.WRAPPER, "description": "Timeout wrapper"},
+    "ssh": {
+        "param_keys": ["host"],
+        "param_count": 1,
+    },
+    "docker": {
+        "param_keys": ["action", "container"],
+        "param_count": 2,
+    },
+    "sudo": {
+        "param_keys": [],
+        "param_count": 0,
+    },
+    "nix-shell": {
+        "param_keys": [],
+        "param_count": 0,
+    },
+    "kubectl": {
+        "param_keys": ["action"],
+        "param_count": 1,
+    },
+    "screen": {
+        "param_keys": ["session"],
+        "param_count": 1,
+    },
+    "tmux": {
+        "param_keys": ["session"],
+        "param_count": 1,
+    },
+    "env": {
+        "param_keys": [],
+        "param_count": 0,
+    },
+    "timeout": {
+        "param_keys": ["seconds"],
+        "param_count": 1,
+    },
 }
