@@ -283,7 +283,7 @@ class TelegramNotifier(Notifier):
             "sendMessage",
             data={
                 "chat_id": self.chat_id,
-                "text": "📝 Choose rule pattern:",
+                "text": "📝 Approve rule pattern:",
                 "reply_markup": json.dumps(keyboard),
             },
         )
