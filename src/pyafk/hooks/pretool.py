@@ -40,7 +40,13 @@ async def handle_pretool_use(
         description = None
         tool_input_str = str(tool_input) if tool_input else None
 
-    project_path = hook_input.get("project_path")
+    # Try multiple field names for project path
+    project_path = (
+        hook_input.get("project_path")
+        or hook_input.get("cwd")
+        or hook_input.get("working_directory")
+        or hook_input.get("workingDirectory")
+    )
 
     manager = ApprovalManager(pyafk_dir=pyafk_dir)
     try:
