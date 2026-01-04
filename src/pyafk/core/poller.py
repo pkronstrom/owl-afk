@@ -162,7 +162,13 @@ class Poller:
             tool_name = parts[1] if len(parts) > 1 else None
             await self._handle_approve_all(session_id, tool_name, callback_id)
         elif action == "add_rule":
-            await self._handle_add_rule(target_id, callback_id, message_id)
+            await self._handle_add_rule_menu(target_id, callback_id, message_id)
+        elif action == "add_rule_pattern":
+            # Format: add_rule_pattern:request_id:pattern_index
+            parts = target_id.split(":", 1)
+            request_id = parts[0]
+            pattern_idx = int(parts[1]) if len(parts) > 1 else 0
+            await self._handle_add_rule(request_id, callback_id, message_id, pattern_idx)
         elif action == "subagent_ok":
             await self._handle_subagent_ok(target_id, callback_id, message_id)
         elif action == "subagent_continue":
@@ -307,8 +313,8 @@ class Poller:
             f"Approved {len(to_approve)} {tool_label}",
         )
 
-    async def _handle_add_rule(self, request_id: str, callback_id: str, message_id: Optional[int] = None):
-        """Handle add rule button - creates auto-approve rule and approves request."""
+    async def _handle_add_rule_menu(self, request_id: str, callback_id: str, message_id: Optional[int] = None):
+        """Show rule pattern options menu."""
         request = await self.storage.get_request(request_id)
         if not request:
             await self.notifier.answer_callback(callback_id, "Request not found")
@@ -316,8 +322,26 @@ class Poller:
                 await self.notifier.edit_message(message_id, "⚠️ Request expired")
             return
 
-        # Create smart pattern from tool name and input
-        pattern = self._create_rule_pattern(request.tool_name, request.tool_input)
+        # Generate pattern options
+        patterns = self._generate_rule_patterns(request.tool_name, request.tool_input)
+
+        await self.notifier.answer_callback(callback_id, "Choose pattern")
+
+        # Send menu with pattern options
+        await self.notifier.send_rule_menu(request_id, patterns)
+
+    async def _handle_add_rule(self, request_id: str, callback_id: str, message_id: Optional[int] = None, pattern_idx: int = 0):
+        """Handle add rule selection - creates auto-approve rule and approves request."""
+        request = await self.storage.get_request(request_id)
+        if not request:
+            await self.notifier.answer_callback(callback_id, "Request not found")
+            if message_id:
+                await self.notifier.edit_message(message_id, "⚠️ Request expired")
+            return
+
+        # Get the selected pattern
+        patterns = self._generate_rule_patterns(request.tool_name, request.tool_input)
+        pattern = patterns[pattern_idx] if pattern_idx < len(patterns) else patterns[0]
 
         # Add the rule
         from pyafk.core.rules import RulesEngine
@@ -331,16 +355,23 @@ class Poller:
             resolved_by="user:add_rule",
         )
 
-        # Update the message
+        # Update the original approval message
         if request.telegram_msg_id:
+            session = await self.storage.get_session(request.session_id)
+            project_id = self._format_project_id(session.project_path if session else None, request.session_id)
+            tool_summary = self._format_tool_summary(request.tool_name, request.tool_input)
             await self.notifier.edit_message(
                 request.telegram_msg_id,
-                f"✅ APPROVED + Rule: {pattern}",
+                f"<i>{project_id}</i>\n✅ <b>[{request.tool_name}]</b> <code>{tool_summary}</code>\n📝 Rule: <code>{pattern}</code>",
             )
+
+        # Update the menu message
+        if message_id:
+            await self.notifier.edit_message(message_id, f"📝 Added: {pattern}")
 
         await self.notifier.answer_callback(
             callback_id,
-            f"Rule: {pattern}",
+            f"Rule added",
         )
 
     async def _handle_subagent_ok(
@@ -373,6 +404,79 @@ class Poller:
         prompt_msg_id = await self.notifier.send_continue_prompt()
         if prompt_msg_id:
             await self.storage.set_subagent_continue_prompt(subagent_id, prompt_msg_id)
+
+    def _generate_rule_patterns(self, tool_name: str, tool_input: Optional[str]) -> list[str]:
+        """Generate multiple rule pattern options from most to least specific."""
+        import json
+
+        patterns = []
+
+        if not tool_input:
+            return [f"{tool_name}(*)"]
+
+        try:
+            data = json.loads(tool_input)
+        except (json.JSONDecodeError, TypeError):
+            return [f"{tool_name}(*)"]
+
+        # For Bash commands
+        if tool_name == "Bash" and "command" in data:
+            cmd = data["command"].strip()
+            parts = cmd.split()
+            if parts:
+                # Most specific: exact command
+                patterns.append(f"Bash({cmd})")
+
+                # Build progressively less specific patterns
+                if len(parts) >= 2:
+                    # First two words + wildcard: git status *
+                    patterns.append(f"Bash({parts[0]} {parts[1]} *)")
+
+                # First word + wildcard: git *
+                patterns.append(f"Bash({parts[0]} *)")
+
+                # All bash
+                patterns.append("Bash(*)")
+
+        # For Edit/Write - file patterns
+        elif tool_name in ("Edit", "Write") and "file_path" in data:
+            path = data["file_path"]
+            patterns.append(f"{tool_name}({path})")  # Exact file
+
+            if "." in path:
+                ext = path.rsplit(".", 1)[-1]
+                patterns.append(f"{tool_name}(*.{ext})")  # Same extension
+
+            if "/" in path:
+                dir_path = path.rsplit("/", 1)[0]
+                patterns.append(f"{tool_name}({dir_path}/*)")  # Same directory
+
+            patterns.append(f"{tool_name}(*)")  # All
+
+        # For Read - directory patterns
+        elif tool_name == "Read" and "file_path" in data:
+            path = data["file_path"]
+            patterns.append(f"Read({path})")  # Exact file
+
+            if "/" in path:
+                dir_path = path.rsplit("/", 1)[0]
+                patterns.append(f"Read({dir_path}/*)")  # Same directory
+
+            patterns.append("Read(*)")  # All
+
+        # For other tools
+        else:
+            patterns.append(f"{tool_name}(*)")
+
+        # Remove duplicates while preserving order
+        seen = set()
+        unique = []
+        for p in patterns:
+            if p not in seen:
+                seen.add(p)
+                unique.append(p)
+
+        return unique
 
     def _format_project_id(self, project_path: Optional[str], session_id: str) -> str:
         """Format project path for display."""

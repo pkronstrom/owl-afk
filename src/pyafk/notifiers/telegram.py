@@ -268,6 +268,30 @@ class TelegramNotifier(Notifier):
             return result["result"].get("message_id")
         return None
 
+    async def send_rule_menu(self, request_id: str, patterns: list[str]) -> Optional[int]:
+        """Send a menu with rule pattern options."""
+        # Build keyboard with one button per pattern
+        buttons = []
+        for idx, pattern in enumerate(patterns):
+            # Truncate pattern for button text if too long
+            label = pattern if len(pattern) <= 40 else pattern[:37] + "..."
+            buttons.append([{"text": label, "callback_data": f"add_rule_pattern:{request_id}:{idx}"}])
+
+        keyboard = {"inline_keyboard": buttons}
+
+        result = await self._api_request(
+            "sendMessage",
+            data={
+                "chat_id": self.chat_id,
+                "text": "📝 Choose rule pattern:",
+                "reply_markup": json.dumps(keyboard),
+            },
+        )
+
+        if result.get("ok") and "result" in result:
+            return result["result"].get("message_id")
+        return None
+
     async def send_continue_prompt(self) -> Optional[int]:
         """Send a message asking for continuation instructions."""
         result = await self._api_request(
