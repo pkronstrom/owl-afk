@@ -129,12 +129,12 @@ class TelegramNotifier(Notifier):
             "inline_keyboard": [
                 [
                     {"text": "✅ Approve", "callback_data": f"approve:{request_id}"},
-                    {"text": "❌ Deny", "callback_data": f"deny:{request_id}"},
-                    {"text": "💬", "callback_data": f"deny_msg:{request_id}"},
-                ],
-                [
                     {"text": "📝 Rule", "callback_data": f"add_rule:{request_id}"},
                     {"text": f"⏩ All {tool_name}", "callback_data": f"approve_all:{session_id}:{tool_name}"},
+                ],
+                [
+                    {"text": "❌ Deny", "callback_data": f"deny:{request_id}"},
+                    {"text": "💬 Deny+Msg", "callback_data": f"deny_msg:{request_id}"},
                 ],
             ]
         }
