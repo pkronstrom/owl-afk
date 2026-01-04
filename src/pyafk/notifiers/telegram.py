@@ -42,17 +42,18 @@ def format_approval_message(
     if len(input_summary) > 200:
         input_summary = input_summary[:200] + "..."
 
-    # Project identifier - use last dir name or short session id
+    # Project identifier - use working directory or short session id
     if project_path:
-        project_id = project_path.rstrip("/").split("/")[-1]
+        # Show last 2 path components for context
+        parts = project_path.rstrip("/").split("/")
+        project_id = "/".join(parts[-2:]) if len(parts) >= 2 else parts[-1]
     else:
         project_id = session_id[:8]
 
-    # Compact format: [Tool] input_summary
-    # with project on separate line
+    # Compact format: subtle session info on top, then tool call
     lines = [
+        f"<i>{_escape_html(project_id)}</i>",
         f"<b>[{_escape_html(tool_name)}]</b> <code>{_escape_html(input_summary)}</code>",
-        f"📁 {_escape_html(project_id)}",
     ]
 
     return "\n".join(lines)

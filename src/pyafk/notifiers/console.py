@@ -34,9 +34,13 @@ class ConsoleNotifier(Notifier):
 
         # Compact format matching Telegram style
         input_summary = tool_input[:100] if tool_input else ""
-        project_id = project_path.rstrip("/").split("/")[-1] if project_path else session_id[:8]
+        if project_path:
+            parts = project_path.rstrip("/").split("/")
+            project_id = "/".join(parts[-2:]) if len(parts) >= 2 else parts[-1]
+        else:
+            project_id = session_id[:8]
+        print(f"{project_id}")
         print(f"[{tool_name}] {input_summary}")
-        print(f"  📁 {project_id}")
 
         return self._message_counter
 

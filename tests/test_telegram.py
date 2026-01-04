@@ -23,7 +23,7 @@ def test_format_approval_message():
 
     assert "[Bash]" in msg
     assert "git status" in msg
-    assert "myproject" in msg  # project dir name
+    assert "user/myproject" in msg  # last 2 path components
 
 
 def test_format_approval_message_truncates_long_input():
