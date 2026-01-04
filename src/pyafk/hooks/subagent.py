@@ -11,8 +11,8 @@ from pyafk.notifiers.telegram import TelegramNotifier
 from pyafk.utils.config import Config
 
 
-def _extract_last_output(transcript_path: Optional[str], max_lines: int = 50) -> str:
-    """Extract the last chunk of output from transcript."""
+def _extract_last_output(transcript_path: Optional[str], max_chars: int = 2000) -> str:
+    """Extract the last meaningful output from transcript."""
     if not transcript_path:
         return "(no transcript available)"
 
@@ -22,27 +22,53 @@ def _extract_last_output(transcript_path: Optional[str], max_lines: int = 50) ->
 
     try:
         content = path.read_text()
-        # Try to parse as JSON and extract messages
-        try:
-            data = json.loads(content)
-            if isinstance(data, list):
-                # Get last few assistant messages
-                messages = [m for m in data if m.get("role") == "assistant"]
-                if messages:
-                    last_msg = messages[-1]
-                    text = last_msg.get("content", "")
-                    if isinstance(text, list):
-                        # Handle content blocks
-                        text = "\n".join(
-                            b.get("text", "") for b in text if b.get("type") == "text"
-                        )
-                    return text[:2000] if len(text) > 2000 else text
-        except json.JSONDecodeError:
-            pass
 
-        # Fall back to last N lines of raw content
+        # Transcript is JSONL format - one JSON object per line
         lines = content.strip().split("\n")
-        return "\n".join(lines[-max_lines:])
+
+        # Collect text from assistant messages (in reverse order)
+        texts = []
+        for line in reversed(lines):
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            # Skip non-assistant messages
+            if entry.get("type") != "assistant":
+                continue
+
+            message = entry.get("message", {})
+            content_blocks = message.get("content", [])
+
+            if isinstance(content_blocks, str):
+                texts.append(content_blocks)
+            elif isinstance(content_blocks, list):
+                for block in content_blocks:
+                    if block.get("type") == "text":
+                        text = block.get("text", "")
+                        if text:
+                            texts.append(text)
+
+            # Stop once we have enough content
+            total_len = sum(len(t) for t in texts)
+            if total_len >= max_chars:
+                break
+
+        if not texts:
+            return "(no agent output found)"
+
+        # Reverse to get chronological order, join
+        texts.reverse()
+        result = "\n\n".join(texts)
+
+        # Truncate if too long
+        if len(result) > max_chars:
+            result = result[-max_chars:]
+            result = "..." + result
+
+        return result
+
     except Exception as e:
         return f"(error reading transcript: {e})"
 
