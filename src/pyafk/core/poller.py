@@ -189,8 +189,8 @@ class Poller:
             await self.notifier.answer_callback(callback_id, "Request not found")
             return
 
-        # Create rule pattern from tool name
-        pattern = f"{request.tool_name}(*)"
+        # Create smart pattern from tool name and input
+        pattern = self._create_rule_pattern(request.tool_name, request.tool_input)
 
         # Add the rule
         from pyafk.core.rules import RulesEngine
@@ -199,8 +199,43 @@ class Poller:
 
         await self.notifier.answer_callback(
             callback_id,
-            f"Rule added: auto-approve {pattern}",
+            f"Rule: {pattern}",
         )
+
+    def _create_rule_pattern(self, tool_name: str, tool_input: Optional[str]) -> str:
+        """Create a smart rule pattern from tool and input."""
+        import json
+
+        if not tool_input:
+            return f"{tool_name}(*)"
+
+        try:
+            data = json.loads(tool_input)
+        except (json.JSONDecodeError, TypeError):
+            return f"{tool_name}(*)"
+
+        # For Bash, extract command prefix (first word)
+        if tool_name == "Bash" and "command" in data:
+            cmd = data["command"].strip()
+            first_word = cmd.split()[0] if cmd.split() else ""
+            if first_word:
+                return f"Bash({first_word} *)"
+
+        # For Edit/Write, use file extension pattern
+        if tool_name in ("Edit", "Write") and "file_path" in data:
+            path = data["file_path"]
+            if "." in path:
+                ext = path.rsplit(".", 1)[-1]
+                return f"{tool_name}(*.{ext})"
+
+        # For Read, use directory pattern
+        if tool_name == "Read" and "file_path" in data:
+            path = data["file_path"]
+            if "/" in path:
+                dir_path = path.rsplit("/", 1)[0]
+                return f"Read({dir_path}/*)"
+
+        return f"{tool_name}(*)"
 
     async def poll_loop(self, timeout: float = 30.0):
         """Main polling loop. Acquires lock first."""
