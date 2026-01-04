@@ -50,11 +50,15 @@ def format_approval_message(
     else:
         project_id = session_id[:8]
 
-    # Compact format: subtle session info on top, then tool call
-    lines = [
-        f"<i>{_escape_html(project_id)}</i>",
-        f"<b>[{_escape_html(tool_name)}]</b> <code>{_escape_html(input_summary)}</code>",
-    ]
+    # Compact format: project, optional description, then tool call
+    lines = [f"<i>{_escape_html(project_id)}</i>"]
+
+    if description:
+        # Show description in italic before the tool
+        desc = description[:100] + "..." if len(description) > 100 else description
+        lines.append(f"<i>{_escape_html(desc)}</i>")
+
+    lines.append(f"<b>[{_escape_html(tool_name)}]</b> <code>{_escape_html(input_summary)}</code>")
 
     return "\n".join(lines)
 
@@ -124,12 +128,12 @@ class TelegramNotifier(Notifier):
         keyboard = {
             "inline_keyboard": [
                 [
-                    {"text": "Approve", "callback_data": f"approve:{request_id}"},
-                    {"text": "Deny", "callback_data": f"deny:{request_id}"},
+                    {"text": "✅ Approve", "callback_data": f"approve:{request_id}"},
+                    {"text": "❌ Deny", "callback_data": f"deny:{request_id}"},
                 ],
                 [
-                    {"text": "Add Rule", "callback_data": f"add_rule:{request_id}"},
-                    {"text": f"All {tool_name}", "callback_data": f"approve_all:{session_id}:{tool_name}"},
+                    {"text": "📝 Rule", "callback_data": f"add_rule:{request_id}"},
+                    {"text": f"⏩ All {tool_name}", "callback_data": f"approve_all:{session_id}:{tool_name}"},
                 ],
             ]
         }
@@ -160,17 +164,18 @@ class TelegramNotifier(Notifier):
         self,
         message_id: int,
         new_text: str,
+        remove_keyboard: bool = True,
     ):
-        """Edit a sent message."""
-        await self._api_request(
-            "editMessageText",
-            data={
-                "chat_id": self.chat_id,
-                "message_id": message_id,
-                "text": new_text,
-                "parse_mode": "HTML",
-            },
-        )
+        """Edit a sent message and optionally remove keyboard."""
+        data = {
+            "chat_id": self.chat_id,
+            "message_id": message_id,
+            "text": new_text,
+            "parse_mode": "HTML",
+        }
+        if remove_keyboard:
+            data["reply_markup"] = json.dumps({"inline_keyboard": []})
+        await self._api_request("editMessageText", data=data)
 
     async def answer_callback(self, callback_id: str, text: str = ""):
         """Answer a callback query."""

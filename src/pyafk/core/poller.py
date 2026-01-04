@@ -105,6 +105,8 @@ class Poller:
         """Handle a callback query from inline button."""
         callback_id = callback["id"]
         data = callback.get("data", "")
+        # Get message_id from callback for editing
+        message_id = callback.get("message", {}).get("message_id")
 
         if ":" not in data:
             return
@@ -112,7 +114,7 @@ class Poller:
         action, target_id = data.split(":", 1)
 
         if action in ("approve", "deny"):
-            await self._handle_approval(target_id, action, callback_id)
+            await self._handle_approval(target_id, action, callback_id, message_id)
         elif action == "approve_all":
             # Format: approve_all:session_id:tool_name
             parts = target_id.split(":", 1)
@@ -120,18 +122,21 @@ class Poller:
             tool_name = parts[1] if len(parts) > 1 else None
             await self._handle_approve_all(session_id, tool_name, callback_id)
         elif action == "add_rule":
-            await self._handle_add_rule(target_id, callback_id)
+            await self._handle_add_rule(target_id, callback_id, message_id)
 
     async def _handle_approval(
         self,
         request_id: str,
         action: str,
         callback_id: str,
+        message_id: Optional[int] = None,
     ):
         """Handle approve/deny callback."""
         request = await self.storage.get_request(request_id)
         if not request:
             await self.notifier.answer_callback(callback_id, "Request not found")
+            if message_id:
+                await self.notifier.edit_message(message_id, "⚠️ Request expired")
             return
 
         status = "approved" if action == "approve" else "denied"
@@ -192,11 +197,13 @@ class Poller:
             f"Approved {len(to_approve)} {tool_label}",
         )
 
-    async def _handle_add_rule(self, request_id: str, callback_id: str):
+    async def _handle_add_rule(self, request_id: str, callback_id: str, message_id: Optional[int] = None):
         """Handle add rule button - creates auto-approve rule and approves request."""
         request = await self.storage.get_request(request_id)
         if not request:
             await self.notifier.answer_callback(callback_id, "Request not found")
+            if message_id:
+                await self.notifier.edit_message(message_id, "⚠️ Request expired")
             return
 
         # Create smart pattern from tool name and input
