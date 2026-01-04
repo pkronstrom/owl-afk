@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from pyafk.core.command_parser import CommandParser
 from pyafk.core.storage import Storage
 from pyafk.notifiers.telegram import TelegramNotifier
 
@@ -477,7 +478,6 @@ class Poller:
         Returns list of (pattern, label) tuples.
         """
         import json
-        import re
 
         patterns = []
 
@@ -489,57 +489,52 @@ class Poller:
         except (json.JSONDecodeError, TypeError):
             return [(f"{tool_name}(*)", f"Any {tool_name}")]
 
-        # For Bash commands
+        # For Bash commands - use CommandParser for rich pattern generation
         if tool_name == "Bash" and "command" in data:
             cmd = data["command"].strip()
 
-            # Extract the first simple command (before &&, ||, ;, |)
-            first_cmd = re.split(r'\s*(?:&&|\|\||;|\|)\s*', cmd)[0].strip()
+            try:
+                # Parse the command using CommandParser
+                parser = CommandParser()
+                nodes = parser.parse(cmd)
 
-            # Parse the first command
-            parts = first_cmd.split()
-            if not parts:
-                return [("Bash(*)", "Any Bash")]
+                # Generate patterns from all parsed nodes
+                all_patterns = []
+                for node in nodes:
+                    node_patterns = parser.generate_patterns(node)
+                    all_patterns.extend(node_patterns)
 
-            base_cmd = parts[0]
+                # Convert raw patterns to (pattern, label) tuples with Bash() wrapping
+                for pattern in all_patterns:
+                    if pattern:  # Skip empty patterns
+                        # Create a label based on whether it's an exact command or wildcard
+                        if pattern.endswith("*"):
+                            label = f"🔧 {pattern}"
+                        elif " " in pattern:
+                            label = f"📌 {pattern[:50]}"  # Truncate long commands for label
+                        else:
+                            label = f"📌 {pattern}"
 
-            # File operation commands - generate directory-based patterns
-            file_cmds = {"rm", "mv", "cp", "cat", "touch", "mkdir", "rmdir", "chmod", "chown", "ls"}
-            if base_cmd in file_cmds and len(parts) > 1:
-                # Extract paths (skip flags that start with -)
-                paths = [p for p in parts[1:] if not p.startswith("-")]
+                        patterns.append((f"Bash({pattern})", label))
 
-                if paths:
-                    # Get unique directories from all paths
-                    dirs = set()
-                    for p in paths:
-                        if "/" in p:
-                            dirs.add(p.rsplit("/", 1)[0])
+                if patterns:
+                    # Remove duplicates while preserving order
+                    seen = set()
+                    unique = []
+                    for pattern, label in patterns:
+                        if pattern not in seen:
+                            seen.add(pattern)
+                            unique.append((pattern, label))
+                    return unique
+            except Exception:
+                # Fallback to basic pattern if parsing fails
+                pass
 
-                    # Exact command
-                    patterns.append((f"Bash({cmd})", "📌 This exact command"))
-
-                    # Add pattern for each unique directory
-                    for dir_path in sorted(dirs):
-                        short_dir = dir_path.split("/")[-1] or dir_path
-                        patterns.append((f"Bash({base_cmd} {dir_path}/*)", f"📁 {base_cmd} .../{short_dir}/*"))
-
-                    # Base command pattern
-                    patterns.append((f"Bash({base_cmd} *)", f"🔧 {base_cmd} *"))
-                else:
-                    patterns.append((f"Bash({cmd})", "📌 This exact command"))
-                    patterns.append((f"Bash({base_cmd} *)", f"🔧 {base_cmd} *"))
-            else:
-                # Non-file commands (git, npm, etc.) - use word-based patterns
-                patterns.append((f"Bash({cmd})", "📌 This exact command"))
-
-                if len(parts) >= 2:
-                    patterns.append((f"Bash({parts[0]} {parts[1]} *)", f"🔧 {parts[0]} {parts[1]} *"))
-
-                patterns.append((f"Bash({parts[0]} *)", f"🔧 {parts[0]} *"))
+            # Fallback if parsing fails or no patterns generated
+            return [(f"Bash({cmd})", "📌 This exact command"), (f"Bash(*)", "🔧 Any Bash")]
 
         # For Edit/Write - file patterns
-        elif tool_name in ("Edit", "Write") and "file_path" in data:
+        if tool_name in ("Edit", "Write") and "file_path" in data:
             path = data["file_path"]
             filename = path.rsplit("/", 1)[-1] if "/" in path else path
 
