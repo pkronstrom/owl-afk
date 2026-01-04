@@ -72,6 +72,15 @@ def _escape_html(text: str) -> str:
     )
 
 
+def _escape_markdown(text: str) -> str:
+    """Escape Markdown special characters for Telegram."""
+    # Characters that need escaping in Telegram Markdown
+    special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+    for char in special_chars:
+        text = text.replace(char, f"\\{char}")
+    return text
+
+
 class TelegramNotifier(Notifier):
     """Telegram Bot API notifier."""
 
@@ -232,7 +241,9 @@ class TelegramNotifier(Notifier):
             output_summary = output_summary[-3000:]
             output_summary = "..." + output_summary
 
-        text = f"<i>{_escape_html(project_id)}</i>\n<b>🤖 Subagent finished</b>\n\n<code>{_escape_html(output_summary)}</code>"
+        # Use Markdown for the output (agent responses are often in markdown)
+        # Header in bold, then the markdown content as-is
+        text = f"*{_escape_markdown(project_id)}*\n🤖 *Subagent finished*\n\n{output_summary}"
 
         keyboard = {
             "inline_keyboard": [
@@ -248,7 +259,7 @@ class TelegramNotifier(Notifier):
             data={
                 "chat_id": self.chat_id,
                 "text": text,
-                "parse_mode": "HTML",
+                "parse_mode": "Markdown",
                 "reply_markup": json.dumps(keyboard),
             },
         )
