@@ -691,11 +691,12 @@ class Poller:
             return
 
         # Get chain state from pending_feedback (stored as JSON)
-        chain_state = await self._get_chain_state(request_id)
-        debug_chain(f"Got chain state", chain_state=chain_state)
-        if not chain_state:
+        result = await self._get_chain_state(request_id)
+        debug_chain(f"Got chain state", result=result)
+        if result:
+            chain_state, version = result
+        else:
             # Initialize chain state from tool_input
-            import json
             try:
                 data = json.loads(request.tool_input)
                 cmd = data.get("command", "")
@@ -706,6 +707,7 @@ class Poller:
                     "commands": commands,
                     "approved_indices": [],
                 }
+                version = 0
             except Exception:
                 await self.notifier.answer_callback(callback_id, "Failed to parse chain")
                 return
@@ -715,8 +717,16 @@ class Poller:
             chain_state["approved_indices"].append(command_idx)
             debug_chain(f"Added command to approved", command_idx=command_idx, approved=chain_state["approved_indices"])
 
-        # Save updated state
-        await self._save_chain_state(request_id, chain_state)
+        # Save updated state with optimistic locking
+        if not await self._save_chain_state(request_id, chain_state, version):
+            # Conflict - re-read and retry once
+            debug_chain(f"Save conflict, retrying", request_id=request_id)
+            result = await self._get_chain_state(request_id)
+            if result:
+                chain_state, version = result
+                if command_idx not in chain_state["approved_indices"]:
+                    chain_state["approved_indices"].append(command_idx)
+                await self._save_chain_state(request_id, chain_state, version)
         debug_chain(f"Saved chain state", approved_count=len(chain_state["approved_indices"]), total=len(chain_state["commands"]))
 
         await self.notifier.answer_callback(callback_id, "Approved")
@@ -797,8 +807,9 @@ class Poller:
 
         # Update message to show denial
         if message_id:
-            chain_state = await self._get_chain_state(request_id)
-            if chain_state:
+            result = await self._get_chain_state(request_id)
+            if result:
+                chain_state, _version = result
                 session = await self.storage.get_session(request.session_id)
                 await self.notifier.update_chain_progress(
                     message_id=message_id,
@@ -924,9 +935,11 @@ class Poller:
             return
 
         # Get chain state - initialize if not present
-        chain_state = await self._get_chain_state(request_id)
-        debug_rule(f"Got chain state", chain_state=chain_state)
-        if not chain_state:
+        result = await self._get_chain_state(request_id)
+        debug_rule(f"Got chain state", result=result)
+        if result:
+            chain_state, _version = result
+        else:
             # Initialize chain state from tool_input
             try:
                 data = json.loads(request.tool_input)
@@ -938,7 +951,7 @@ class Poller:
                     "commands": commands,
                     "approved_indices": [],
                 }
-                await self._save_chain_state(request_id, chain_state)
+                await self._save_chain_state(request_id, chain_state, version=0)
             except Exception:
                 await self.notifier.answer_callback(callback_id, "Failed to parse chain")
                 return
@@ -985,10 +998,11 @@ class Poller:
             return
 
         # Get chain state
-        chain_state = await self._get_chain_state(request_id)
-        if not chain_state:
+        result = await self._get_chain_state(request_id)
+        if not result:
             await self.notifier.answer_callback(callback_id, "Chain state not found")
             return
+        chain_state, _version = result
 
         await self.notifier.answer_callback(callback_id, "Cancelled")
 
@@ -1024,9 +1038,14 @@ class Poller:
             return
 
         # Get chain state
-        chain_state = await self._get_chain_state(request_id)
-        debug_rule(f"Got chain state", chain_state=chain_state)
-        if not chain_state or command_idx >= len(chain_state["commands"]):
+        result = await self._get_chain_state(request_id)
+        debug_rule(f"Got chain state", result=result)
+        if not result:
+            debug_rule(f"Chain state not found", request_id=request_id)
+            await self.notifier.answer_callback(callback_id, "Chain state not found")
+            return
+        chain_state, version = result
+        if command_idx >= len(chain_state["commands"]):
             debug_rule(f"Invalid command", command_idx=command_idx, chain_state=chain_state)
             await self.notifier.answer_callback(callback_id, "Invalid command")
             return
@@ -1068,7 +1087,27 @@ class Poller:
                 auto_approved.append(idx)
                 debug_rule(f"Auto-approved by new rule", idx=idx, cmd=other_cmd[:50])
 
-        await self._save_chain_state(request_id, chain_state)
+        # Save with optimistic locking
+        if not await self._save_chain_state(request_id, chain_state, version):
+            # Conflict - re-read and retry once
+            debug_rule(f"Save conflict, retrying", request_id=request_id)
+            result = await self._get_chain_state(request_id)
+            if result:
+                chain_state, version = result
+                # Re-apply changes
+                if command_idx not in chain_state["approved_indices"]:
+                    chain_state["approved_indices"].append(command_idx)
+                # Re-check auto-approvals
+                auto_approved = []
+                for idx, other_cmd in enumerate(chain_state["commands"]):
+                    if idx in chain_state["approved_indices"]:
+                        continue
+                    other_input = json.dumps({"command": other_cmd})
+                    rule_result = await engine.check("Bash", other_input)
+                    if rule_result == "approve":
+                        chain_state["approved_indices"].append(idx)
+                        auto_approved.append(idx)
+                await self._save_chain_state(request_id, chain_state, version)
 
         if auto_approved:
             await self.notifier.answer_callback(callback_id, f"Rule added (+{len(auto_approved)} auto-approved)")
@@ -1135,10 +1174,11 @@ class Poller:
             return
 
         # Verify all commands are approved
-        chain_state = await self._get_chain_state(request_id)
-        if not chain_state:
+        result = await self._get_chain_state(request_id)
+        if not result:
             await self.notifier.answer_callback(callback_id, "Chain state not found")
             return
+        chain_state, _version = result
 
         if len(chain_state["approved_indices"]) < len(chain_state["commands"]):
             await self.notifier.answer_callback(callback_id, "Not all commands approved")
@@ -1240,31 +1280,45 @@ class Poller:
         import hashlib
         return int(hashlib.md5(f"chain:{request_id}".encode()).hexdigest()[:8], 16)
 
-    async def _get_chain_state(self, request_id: str) -> Optional[dict]:
-        """Get chain approval state from storage.
+    async def _get_chain_state(self, request_id: str) -> Optional[tuple[dict, int]]:
+        """Get chain approval state and version from storage.
 
         Uses pending_feedback table with a hash of request_id as the message_id.
         The state is stored in the request_id field as JSON.
+
+        Returns (state_dict, version) or None.
         """
         msg_id = self._chain_state_key(request_id)
         result = await self.storage.get_chain_state(msg_id)
         if result:
-            state_json, _version = result
+            state_json, version = result
             try:
-                return json.loads(state_json)
+                return (json.loads(state_json), version)
             except (json.JSONDecodeError, TypeError):
                 pass
         return None
 
-    async def _save_chain_state(self, request_id: str, state: dict):
-        """Save chain approval state to storage.
+    async def _save_chain_state(self, request_id: str, state: dict, version: int) -> bool:
+        """Save chain approval state atomically.
 
         Uses pending_feedback table with a stable hash of request_id as the message_id.
         The state is stored in the request_id field as JSON.
+
+        Args:
+            request_id: The request identifier
+            state: The chain state dict to save
+            version: Expected version for optimistic locking (0 for new state)
+
+        Returns:
+            True if saved successfully, False on version conflict.
         """
         state_json = json.dumps(state)
         msg_id = self._chain_state_key(request_id)
-        await self.storage.save_chain_state(msg_id, state_json)
+        if version == 0:
+            # New state - use regular save
+            await self.storage.save_chain_state(msg_id, state_json)
+            return True
+        return await self.storage.save_chain_state_atomic(msg_id, state_json, version)
 
     async def _clear_chain_state(self, request_id: str):
         """Clear chain approval state from storage."""
