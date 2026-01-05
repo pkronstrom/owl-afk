@@ -7,7 +7,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from pyafk.core.command_parser import CommandParser
 from pyafk.core.storage import Storage
@@ -27,7 +27,7 @@ def _safe_int(value: str, default: int = 0) -> int:
 class PollLock:
     """File-based lock for single poller."""
 
-    def __init__(self, lock_path: Path):
+    def __init__(self, lock_path: Path) -> None:
         self.lock_path = lock_path
         self._fd: Optional[int] = None
 
@@ -63,7 +63,7 @@ class PollLock:
 
                 await asyncio.sleep(0.1)
 
-    async def release(self):
+    async def release(self) -> None:
         """Release the lock."""
         if self._fd is not None:
             try:
@@ -87,7 +87,7 @@ class Poller:
         storage: Storage,
         notifier: TelegramNotifier,
         pyafk_dir: Path,
-    ):
+    ) -> None:
         self.storage = storage
         self.notifier = notifier
         self.lock = PollLock(pyafk_dir / "poll.lock")
@@ -104,7 +104,7 @@ class Poller:
             pass
         return None
 
-    def _save_offset(self, offset: int):
+    def _save_offset(self, offset: int) -> None:
         """Persist Telegram update offset."""
         try:
             self._offset_file.write_text(str(offset))
@@ -145,7 +145,7 @@ class Poller:
 
         return processed
 
-    async def _handle_message(self, message: dict):
+    async def _handle_message(self, message: dict[str, Any]) -> None:
         """Handle a text message - check for commands, feedback, or subagent replies."""
         text = message.get("text", "")
         debug_callback(f"_handle_message called", text=text[:50] if text else "", has_text=bool(text))
@@ -206,7 +206,7 @@ class Poller:
         subagent_id: str,
         instructions: str,
         prompt_msg_id: int,
-    ):
+    ) -> None:
         """Handle subagent continue instructions."""
         debug_callback(f"_handle_subagent_feedback called", subagent_id=subagent_id, instructions=instructions[:50])
 
@@ -221,7 +221,7 @@ class Poller:
         await self.notifier.delete_message(prompt_msg_id)
         await self.notifier.send_message(f"📨 Instructions sent to agent")
 
-    async def _handle_msg_command(self, text: str, message: dict):
+    async def _handle_msg_command(self, text: str, message: dict[str, Any]) -> None:
         """Handle /msg command to send message to a Claude session.
 
         Usage:
@@ -278,7 +278,7 @@ class Poller:
             f"📨 Message queued for <code>{short_id}</code> ({project})"
         )
 
-    async def _handle_callback(self, callback: dict):
+    async def _handle_callback(self, callback: dict[str, Any]) -> None:
         """Handle a callback query from inline button."""
         callback_id = callback["id"]
         data = callback.get("data", "")
@@ -360,7 +360,7 @@ class Poller:
         action: str,
         callback_id: str,
         message_id: Optional[int] = None,
-    ):
+    ) -> None:
         """Handle approve/deny callback."""
         debug_callback(f"_handle_approval called", request_id=request_id, action=action)
         request = await self.storage.get_request(request_id)
@@ -413,7 +413,7 @@ class Poller:
         request_id: str,
         callback_id: str,
         message_id: Optional[int] = None,
-    ):
+    ) -> None:
         """Handle deny with message button - prompt for feedback."""
         request = await self.storage.get_request(request_id)
         if not request:
@@ -434,7 +434,7 @@ class Poller:
         request_id: str,
         feedback: str,
         prompt_msg_id: int,
-    ):
+    ) -> None:
         """Handle denial with user feedback."""
         request = await self.storage.get_request(request_id)
         if not request:
@@ -469,7 +469,7 @@ class Poller:
             },
         )
 
-    async def _handle_approve_all(self, session_id: str, tool_name: Optional[str], callback_id: str):
+    async def _handle_approve_all(self, session_id: str, tool_name: Optional[str], callback_id: str) -> None:
         """Approve all pending requests for a session and tool type, and add a rule for future requests."""
         try:
             import traceback
@@ -536,7 +536,7 @@ class Poller:
         request_id: str,
         callback_id: str,
         message_id: Optional[int] = None,
-    ):
+    ) -> None:
         """Cancel rule selection and restore original keyboard."""
         request = await self.storage.get_request(request_id)
         if not request:
@@ -559,7 +559,7 @@ class Poller:
         callback_id: str,
         message_id: Optional[int] = None,
         original_text: str = "",
-    ):
+    ) -> None:
         """Show rule pattern options menu inline."""
         request = await self.storage.get_request(request_id)
         if not request:
@@ -585,7 +585,7 @@ class Poller:
                 message_id, base_text, request_id, patterns
             )
 
-    async def _handle_add_rule(self, request_id: str, callback_id: str, message_id: Optional[int] = None, pattern_idx: int = 0):
+    async def _handle_add_rule(self, request_id: str, callback_id: str, message_id: Optional[int] = None, pattern_idx: int = 0) -> None:
         """Handle add rule selection - creates auto-approve rule and approves request."""
         request = await self.storage.get_request(request_id)
         if not request:
@@ -634,7 +634,7 @@ class Poller:
         subagent_id: str,
         callback_id: str,
         message_id: Optional[int] = None,
-    ):
+    ) -> None:
         """Handle subagent OK button - let subagent stop normally."""
         debug_callback(f"_handle_subagent_ok called", subagent_id=subagent_id, message_id=message_id)
         await self.storage.resolve_subagent(subagent_id, "ok")
@@ -655,7 +655,7 @@ class Poller:
         subagent_id: str,
         callback_id: str,
         message_id: Optional[int] = None,
-    ):
+    ) -> None:
         """Handle subagent Continue button - prompt for instructions."""
         debug_callback(f"_handle_subagent_continue called", subagent_id=subagent_id, message_id=message_id)
         await self.notifier.answer_callback(callback_id, "Reply with instructions")
@@ -680,7 +680,7 @@ class Poller:
         command_idx: int,
         callback_id: str,
         message_id: Optional[int] = None,
-    ):
+    ) -> None:
         """Handle chain approval for one command."""
         debug_chain(f"chain_approve called", request_id=request_id, command_idx=command_idx)
         request = await self.storage.get_request(request_id)
@@ -785,7 +785,7 @@ class Poller:
         request_id: str,
         callback_id: str,
         message_id: Optional[int] = None,
-    ):
+    ) -> None:
         """Handle chain denial."""
         request = await self.storage.get_request(request_id)
         if not request:
@@ -841,7 +841,7 @@ class Poller:
         request_id: str,
         callback_id: str,
         message_id: Optional[int] = None,
-    ):
+    ) -> None:
         """Handle chain deny with message - prompt for feedback."""
         print(f"[pyafk] _handle_chain_deny_msg called: {request_id}", file=sys.stderr)
         debug_callback(f"_handle_chain_deny_msg called", request_id=request_id)
@@ -868,7 +868,7 @@ class Poller:
         request_id: str,
         feedback: str,
         prompt_msg_id: int,
-    ):
+    ) -> None:
         """Handle chain denial with user feedback."""
         debug_callback(f"_handle_chain_deny_with_feedback called", request_id=request_id, feedback=feedback[:50])
         request = await self.storage.get_request(request_id)
@@ -924,7 +924,7 @@ class Poller:
         command_idx: int,
         callback_id: str,
         message_id: Optional[int] = None,
-    ):
+    ) -> None:
         """Handle chain rule creation for one command."""
         debug_rule(f"chain_rule called", request_id=request_id, command_idx=command_idx)
         request = await self.storage.get_request(request_id)
@@ -988,7 +988,7 @@ class Poller:
         command_idx: int,
         callback_id: str,
         message_id: Optional[int] = None,
-    ):
+    ) -> None:
         """Handle cancel from chain rule menu - go back to chain progress."""
         debug_rule(f"chain_cancel_rule called", request_id=request_id, command_idx=command_idx)
         request = await self.storage.get_request(request_id)
@@ -1027,7 +1027,7 @@ class Poller:
         pattern_idx: int,
         callback_id: str,
         message_id: Optional[int] = None,
-    ):
+    ) -> None:
         """Handle rule pattern selection for a chain command."""
         debug_rule(f"chain_rule_pattern called", request_id=request_id, command_idx=command_idx, pattern_idx=pattern_idx)
         request = await self.storage.get_request(request_id)
@@ -1165,7 +1165,7 @@ class Poller:
         request_id: str,
         callback_id: str,
         message_id: Optional[int] = None,
-    ):
+    ) -> None:
         """Handle final approval of entire chain."""
         request = await self.storage.get_request(request_id)
         if not request:
@@ -1221,7 +1221,7 @@ class Poller:
         request_id: str,
         callback_id: str,
         message_id: Optional[int] = None,
-    ):
+    ) -> None:
         """Handle upfront approval of entire chain (without individual command approval)."""
         debug_chain(f"chain_approve_entire called", request_id=request_id)
         request = await self.storage.get_request(request_id)
@@ -1281,7 +1281,7 @@ class Poller:
         import hashlib
         return int(hashlib.md5(f"chain:{request_id}".encode()).hexdigest()[:8], 16)
 
-    async def _get_chain_state(self, request_id: str) -> Optional[tuple[dict, int]]:
+    async def _get_chain_state(self, request_id: str) -> Optional[tuple[dict[str, Any], int]]:
         """Get chain approval state and version from storage.
 
         Uses pending_feedback table with a hash of request_id as the message_id.
@@ -1299,7 +1299,7 @@ class Poller:
                 pass
         return None
 
-    async def _save_chain_state(self, request_id: str, state: dict, version: int) -> bool:
+    async def _save_chain_state(self, request_id: str, state: dict[str, Any], version: int) -> bool:
         """Save chain approval state atomically.
 
         Uses pending_feedback table with a stable hash of request_id as the message_id.
@@ -1321,7 +1321,7 @@ class Poller:
             return True
         return await self.storage.save_chain_state_atomic(msg_id, state_json, version)
 
-    async def _clear_chain_state(self, request_id: str):
+    async def _clear_chain_state(self, request_id: str) -> None:
         """Clear chain approval state from storage."""
         msg_id = self._chain_state_key(request_id)
         await self.storage.clear_chain_state(msg_id)
@@ -1581,7 +1581,7 @@ class Poller:
 
         return f"{tool_name}(*)"
 
-    async def poll_loop(self, timeout: float = 30.0):
+    async def poll_loop(self, timeout: float = 30.0) -> None:
         """Main polling loop. Acquires lock first."""
         acquired = await self.lock.acquire(timeout=0.1)
         if not acquired:
@@ -1602,6 +1602,6 @@ class Poller:
             self._running = False
             await self.lock.release()
 
-    def stop(self):
+    def stop(self) -> None:
         """Signal the poll loop to stop."""
         self._running = False
