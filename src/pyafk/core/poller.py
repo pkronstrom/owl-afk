@@ -140,11 +140,14 @@ class Poller:
         """Handle a text message - check if it's feedback for a denial or subagent."""
         reply_to = message.get("reply_to_message", {})
         reply_msg_id = reply_to.get("message_id")
+        debug_callback(f"_handle_message called", reply_msg_id=reply_msg_id, has_text=bool(message.get("text")))
         if not reply_msg_id:
+            debug_callback(f"No reply_to_message, ignoring")
             return
 
         # Check if this is a reply to a feedback prompt we sent
         request_id = await self.storage.get_pending_feedback(reply_msg_id)
+        debug_callback(f"Looked up pending_feedback", reply_msg_id=reply_msg_id, request_id=request_id)
         if not request_id:
             return
 
@@ -652,8 +655,10 @@ class Poller:
         message_id: Optional[int] = None,
     ):
         """Handle chain deny with message - prompt for feedback."""
+        debug_callback(f"_handle_chain_deny_msg called", request_id=request_id)
         request = await self.storage.get_request(request_id)
         if not request:
+            debug_callback(f"Request not found", request_id=request_id)
             await self.notifier.answer_callback(callback_id, "Request not found")
             if message_id:
                 await self.notifier.edit_message(message_id, "⚠️ Request expired")
@@ -661,9 +666,11 @@ class Poller:
 
         # Store the chain context for when feedback arrives
         prompt_msg_id = await self.notifier.send_feedback_prompt(request.tool_name)
+        debug_callback(f"Sent feedback prompt", prompt_msg_id=prompt_msg_id)
         if prompt_msg_id:
             # Store with chain prefix so feedback handler knows it's a chain denial
             await self.storage.set_pending_feedback(prompt_msg_id, f"chain:{request_id}")
+            debug_callback(f"Stored pending_feedback", prompt_msg_id=prompt_msg_id, value=f"chain:{request_id}")
 
         await self.notifier.answer_callback(callback_id, "Reply with feedback")
 
@@ -674,8 +681,10 @@ class Poller:
         prompt_msg_id: int,
     ):
         """Handle chain denial with user feedback."""
+        debug_callback(f"_handle_chain_deny_with_feedback called", request_id=request_id, feedback=feedback[:50])
         request = await self.storage.get_request(request_id)
         if not request:
+            debug_callback(f"Request not found", request_id=request_id)
             return
 
         # Clear the pending feedback entry
