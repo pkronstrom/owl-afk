@@ -4,6 +4,7 @@ import asyncio
 import fcntl
 import json
 import os
+import sys
 import time
 from pathlib import Path
 from typing import Optional
@@ -11,6 +12,7 @@ from typing import Optional
 from pyafk.core.command_parser import CommandParser
 from pyafk.core.storage import Storage
 from pyafk.notifiers.telegram import TelegramNotifier
+from pyafk.utils.debug import debug_callback, debug_chain, debug_rule
 
 
 class PollLock:
@@ -178,10 +180,13 @@ class Poller:
         # Get message_id from callback for editing
         message_id = callback.get("message", {}).get("message_id")
 
+        debug_callback(f"Received callback", data=data, message_id=message_id)
+
         if ":" not in data:
             return
 
         action, target_id = data.split(":", 1)
+        debug_callback(f"Parsed callback", action=action, target_id=target_id)
 
         if action in ("approve", "deny"):
             await self._handle_approval(target_id, action, callback_id, message_id)
@@ -244,16 +249,15 @@ class Poller:
         message_id: Optional[int] = None,
     ):
         """Handle approve/deny callback."""
-        import sys
-        print(f"[pyafk] Looking up request: {request_id}", file=sys.stderr)
+        debug_callback(f"_handle_approval called", request_id=request_id, action=action)
         request = await self.storage.get_request(request_id)
         if not request:
-            print(f"[pyafk] Request not found: {request_id}", file=sys.stderr)
+            debug_callback(f"Request not found", request_id=request_id)
             await self.notifier.answer_callback(callback_id, "Request not found")
             if message_id:
                 await self.notifier.edit_message(message_id, "⚠️ Request expired")
             return
-        print(f"[pyafk] Found request: {request.id} status={request.status}", file=sys.stderr)
+        debug_callback(f"Found request", id=request.id, status=request.status)
 
         status = "approved" if action == "approve" else "denied"
 
@@ -510,8 +514,10 @@ class Poller:
         message_id: Optional[int] = None,
     ):
         """Handle chain approval for one command."""
+        debug_chain(f"chain_approve called", request_id=request_id, command_idx=command_idx)
         request = await self.storage.get_request(request_id)
         if not request:
+            debug_chain(f"Request not found", request_id=request_id)
             await self.notifier.answer_callback(callback_id, "Request not found")
             if message_id:
                 await self.notifier.edit_message(message_id, "⚠️ Request expired")
@@ -519,6 +525,7 @@ class Poller:
 
         # Get chain state from pending_feedback (stored as JSON)
         chain_state = await self._get_chain_state(request_id)
+        debug_chain(f"Got chain state", chain_state=chain_state)
         if not chain_state:
             # Initialize chain state from tool_input
             import json
@@ -539,14 +546,17 @@ class Poller:
         # Mark this command as approved
         if command_idx not in chain_state["approved_indices"]:
             chain_state["approved_indices"].append(command_idx)
+            debug_chain(f"Added command to approved", command_idx=command_idx, approved=chain_state["approved_indices"])
 
         # Save updated state
         await self._save_chain_state(request_id, chain_state)
+        debug_chain(f"Saved chain state", approved_count=len(chain_state["approved_indices"]), total=len(chain_state["commands"]))
 
         await self.notifier.answer_callback(callback_id, "Approved")
 
         # Check if all commands are approved
         if len(chain_state["approved_indices"]) >= len(chain_state["commands"]):
+            debug_chain(f"All commands approved, showing final button")
             # All approved - show final approval button
             if message_id:
                 session = await self.storage.get_session(request.session_id)
@@ -565,6 +575,8 @@ class Poller:
             next_idx = 0
             while next_idx < len(chain_state["commands"]) and next_idx in chain_state["approved_indices"]:
                 next_idx += 1
+
+            debug_chain(f"Moving to next command", next_idx=next_idx, approved_indices=chain_state["approved_indices"])
 
             if message_id and next_idx < len(chain_state["commands"]):
                 session = await self.storage.get_session(request.session_id)
@@ -713,8 +725,10 @@ class Poller:
         message_id: Optional[int] = None,
     ):
         """Handle chain rule creation for one command."""
+        debug_rule(f"chain_rule called", request_id=request_id, command_idx=command_idx)
         request = await self.storage.get_request(request_id)
         if not request:
+            debug_rule(f"Request not found", request_id=request_id)
             await self.notifier.answer_callback(callback_id, "Request not found")
             if message_id:
                 await self.notifier.edit_message(message_id, "⚠️ Request expired")
@@ -722,6 +736,7 @@ class Poller:
 
         # Get chain state - initialize if not present
         chain_state = await self._get_chain_state(request_id)
+        debug_rule(f"Got chain state", chain_state=chain_state)
         if not chain_state:
             # Initialize chain state from tool_input
             try:
@@ -773,8 +788,10 @@ class Poller:
         message_id: Optional[int] = None,
     ):
         """Handle rule pattern selection for a chain command."""
+        debug_rule(f"chain_rule_pattern called", request_id=request_id, command_idx=command_idx, pattern_idx=pattern_idx)
         request = await self.storage.get_request(request_id)
         if not request:
+            debug_rule(f"Request not found", request_id=request_id)
             await self.notifier.answer_callback(callback_id, "Request not found")
             if message_id:
                 await self.notifier.edit_message(message_id, "⚠️ Request expired")
@@ -782,7 +799,9 @@ class Poller:
 
         # Get chain state
         chain_state = await self._get_chain_state(request_id)
+        debug_rule(f"Got chain state", chain_state=chain_state)
         if not chain_state or command_idx >= len(chain_state["commands"]):
+            debug_rule(f"Invalid command", command_idx=command_idx, chain_state=chain_state)
             await self.notifier.answer_callback(callback_id, "Invalid command")
             return
 
@@ -790,12 +809,14 @@ class Poller:
         cmd = chain_state["commands"][command_idx]
         tool_input = json.dumps({"command": cmd})
         patterns = self._generate_rule_patterns("Bash", tool_input)
+        debug_rule(f"Generated patterns", cmd=cmd[:50], pattern_count=len(patterns))
 
         if pattern_idx >= len(patterns):
             await self.notifier.answer_callback(callback_id, "Invalid pattern")
             return
 
         pattern, label = patterns[pattern_idx]
+        debug_rule(f"Selected pattern", pattern=pattern, label=label)
 
         # Add the rule
         from pyafk.core.rules import RulesEngine
@@ -805,6 +826,7 @@ class Poller:
         # Also mark this command as approved in the chain
         if command_idx not in chain_state["approved_indices"]:
             chain_state["approved_indices"].append(command_idx)
+            debug_rule(f"Marked command approved", command_idx=command_idx, approved=chain_state["approved_indices"])
         await self._save_chain_state(request_id, chain_state)
 
         await self.notifier.answer_callback(callback_id, "Rule added")

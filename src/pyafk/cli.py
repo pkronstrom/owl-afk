@@ -28,6 +28,7 @@ def status(ctx):
     mode = config.get_mode()
 
     click.echo(f"Mode: {mode}")
+    click.echo(f"Debug: {'on' if config.debug else 'off'}")
     click.echo(f"Config dir: {pyafk_dir}")
 
     # Telegram status
@@ -55,6 +56,32 @@ def off_command(ctx):
     config = Config(pyafk_dir)
     config.set_mode("off")
     click.echo("pyafk disabled")
+
+
+@main.group()
+def debug():
+    """Debug mode commands."""
+    pass
+
+
+@debug.command("on")
+@click.pass_context
+def debug_on(ctx):
+    """Enable debug logging."""
+    pyafk_dir = ctx.obj["pyafk_dir"]
+    config = Config(pyafk_dir)
+    config.set_debug(True)
+    click.echo("Debug mode enabled")
+
+
+@debug.command("off")
+@click.pass_context
+def debug_off(ctx):
+    """Disable debug logging."""
+    pyafk_dir = ctx.obj["pyafk_dir"]
+    config = Config(pyafk_dir)
+    config.set_debug(False)
+    click.echo("Debug mode disabled")
 
 
 @main.group()

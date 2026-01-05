@@ -29,6 +29,7 @@ class Config:
         self.telegram_chat_id = None
         self.timeout_seconds = 3600
         self.timeout_action = "deny"
+        self.debug = False
 
         if self._config_file.exists():
             try:
@@ -37,6 +38,7 @@ class Config:
                 self.telegram_chat_id = data.get("telegram_chat_id")
                 self.timeout_seconds = data.get("timeout_seconds", 3600)
                 self.timeout_action = data.get("timeout_action", "deny")
+                self.debug = data.get("debug", False)
             except (json.JSONDecodeError, IOError):
                 pass
 
@@ -48,8 +50,18 @@ class Config:
             "telegram_chat_id": self.telegram_chat_id,
             "timeout_seconds": self.timeout_seconds,
             "timeout_action": self.timeout_action,
+            "debug": self.debug,
         }
         self._config_file.write_text(json.dumps(data, indent=2))
+
+    def set_debug(self, enabled: bool):
+        """Enable or disable debug mode."""
+        self.debug = enabled
+        self.save()
+
+    def get_debug(self) -> bool:
+        """Get debug mode status."""
+        return self.debug
 
     @property
     def db_path(self) -> Path:
