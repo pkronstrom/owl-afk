@@ -431,14 +431,20 @@ class Storage:
 
     # Chain state (stored in pending_feedback table)
 
-    async def get_chain_state(self, msg_id: int) -> Optional[str]:
-        """Get chain approval state JSON by message ID."""
+    async def get_chain_state(self, msg_id: int) -> Optional[tuple[str, int]]:
+        """Get chain state JSON and version.
+
+        Returns (state_json, version) or None.
+        """
         cursor = await self._conn.execute(
-            "SELECT request_id FROM pending_feedback WHERE prompt_msg_id = ?",
+            "SELECT request_id, created_at FROM pending_feedback WHERE prompt_msg_id = ?",
             (msg_id,),
         )
         row = await cursor.fetchone()
-        return row["request_id"] if row else None
+        if row:
+            # Use created_at * 1000 as version (milliseconds for precision)
+            return (row["request_id"], int(row["created_at"] * 1000))
+        return None
 
     async def save_chain_state(self, msg_id: int, state_json: str) -> None:
         """Save chain approval state JSON."""
@@ -450,6 +456,39 @@ class Storage:
             (msg_id, state_json, time.time()),
         )
         await self._conn.commit()
+
+    async def save_chain_state_atomic(
+        self, msg_id: int, state_json: str, expected_version: int
+    ) -> bool:
+        """Save chain state atomically with version check.
+
+        Returns True if saved, False if version mismatch (stale update).
+        """
+        new_version = time.time()
+        cursor = await self._conn.execute(
+            """
+            UPDATE pending_feedback
+            SET request_id = ?, created_at = ?
+            WHERE prompt_msg_id = ? AND CAST(created_at * 1000 AS INTEGER) = ?
+            """,
+            (state_json, new_version, msg_id, expected_version),
+        )
+        if cursor.rowcount == 0:
+            # Doesn't exist or version mismatch - try insert for new records
+            try:
+                await self._conn.execute(
+                    """
+                    INSERT INTO pending_feedback (prompt_msg_id, request_id, created_at)
+                    VALUES (?, ?, ?)
+                    """,
+                    (msg_id, state_json, new_version),
+                )
+            except Exception:
+                # Insert failed (probably exists with different version)
+                await self._conn.rollback()
+                return False
+        await self._conn.commit()
+        return True
 
     async def clear_chain_state(self, msg_id: int) -> None:
         """Clear chain approval state."""

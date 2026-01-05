@@ -1247,8 +1247,9 @@ class Poller:
         The state is stored in the request_id field as JSON.
         """
         msg_id = self._chain_state_key(request_id)
-        state_json = await self.storage.get_chain_state(msg_id)
-        if state_json:
+        result = await self.storage.get_chain_state(msg_id)
+        if result:
+            state_json, _version = result
             try:
                 return json.loads(state_json)
             except (json.JSONDecodeError, TypeError):
