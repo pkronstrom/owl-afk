@@ -1,7 +1,8 @@
 """Telegram notifier using Bot API."""
 
 import json
-from typing import Optional
+from pathlib import Path
+from typing import Any, Optional
 
 import httpx
 
@@ -122,7 +123,7 @@ class TelegramNotifier(Notifier):
         chat_id: str,
         timeout: int = 3600,
         timeout_action: str = "deny",
-    ):
+    ) -> None:
         self.bot_token = bot_token
         self.chat_id = chat_id
         self.timeout = timeout
@@ -132,8 +133,8 @@ class TelegramNotifier(Notifier):
     async def _api_request(
         self,
         method: str,
-        data: Optional[dict] = None,
-    ) -> dict:
+        data: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
         """Make a Telegram API request."""
         url = f"{self._base_url}/{method}"
         try:
@@ -246,7 +247,7 @@ class TelegramNotifier(Notifier):
         message_id: int,
         new_text: str,
         remove_keyboard: bool = True,
-    ):
+    ) -> None:
         """Edit a sent message and optionally remove keyboard."""
         data = {
             "chat_id": self.chat_id,
@@ -258,7 +259,7 @@ class TelegramNotifier(Notifier):
             data["reply_markup"] = json.dumps({"inline_keyboard": []})
         await self._api_request("editMessageText", data=data)
 
-    async def delete_message(self, message_id: int):
+    async def delete_message(self, message_id: int) -> None:
         """Delete a message."""
         data = {
             "chat_id": self.chat_id,
@@ -293,8 +294,8 @@ class TelegramNotifier(Notifier):
         request_id: str,
         patterns: list[tuple[str, str]],
         callback_prefix: str = "add_rule_pattern",
-        cancel_callback: str | None = None,
-    ):
+        cancel_callback: Optional[str] = None,
+    ) -> None:
         """Edit message to show rule pattern options inline.
 
         Args:
@@ -332,7 +333,7 @@ class TelegramNotifier(Notifier):
             },
         )
 
-    async def answer_callback(self, callback_id: str, text: str = ""):
+    async def answer_callback(self, callback_id: str, text: str = "") -> None:
         """Answer a callback query."""
         await self._api_request(
             "answerCallbackQuery",
@@ -350,7 +351,7 @@ class TelegramNotifier(Notifier):
         tool_name: str,
         tool_input: Optional[str] = None,
         project_path: Optional[str] = None,
-    ):
+    ) -> None:
         """Restore the original approval message and keyboard."""
         # Rebuild the message
         message = format_approval_message(
@@ -377,7 +378,7 @@ class TelegramNotifier(Notifier):
             },
         )
 
-    async def get_updates(self, offset: Optional[int] = None, timeout: int = 30) -> list:
+    async def get_updates(self, offset: Optional[int] = None, timeout: int = 30) -> list[dict[str, Any]]:
         """Get updates (for polling)."""
         data = {"timeout": timeout}
         if offset is not None:
