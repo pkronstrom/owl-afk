@@ -2,7 +2,7 @@
 
 import json
 import re
-from typing import Optional
+from typing import Any, Optional
 
 from pyafk.core.storage import Storage
 
@@ -72,7 +72,7 @@ def format_tool_call(tool_name: str, tool_input: Optional[str]) -> str:
 class RulesEngine:
     """Evaluate auto-approve rules against tool calls."""
 
-    def __init__(self, storage: Storage):
+    def __init__(self, storage: Storage) -> None:
         self.storage = storage
 
     async def check(self, tool_name: str, tool_input: Optional[str] = None) -> Optional[str]:
@@ -116,6 +116,6 @@ class RulesEngine:
         """Remove a rule by ID."""
         return await self.storage.remove_rule(rule_id)
 
-    async def list_rules(self) -> list[dict]:
+    async def list_rules(self) -> list[dict[str, Any]]:
         """List all rules."""
         return await self.storage.get_rules()
