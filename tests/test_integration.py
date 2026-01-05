@@ -49,7 +49,7 @@ async def test_full_approval_flow(mock_pyafk_dir):
             # This should timeout and deny (1 second timeout)
             result = await handle_pretool_use(hook_input, mock_pyafk_dir)
 
-            assert result["decision"] == "deny"
+            assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
             mock_api.assert_called()
 
 
@@ -70,7 +70,7 @@ async def test_rule_based_auto_approve(mock_pyafk_dir):
     }
 
     result = await handle_pretool_use(hook_input, mock_pyafk_dir)
-    assert result["decision"] == "approve"
+    assert result["hookSpecificOutput"]["permissionDecision"] == "allow"
 
 
 @pytest.mark.asyncio

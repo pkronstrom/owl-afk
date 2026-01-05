@@ -108,7 +108,7 @@ class RulesEngine:
         # Check for existing rule with same pattern and action
         existing = await self.storage.get_rule_by_pattern(pattern, action)
         if existing:
-            return existing["id"]  # Return existing rule ID
+            return int(existing["id"])  # Return existing rule ID
 
         return await self.storage.add_rule(pattern, action, priority, created_via)
 

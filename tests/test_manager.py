@@ -13,7 +13,7 @@ async def test_manager_auto_approve_by_rule(mock_pyafk_dir):
 
     await manager.rules.add_rule("Bash(git *)", "approve")
 
-    result = await manager.request_approval(
+    result, _ = await manager.request_approval(
         session_id="session-123",
         tool_name="Bash",
         tool_input='{"command": "git status"}',
@@ -31,7 +31,7 @@ async def test_manager_auto_deny_by_rule(mock_pyafk_dir):
 
     await manager.rules.add_rule("Bash(rm *)", "deny")
 
-    result = await manager.request_approval(
+    result, _ = await manager.request_approval(
         session_id="session-123",
         tool_name="Bash",
         tool_input='{"command": "rm -rf /"}',
@@ -54,7 +54,7 @@ async def test_manager_timeout_action(mock_pyafk_dir):
     from pyafk.notifiers.console import ConsoleNotifier
     manager.notifier = ConsoleNotifier()
 
-    result = await manager.request_approval(
+    result, _ = await manager.request_approval(
         session_id="session-123",
         tool_name="Bash",
         tool_input='{"command": "ls"}',

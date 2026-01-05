@@ -711,6 +711,9 @@ class Poller:
             else:
                 # Initialize chain state from tool_input
                 try:
+                    if not request.tool_input:
+                        await self.notifier.answer_callback(callback_id, "Missing tool input")
+                        return
                     data = json.loads(request.tool_input)
                     cmd = data.get("command", "")
                     # Parse commands from the bash chain using split_chain
@@ -958,6 +961,9 @@ class Poller:
         else:
             # Initialize chain state from tool_input
             try:
+                if not request.tool_input:
+                    await self.notifier.answer_callback(callback_id, "Missing tool input")
+                    return
                 data = json.loads(request.tool_input)
                 cmd = data.get("command", "")
                 # Parse commands from the bash chain using split_chain
@@ -1254,10 +1260,13 @@ class Poller:
 
             # Parse commands from tool_input
             try:
-                data = json.loads(request.tool_input)
-                cmd = data.get("command", "")
-                parser = CommandParser()
-                commands = parser.split_chain(cmd)
+                if request.tool_input:
+                    data = json.loads(request.tool_input)
+                    cmd = data.get("command", "")
+                    parser = CommandParser()
+                    commands = parser.split_chain(cmd)
+                else:
+                    commands = []
             except Exception:
                 commands = []
 
@@ -1551,14 +1560,15 @@ class Poller:
             return str(tool_input)[:100]
 
         # Extract the most relevant field
+        summary: str
         if "command" in data:
-            summary = data["command"]
+            summary = str(data["command"])
         elif "file_path" in data:
-            summary = data["file_path"]
+            summary = str(data["file_path"])
         elif "path" in data:
-            summary = data["path"]
+            summary = str(data["path"])
         elif "url" in data:
-            summary = data["url"]
+            summary = str(data["url"])
         else:
             summary = json.dumps(data)
 

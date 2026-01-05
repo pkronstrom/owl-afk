@@ -140,7 +140,7 @@ class TelegramNotifier(Notifier):
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(url, data=data, timeout=30)
-                result = response.json()
+                result: dict[str, Any] = response.json()
 
                 # Log API errors (when ok=False)
                 if not result.get("ok"):
@@ -231,7 +231,8 @@ class TelegramNotifier(Notifier):
         )
 
         if result.get("ok") and "result" in result:
-            return result["result"].get("message_id")
+            msg_id = result["result"].get("message_id")
+            return int(msg_id) if msg_id is not None else None
         return None
 
     async def wait_for_response(
@@ -284,7 +285,8 @@ class TelegramNotifier(Notifier):
             },
         )
         if result and result.get("ok") and result.get("result"):
-            return result["result"].get("message_id")
+            msg_id = result["result"].get("message_id")
+            return int(msg_id) if msg_id is not None else None
         return None
 
     async def edit_message_with_rule_keyboard(
@@ -386,7 +388,8 @@ class TelegramNotifier(Notifier):
 
         result = await self._api_request("getUpdates", data=data)
         if result.get("ok") and "result" in result:
-            return result.get("result", [])
+            updates: list[dict[str, Any]] = result.get("result", [])
+            return updates
         return []
 
     async def send_feedback_prompt(self, tool_name: str) -> Optional[int]:
@@ -402,7 +405,8 @@ class TelegramNotifier(Notifier):
         )
         debug_chain(f"send_feedback_prompt result", ok=result.get("ok"), has_result="result" in result)
         if result.get("ok") and "result" in result:
-            msg_id = result["result"].get("message_id")
+            raw_id = result["result"].get("message_id")
+            msg_id = int(raw_id) if raw_id is not None else None
             debug_chain(f"send_feedback_prompt returning", msg_id=msg_id)
             return msg_id
         debug_chain(f"send_feedback_prompt failed", result=result)
@@ -451,7 +455,8 @@ class TelegramNotifier(Notifier):
         )
 
         if result.get("ok") and "result" in result:
-            return result["result"].get("message_id")
+            msg_id = result["result"].get("message_id")
+            return int(msg_id) if msg_id is not None else None
         return None
 
     async def send_rule_menu(self, request_id: str, patterns: list[str]) -> Optional[int]:
@@ -474,7 +479,8 @@ class TelegramNotifier(Notifier):
         )
 
         if result.get("ok") and "result" in result:
-            return result["result"].get("message_id")
+            msg_id = result["result"].get("message_id")
+            return int(msg_id) if msg_id is not None else None
         return None
 
     async def send_continue_prompt(self) -> Optional[int]:
@@ -488,7 +494,8 @@ class TelegramNotifier(Notifier):
             },
         )
         if result.get("ok") and "result" in result:
-            return result["result"].get("message_id")
+            msg_id = result["result"].get("message_id")
+            return int(msg_id) if msg_id is not None else None
         return None
 
     async def send_document(self, file_path: Path, caption: str = "") -> Optional[int]:
@@ -509,7 +516,8 @@ class TelegramNotifier(Notifier):
                 result = response.json()
 
             if result.get("ok") and "result" in result:
-                return result["result"].get("message_id")
+                msg_id = result["result"].get("message_id")
+            return int(msg_id) if msg_id is not None else None
         except Exception:
             pass
         return None
@@ -614,7 +622,8 @@ class TelegramNotifier(Notifier):
         )
 
         if result.get("ok") and "result" in result:
-            return result["result"].get("message_id")
+            msg_id = result["result"].get("message_id")
+            return int(msg_id) if msg_id is not None else None
         return None
 
     async def update_chain_progress(
@@ -726,6 +735,7 @@ class TelegramNotifier(Notifier):
         message = "\n".join(lines)
 
         # Determine keyboard based on state
+        keyboard: dict[str, list[list[dict[str, str]]]]
         if denied:
             # Chain was denied - no keyboard
             keyboard = {"inline_keyboard": []}

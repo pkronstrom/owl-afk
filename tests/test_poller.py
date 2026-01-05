@@ -56,6 +56,7 @@ async def test_poller_processes_callback(mock_pyafk_dir):
         )
 
         notifier = MagicMock(spec=TelegramNotifier)
+        # Return the callback on get_updates
         notifier.get_updates = AsyncMock(return_value=[
             {
                 "update_id": 1,
@@ -70,6 +71,8 @@ async def test_poller_processes_callback(mock_pyafk_dir):
         notifier.edit_message = AsyncMock()
 
         poller = Poller(storage, notifier, mock_pyafk_dir)
+        # Set initial offset so first call processes updates instead of skipping
+        poller._offset = 0
 
         await poller.process_updates_once()
 

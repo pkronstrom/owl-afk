@@ -25,7 +25,7 @@ async def test_pretool_approve_by_rule(mock_pyafk_dir):
 
     result = await handle_pretool_use(hook_input, mock_pyafk_dir)
 
-    assert result["decision"] == "approve"
+    assert result["hookSpecificOutput"]["permissionDecision"] == "allow"
 
 
 @pytest.mark.asyncio
@@ -41,7 +41,7 @@ async def test_pretool_off_mode_approves(mock_pyafk_dir):
 
     result = await handle_pretool_use(hook_input, mock_pyafk_dir)
 
-    assert result["decision"] == "approve"
+    assert result["hookSpecificOutput"]["permissionDecision"] == "allow"
 
 
 @pytest.mark.asyncio
@@ -64,4 +64,4 @@ async def test_pretool_extracts_context(mock_pyafk_dir):
 
     result = await handle_pretool_use(hook_input, mock_pyafk_dir)
 
-    assert result["decision"] == "approve"
+    assert result["hookSpecificOutput"]["permissionDecision"] == "allow"
