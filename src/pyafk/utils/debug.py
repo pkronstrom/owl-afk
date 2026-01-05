@@ -74,3 +74,8 @@ def debug_callback(message: str, **kwargs):
 def debug_parse(message: str, **kwargs):
     """Log parse-related debug message."""
     debug("parse", message, **kwargs)
+
+
+def debug_api(message: str, **kwargs):
+    """Log API-related debug message."""
+    debug("api", message, **kwargs)

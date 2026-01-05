@@ -2,7 +2,6 @@
 
 import json
 import re
-import time
 from typing import Optional
 
 from pyafk.core.storage import Storage
@@ -46,14 +45,15 @@ def format_tool_call(tool_name: str, tool_input: Optional[str]) -> str:
     - ("Bash", '{"command": "git status"}') -> "Bash(git status)"
     - ("Read", '{"file_path": "/foo/bar.py"}') -> "Read(/foo/bar.py)"
     - ("Edit", '{"file_path": "/x.py", "old": "a"}') -> "Edit(/x.py)"
+    - ("TodoWrite", '{"todos": [...]}') -> "TodoWrite(...)"
     """
     if not tool_input:
-        return tool_name
+        return f"{tool_name}()"
 
     try:
         data = json.loads(tool_input)
     except (json.JSONDecodeError, TypeError):
-        return tool_name
+        return f"{tool_name}()"
 
     # Extract the most relevant field for matching
     if "command" in data:
@@ -65,7 +65,8 @@ def format_tool_call(tool_name: str, tool_input: Optional[str]) -> str:
     elif "url" in data:
         return f"{tool_name}({data['url']})"
 
-    return tool_name
+    # For tools without specific fields, use empty parens to match patterns like Tool(*)
+    return f"{tool_name}()"
 
 
 class RulesEngine:
@@ -83,14 +84,11 @@ class RulesEngine:
         tool_call = format_tool_call(tool_name, tool_input)
 
         # Load rules (sorted by priority descending)
-        cursor = await self.storage._conn.execute(
-            "SELECT pattern, action FROM auto_approve_rules ORDER BY priority DESC"
-        )
-        rules = await cursor.fetchall()
+        rules = await self.storage.get_rules_for_matching()
 
-        for row in rules:
-            if matches_pattern(tool_call, row["pattern"]):
-                return row["action"]
+        for pattern, action in rules:
+            if matches_pattern(tool_call, pattern):
+                return action
 
         return None
 
@@ -108,36 +106,16 @@ class RulesEngine:
             raise ValueError("Pattern cannot be empty")
 
         # Check for existing rule with same pattern and action
-        cursor = await self.storage._conn.execute(
-            "SELECT id FROM auto_approve_rules WHERE pattern = ? AND action = ?",
-            (pattern, action),
-        )
-        existing = await cursor.fetchone()
+        existing = await self.storage.get_rule_by_pattern(pattern, action)
         if existing:
-            return existing[0]  # Return existing rule ID
+            return existing["id"]  # Return existing rule ID
 
-        cursor = await self.storage._conn.execute(
-            """
-            INSERT INTO auto_approve_rules (pattern, action, priority, created_via, created_at)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (pattern, action, priority, created_via, time.time()),
-        )
-        await self.storage._conn.commit()
-        return cursor.lastrowid
+        return await self.storage.add_rule(pattern, action, priority, created_via)
 
     async def remove_rule(self, rule_id: int) -> bool:
         """Remove a rule by ID."""
-        cursor = await self.storage._conn.execute(
-            "DELETE FROM auto_approve_rules WHERE id = ?", (rule_id,)
-        )
-        await self.storage._conn.commit()
-        return cursor.rowcount > 0
+        return await self.storage.remove_rule(rule_id)
 
     async def list_rules(self) -> list[dict]:
         """List all rules."""
-        cursor = await self.storage._conn.execute(
-            "SELECT * FROM auto_approve_rules ORDER BY priority DESC, id"
-        )
-        rows = await cursor.fetchall()
-        return [dict(row) for row in rows]
+        return await self.storage.get_rules()

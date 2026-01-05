@@ -6,7 +6,7 @@ from typing import Optional
 import httpx
 
 from pyafk.notifiers.base import Notifier
-from pyafk.utils.debug import debug_chain
+from pyafk.utils.debug import debug_api, debug_chain
 
 
 def format_approval_message(
@@ -139,8 +139,25 @@ class TelegramNotifier(Notifier):
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(url, data=data, timeout=30)
-                return response.json()
-        except (httpx.HTTPError, json.JSONDecodeError) as e:
+                result = response.json()
+
+                # Log API errors (when ok=False)
+                if not result.get("ok"):
+                    error_code = result.get("error_code", "unknown")
+                    description = result.get("description", "no description")
+                    debug_api(
+                        f"Telegram API error",
+                        method=method,
+                        error_code=error_code,
+                        description=description[:100],
+                    )
+
+                return result
+        except httpx.HTTPError as e:
+            debug_api(f"HTTP error", method=method, error=str(e)[:100])
+            return {"ok": False, "error": str(e)}
+        except json.JSONDecodeError as e:
+            debug_api(f"JSON decode error", method=method, error=str(e)[:100])
             return {"ok": False, "error": str(e)}
 
     async def send_approval_request(

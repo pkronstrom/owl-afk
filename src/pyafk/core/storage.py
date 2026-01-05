@@ -428,3 +428,86 @@ class Storage:
             (time.time(), message_id),
         )
         await self._conn.commit()
+
+    # Chain state (stored in pending_feedback table)
+
+    async def get_chain_state(self, msg_id: int) -> Optional[str]:
+        """Get chain approval state JSON by message ID."""
+        cursor = await self._conn.execute(
+            "SELECT request_id FROM pending_feedback WHERE prompt_msg_id = ?",
+            (msg_id,),
+        )
+        row = await cursor.fetchone()
+        return row["request_id"] if row else None
+
+    async def save_chain_state(self, msg_id: int, state_json: str):
+        """Save chain approval state JSON."""
+        await self._conn.execute(
+            """
+            INSERT OR REPLACE INTO pending_feedback (prompt_msg_id, request_id, created_at)
+            VALUES (?, ?, ?)
+            """,
+            (msg_id, state_json, time.time()),
+        )
+        await self._conn.commit()
+
+    async def clear_chain_state(self, msg_id: int):
+        """Clear chain approval state."""
+        await self._conn.execute(
+            "DELETE FROM pending_feedback WHERE prompt_msg_id = ?",
+            (msg_id,),
+        )
+        await self._conn.commit()
+
+    # Auto-approve rules
+
+    async def get_rules(self) -> list[dict]:
+        """Get all auto-approve rules sorted by priority."""
+        cursor = await self._conn.execute(
+            "SELECT * FROM auto_approve_rules ORDER BY priority DESC, id"
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    async def get_rules_for_matching(self) -> list[tuple[str, str]]:
+        """Get rules for pattern matching (pattern, action tuples)."""
+        cursor = await self._conn.execute(
+            "SELECT pattern, action FROM auto_approve_rules ORDER BY priority DESC"
+        )
+        rows = await cursor.fetchall()
+        return [(row["pattern"], row["action"]) for row in rows]
+
+    async def get_rule_by_pattern(self, pattern: str, action: str) -> Optional[dict]:
+        """Get a rule by pattern and action."""
+        cursor = await self._conn.execute(
+            "SELECT * FROM auto_approve_rules WHERE pattern = ? AND action = ?",
+            (pattern, action),
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+    async def add_rule(
+        self,
+        pattern: str,
+        action: str,
+        priority: int,
+        created_via: str,
+    ) -> int:
+        """Add a new rule. Returns rule ID."""
+        cursor = await self._conn.execute(
+            """
+            INSERT INTO auto_approve_rules (pattern, action, priority, created_via, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (pattern, action, priority, created_via, time.time()),
+        )
+        await self._conn.commit()
+        return cursor.lastrowid
+
+    async def remove_rule(self, rule_id: int) -> bool:
+        """Remove a rule by ID. Returns True if deleted."""
+        cursor = await self._conn.execute(
+            "DELETE FROM auto_approve_rules WHERE id = ?", (rule_id,)
+        )
+        await self._conn.commit()
+        return cursor.rowcount > 0

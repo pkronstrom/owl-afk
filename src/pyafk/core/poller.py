@@ -15,6 +15,14 @@ from pyafk.notifiers.telegram import TelegramNotifier
 from pyafk.utils.debug import debug_callback, debug_chain, debug_rule
 
 
+def _safe_int(value: str, default: int = 0) -> int:
+    """Safely parse an integer from callback data."""
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return default
+
+
 class PollLock:
     """File-based lock for single poller."""
 
@@ -304,15 +312,15 @@ class Poller:
             # Format: add_rule_pattern:request_id:pattern_index
             parts = target_id.split(":", 1)
             request_id = parts[0]
-            pattern_idx = int(parts[1]) if len(parts) > 1 else 0
+            pattern_idx = _safe_int(parts[1]) if len(parts) > 1 else 0
             await self._handle_add_rule(request_id, callback_id, message_id, pattern_idx)
         elif action == "chain_rule_pattern":
             # Format: chain_rule_pattern:request_id:command_idx:pattern_index
             parts = target_id.split(":")
             if len(parts) >= 3:
                 request_id = parts[0]
-                command_idx = int(parts[1])
-                pattern_idx = int(parts[2]) if len(parts) > 2 else 0
+                command_idx = _safe_int(parts[1])
+                pattern_idx = _safe_int(parts[2])
                 await self._handle_chain_rule_pattern(request_id, command_idx, pattern_idx, callback_id, message_id)
         elif action == "subagent_ok":
             await self._handle_subagent_ok(target_id, callback_id, message_id)
@@ -322,7 +330,7 @@ class Poller:
             # Format: chain_approve:request_id:command_index
             parts = target_id.split(":", 1)
             request_id = parts[0]
-            command_idx = int(parts[1]) if len(parts) > 1 else 0
+            command_idx = _safe_int(parts[1]) if len(parts) > 1 else 0
             await self._handle_chain_approve(request_id, command_idx, callback_id, message_id)
         elif action == "chain_deny":
             await self._handle_chain_deny(target_id, callback_id, message_id)
@@ -332,7 +340,7 @@ class Poller:
             # Format: chain_rule:request_id:command_index
             parts = target_id.split(":", 1)
             request_id = parts[0]
-            command_idx = int(parts[1]) if len(parts) > 1 else 0
+            command_idx = _safe_int(parts[1]) if len(parts) > 1 else 0
             await self._handle_chain_rule(request_id, command_idx, callback_id, message_id)
         elif action == "chain_approve_all":
             await self._handle_chain_approve_all(target_id, callback_id, message_id)
@@ -342,7 +350,7 @@ class Poller:
             # Format: chain_cancel_rule:request_id:command_index
             parts = target_id.split(":", 1)
             request_id = parts[0]
-            command_idx = int(parts[1]) if len(parts) > 1 else 0
+            command_idx = _safe_int(parts[1]) if len(parts) > 1 else 0
             await self._handle_chain_cancel_rule(request_id, command_idx, callback_id, message_id)
 
     async def _handle_approval(
@@ -1238,17 +1246,11 @@ class Poller:
         Uses pending_feedback table with a hash of request_id as the message_id.
         The state is stored in the request_id field as JSON.
         """
-        # Use a stable hash of the request_id as the message_id
         msg_id = self._chain_state_key(request_id)
-
-        cursor = await self.storage._conn.execute(
-            "SELECT request_id FROM pending_feedback WHERE prompt_msg_id = ?",
-            (msg_id,),
-        )
-        row = await cursor.fetchone()
-        if row:
+        state_json = await self.storage.get_chain_state(msg_id)
+        if state_json:
             try:
-                return json.loads(row["request_id"])
+                return json.loads(state_json)
             except (json.JSONDecodeError, TypeError):
                 pass
         return None
@@ -1261,24 +1263,12 @@ class Poller:
         """
         state_json = json.dumps(state)
         msg_id = self._chain_state_key(request_id)
-
-        await self.storage._conn.execute(
-            """
-            INSERT OR REPLACE INTO pending_feedback (prompt_msg_id, request_id, created_at)
-            VALUES (?, ?, ?)
-            """,
-            (msg_id, state_json, time.time()),
-        )
-        await self.storage._conn.commit()
+        await self.storage.save_chain_state(msg_id, state_json)
 
     async def _clear_chain_state(self, request_id: str):
         """Clear chain approval state from storage."""
         msg_id = self._chain_state_key(request_id)
-        await self.storage._conn.execute(
-            "DELETE FROM pending_feedback WHERE prompt_msg_id = ?",
-            (msg_id,),
-        )
-        await self.storage._conn.commit()
+        await self.storage.clear_chain_state(msg_id)
 
     def _generate_rule_patterns(
         self,
