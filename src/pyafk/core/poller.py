@@ -13,6 +13,7 @@ from pyafk.core.command_parser import CommandParser
 from pyafk.core.storage import Storage
 from pyafk.notifiers.telegram import TelegramNotifier
 from pyafk.utils.debug import debug_callback, debug_chain, debug_rule
+from pyafk.utils.formatting import format_project_id, truncate_command
 
 
 def _safe_int(value: str, default: int = 0) -> int:
@@ -389,7 +390,7 @@ class Poller:
         if msg_id:
             # Format: [project] tool_summary ✅/❌
             session = await self.storage.get_session(request.session_id)
-            project_id = self._format_project_id(session.project_path if session else None, request.session_id)
+            project_id = format_project_id(session.project_path if session else None, request.session_id)
             tool_summary = self._format_tool_summary(request.tool_name, request.tool_input)
             emoji = "✅" if action == "approve" else "❌"
             await self.notifier.edit_message(
@@ -494,7 +495,7 @@ class Poller:
                 # Update the Telegram message
                 if request.telegram_msg_id:
                     session = await self.storage.get_session(request.session_id)
-                    project_id = self._format_project_id(session.project_path if session else None, request.session_id)
+                    project_id = format_project_id(session.project_path if session else None, request.session_id)
                     tool_summary = self._format_tool_summary(request.tool_name, request.tool_input)
                     await self.notifier.edit_message(
                         request.telegram_msg_id,
@@ -616,7 +617,7 @@ class Poller:
         # Update the message (same as original since we're inline now)
         if message_id:
             session = await self.storage.get_session(request.session_id)
-            project_id = self._format_project_id(session.project_path if session else None, request.session_id)
+            project_id = format_project_id(session.project_path if session else None, request.session_id)
             tool_summary = self._format_tool_summary(request.tool_name, request.tool_input)
             await self.notifier.edit_message(
                 message_id,
@@ -744,7 +745,7 @@ class Poller:
 
             if message_id:
                 session = await self.storage.get_session(request.session_id)
-                project_id = self._format_project_id(session.project_path if session else None, request.session_id)
+                project_id = format_project_id(session.project_path if session else None, request.session_id)
                 msg = self._format_chain_approved_message(chain_state["commands"], project_id)
                 await self.notifier.edit_message(message_id, msg)
 
@@ -897,7 +898,7 @@ class Poller:
         debug_callback(f"Updating original message", telegram_msg_id=request.telegram_msg_id)
         if request.telegram_msg_id:
             session = await self.storage.get_session(request.session_id)
-            project_id = self._format_project_id(session.project_path if session else None, request.session_id)
+            project_id = format_project_id(session.project_path if session else None, request.session_id)
             tool_summary = self._format_tool_summary(request.tool_name, request.tool_input)
             await self.notifier.edit_message(
                 request.telegram_msg_id,
@@ -974,7 +975,7 @@ class Poller:
         if message_id:
             await self.notifier.edit_message_with_rule_keyboard(
                 message_id,
-                f"Command {command_idx + 1}: <code>{cmd[:60]}</code>",
+                f"Command {command_idx + 1}: <code>{truncate_command(cmd)}</code>",
                 request_id,
                 patterns,
                 callback_prefix=f"chain_rule_pattern:{request_id}:{command_idx}",
@@ -1139,7 +1140,7 @@ class Poller:
                 )
 
                 # Update message to show all approved
-                project_id = self._format_project_id(session.project_path if session else None, request.session_id)
+                project_id = format_project_id(session.project_path if session else None, request.session_id)
                 msg = self._format_chain_approved_message(chain_state["commands"], project_id)
                 await self.notifier.edit_message(message_id, msg)
             else:
@@ -1199,7 +1200,7 @@ class Poller:
         # Update message
         if message_id:
             session = await self.storage.get_session(request.session_id)
-            project_id = self._format_project_id(session.project_path if session else None, request.session_id)
+            project_id = format_project_id(session.project_path if session else None, request.session_id)
             msg = self._format_chain_approved_message(chain_state["commands"], project_id)
             await self.notifier.edit_message(message_id, msg)
 
@@ -1252,7 +1253,7 @@ class Poller:
         # Update message
         if message_id:
             session = await self.storage.get_session(request.session_id)
-            project_id = self._format_project_id(session.project_path if session else None, request.session_id)
+            project_id = format_project_id(session.project_path if session else None, request.session_id)
             if commands:
                 msg = self._format_chain_approved_message(commands, project_id)
             else:
@@ -1502,13 +1503,6 @@ class Poller:
         # Some commands didn't match any rule - need manual approval
         return None
 
-    def _format_project_id(self, project_path: Optional[str], session_id: str) -> str:
-        """Format project path for display."""
-        if project_path:
-            parts = project_path.rstrip("/").split("/")
-            return "/".join(parts[-2:]) if len(parts) >= 2 else parts[-1]
-        return session_id[:8]
-
     def _format_chain_approved_message(
         self,
         commands: list[str],
@@ -1517,10 +1511,7 @@ class Poller:
         """Format chain approved message with list of commands."""
         cmd_lines = []
         for cmd in commands:
-            # Truncate long commands
-            if len(cmd) > 60:
-                cmd = cmd[:57] + "..."
-            cmd_lines.append(f"  • <code>{cmd}</code>")
+            cmd_lines.append(f"  • <code>{truncate_command(cmd)}</code>")
 
         return f"<i>{project_id}</i>\n✅ <b>Chain approved</b>\n" + "\n".join(cmd_lines)
 
