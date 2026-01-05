@@ -100,50 +100,56 @@ class Poller:
         try:
             if self._offset_file.exists():
                 return int(self._offset_file.read_text().strip())
-        except (ValueError, OSError):
-            pass
+        except (ValueError, OSError) as e:
+            debug_callback(f"Ignored error loading offset", error=str(e)[:50])
         return None
 
     def _save_offset(self, offset: int) -> None:
         """Persist Telegram update offset."""
         try:
             self._offset_file.write_text(str(offset))
-        except OSError:
-            pass
+        except OSError as e:
+            debug_callback(f"Ignored error saving offset", error=str(e)[:50])
 
     async def process_updates_once(self) -> int:
         """Process one batch of updates.
 
         Returns number of updates processed.
         """
-        # If no saved offset, skip all old updates to avoid processing stale callbacks
-        if self._offset is None:
-            updates = await self.notifier.get_updates(offset=None, timeout=0)
-            if updates:
-                # Set offset to skip all old updates
-                self._offset = updates[-1]["update_id"] + 1
+        try:
+            # If no saved offset, skip all old updates to avoid processing stale callbacks
+            if self._offset is None:
+                updates = await self.notifier.get_updates(offset=None, timeout=0)
+                if updates:
+                    # Set offset to skip all old updates
+                    self._offset = updates[-1]["update_id"] + 1
+                    self._save_offset(self._offset)
+                return 0
+
+            updates = await self.notifier.get_updates(
+                offset=self._offset,
+                timeout=1,
+            )
+
+            processed = 0
+            for update in updates:
+                self._offset = update["update_id"] + 1
                 self._save_offset(self._offset)
+
+                if "callback_query" in update:
+                    await self._handle_callback(update["callback_query"])
+                    processed += 1
+                elif "message" in update:
+                    # Check if this is a reply to a feedback prompt
+                    await self._handle_message(update["message"])
+                    processed += 1
+
+            return processed
+        except Exception as e:
+            import traceback
+            debug_callback(f"Error in process_updates_once", error=str(e)[:200])
+            debug_callback(f"Traceback", tb=traceback.format_exc()[:500])
             return 0
-
-        updates = await self.notifier.get_updates(
-            offset=self._offset,
-            timeout=1,
-        )
-
-        processed = 0
-        for update in updates:
-            self._offset = update["update_id"] + 1
-            self._save_offset(self._offset)
-
-            if "callback_query" in update:
-                await self._handle_callback(update["callback_query"])
-                processed += 1
-            elif "message" in update:
-                # Check if this is a reply to a feedback prompt
-                await self._handle_message(update["message"])
-                processed += 1
-
-        return processed
 
     async def _handle_message(self, message: dict[str, Any]) -> None:
         """Handle a text message - check for commands, feedback, or subagent replies."""
@@ -362,51 +368,55 @@ class Poller:
         message_id: Optional[int] = None,
     ) -> None:
         """Handle approve/deny callback."""
-        debug_callback(f"_handle_approval called", request_id=request_id, action=action)
-        request = await self.storage.get_request(request_id)
-        if not request:
-            debug_callback(f"Request not found", request_id=request_id)
-            await self.notifier.answer_callback(callback_id, "Request not found")
-            if message_id:
-                await self.notifier.edit_message(message_id, "⚠️ Request expired")
-            return
-        debug_callback(f"Found request", id=request.id, status=request.status)
+        try:
+            debug_callback(f"_handle_approval called", request_id=request_id, action=action)
+            request = await self.storage.get_request(request_id)
+            if not request:
+                debug_callback(f"Request not found", request_id=request_id)
+                await self.notifier.answer_callback(callback_id, "Request not found")
+                if message_id:
+                    await self.notifier.edit_message(message_id, "⚠️ Request expired")
+                return
+            debug_callback(f"Found request", id=request.id, status=request.status)
 
-        status = "approved" if action == "approve" else "denied"
+            status = "approved" if action == "approve" else "denied"
 
-        await self.storage.resolve_request(
-            request_id=request_id,
-            status=status,
-            resolved_by="user",
-        )
-
-        await self.notifier.answer_callback(
-            callback_id,
-            f"{'Approved' if action == 'approve' else 'Denied'}",
-        )
-
-        # Use message_id from callback (the message user clicked) or fall back to stored id
-        msg_id = message_id or request.telegram_msg_id
-        if msg_id:
-            # Format: [project] tool_summary ✅/❌
-            session = await self.storage.get_session(request.session_id)
-            project_id = format_project_id(session.project_path if session else None, request.session_id)
-            tool_summary = self._format_tool_summary(request.tool_name, request.tool_input)
-            emoji = "✅" if action == "approve" else "❌"
-            await self.notifier.edit_message(
-                msg_id,
-                f"<i>{project_id}</i>\n{emoji} <b>[{request.tool_name}]</b> <code>{tool_summary}</code>",
+            await self.storage.resolve_request(
+                request_id=request_id,
+                status=status,
+                resolved_by="user",
             )
 
-        await self.storage.log_audit(
-            event_type="response",
-            session_id=request.session_id,
-            details={
-                "request_id": request_id,
-                "action": action,
-                "resolved_by": "user",
-            },
-        )
+            await self.notifier.answer_callback(
+                callback_id,
+                f"{'Approved' if action == 'approve' else 'Denied'}",
+            )
+
+            # Use message_id from callback (the message user clicked) or fall back to stored id
+            msg_id = message_id or request.telegram_msg_id
+            if msg_id:
+                # Format: [project] tool_summary ✅/❌
+                session = await self.storage.get_session(request.session_id)
+                project_id = format_project_id(session.project_path if session else None, request.session_id)
+                tool_summary = self._format_tool_summary(request.tool_name, request.tool_input)
+                emoji = "✅" if action == "approve" else "❌"
+                await self.notifier.edit_message(
+                    msg_id,
+                    f"<i>{project_id}</i>\n{emoji} <b>[{request.tool_name}]</b> <code>{tool_summary}</code>",
+                )
+
+            await self.storage.log_audit(
+                event_type="response",
+                session_id=request.session_id,
+                details={
+                    "request_id": request_id,
+                    "action": action,
+                    "resolved_by": "user",
+                },
+            )
+        except Exception as e:
+            debug_callback(f"Error in _handle_approval", error=str(e)[:100], request_id=request_id)
+            await self.notifier.answer_callback(callback_id, "Error occurred")
 
     async def _handle_deny_msg(
         self,
@@ -472,7 +482,6 @@ class Poller:
     async def _handle_approve_all(self, session_id: str, tool_name: Optional[str], callback_id: str) -> None:
         """Approve all pending requests for a session and tool type, and add a rule for future requests."""
         try:
-            import traceback
             from pyafk.core.rules import RulesEngine
             debug_callback(f"_handle_approve_all called", session_id=session_id, tool_name=tool_name)
             pending = await self.storage.get_pending_requests()
@@ -526,10 +535,8 @@ class Poller:
                     f"Approved {len(to_approve)} {tool_label}",
                 )
         except Exception as e:
-            import traceback as tb
-            debug_callback(f"ERROR in _handle_approve_all", error=str(e), tb=tb.format_exc()[:500])
-            await self.notifier.answer_callback(callback_id, f"Error: {str(e)[:50]}")
-            raise
+            debug_callback(f"Error in _handle_approve_all", error=str(e)[:100], session_id=session_id)
+            await self.notifier.answer_callback(callback_id, "Error occurred")
 
     async def _handle_cancel_rule(
         self,
@@ -587,47 +594,51 @@ class Poller:
 
     async def _handle_add_rule(self, request_id: str, callback_id: str, message_id: Optional[int] = None, pattern_idx: int = 0) -> None:
         """Handle add rule selection - creates auto-approve rule and approves request."""
-        request = await self.storage.get_request(request_id)
-        if not request:
-            await self.notifier.answer_callback(callback_id, "Request not found")
-            if message_id:
-                await self.notifier.edit_message(message_id, "⚠️ Request expired")
-            return
+        try:
+            request = await self.storage.get_request(request_id)
+            if not request:
+                await self.notifier.answer_callback(callback_id, "Request not found")
+                if message_id:
+                    await self.notifier.edit_message(message_id, "⚠️ Request expired")
+                return
 
-        # Get session for project_path
-        session = await self.storage.get_session(request.session_id)
-        project_path = session.project_path if session else None
-
-        # Get the selected pattern (tuple of pattern, label)
-        patterns = self._generate_rule_patterns(request.tool_name, request.tool_input, project_path)
-        pattern, label = patterns[pattern_idx] if pattern_idx < len(patterns) else patterns[0]
-
-        # Add the rule
-        from pyafk.core.rules import RulesEngine
-        engine = RulesEngine(self.storage)
-        await engine.add_rule(pattern, "approve", priority=0, created_via="telegram")
-
-        # Also approve this request
-        await self.storage.resolve_request(
-            request_id=request_id,
-            status="approved",
-            resolved_by="user:add_rule",
-        )
-
-        # Update the message (same as original since we're inline now)
-        if message_id:
+            # Get session for project_path
             session = await self.storage.get_session(request.session_id)
-            project_id = format_project_id(session.project_path if session else None, request.session_id)
-            tool_summary = self._format_tool_summary(request.tool_name, request.tool_input)
-            await self.notifier.edit_message(
-                message_id,
-                f"<i>{project_id}</i>\n✅ <b>[{request.tool_name}]</b> <code>{tool_summary}</code>\n📝 Rule: {label}",
+            project_path = session.project_path if session else None
+
+            # Get the selected pattern (tuple of pattern, label)
+            patterns = self._generate_rule_patterns(request.tool_name, request.tool_input, project_path)
+            pattern, label = patterns[pattern_idx] if pattern_idx < len(patterns) else patterns[0]
+
+            # Add the rule
+            from pyafk.core.rules import RulesEngine
+            engine = RulesEngine(self.storage)
+            await engine.add_rule(pattern, "approve", priority=0, created_via="telegram")
+
+            # Also approve this request
+            await self.storage.resolve_request(
+                request_id=request_id,
+                status="approved",
+                resolved_by="user:add_rule",
             )
 
-        await self.notifier.answer_callback(
-            callback_id,
-            f"Rule added",
-        )
+            # Update the message (same as original since we're inline now)
+            if message_id:
+                session = await self.storage.get_session(request.session_id)
+                project_id = format_project_id(session.project_path if session else None, request.session_id)
+                tool_summary = self._format_tool_summary(request.tool_name, request.tool_input)
+                await self.notifier.edit_message(
+                    message_id,
+                    f"<i>{project_id}</i>\n✅ <b>[{request.tool_name}]</b> <code>{tool_summary}</code>\n📝 Rule: {label}",
+                )
+
+            await self.notifier.answer_callback(
+                callback_id,
+                f"Rule added",
+            )
+        except Exception as e:
+            debug_callback(f"Error in _handle_add_rule", error=str(e)[:100], request_id=request_id)
+            await self.notifier.answer_callback(callback_id, "Error occurred")
 
     async def _handle_subagent_ok(
         self,
@@ -682,103 +693,107 @@ class Poller:
         message_id: Optional[int] = None,
     ) -> None:
         """Handle chain approval for one command."""
-        debug_chain(f"chain_approve called", request_id=request_id, command_idx=command_idx)
-        request = await self.storage.get_request(request_id)
-        if not request:
-            debug_chain(f"Request not found", request_id=request_id)
-            await self.notifier.answer_callback(callback_id, "Request not found")
-            if message_id:
-                await self.notifier.edit_message(message_id, "⚠️ Request expired")
-            return
-
-        # Get chain state from pending_feedback (stored as JSON)
-        result = await self._get_chain_state(request_id)
-        debug_chain(f"Got chain state", result=result)
-        if result:
-            chain_state, version = result
-        else:
-            # Initialize chain state from tool_input
-            try:
-                data = json.loads(request.tool_input)
-                cmd = data.get("command", "")
-                # Parse commands from the bash chain using split_chain
-                parser = CommandParser()
-                commands = parser.split_chain(cmd)
-                chain_state = {
-                    "commands": commands,
-                    "approved_indices": [],
-                }
-                version = 0
-            except Exception:
-                await self.notifier.answer_callback(callback_id, "Failed to parse chain")
+        try:
+            debug_chain(f"chain_approve called", request_id=request_id, command_idx=command_idx)
+            request = await self.storage.get_request(request_id)
+            if not request:
+                debug_chain(f"Request not found", request_id=request_id)
+                await self.notifier.answer_callback(callback_id, "Request not found")
+                if message_id:
+                    await self.notifier.edit_message(message_id, "⚠️ Request expired")
                 return
 
-        # Mark this command as approved
-        if command_idx not in chain_state["approved_indices"]:
-            chain_state["approved_indices"].append(command_idx)
-            debug_chain(f"Added command to approved", command_idx=command_idx, approved=chain_state["approved_indices"])
-
-        # Save updated state with optimistic locking
-        if not await self._save_chain_state(request_id, chain_state, version):
-            # Conflict - re-read and retry once
-            debug_chain(f"Save conflict, retrying", request_id=request_id)
+            # Get chain state from pending_feedback (stored as JSON)
             result = await self._get_chain_state(request_id)
+            debug_chain(f"Got chain state", result=result)
             if result:
                 chain_state, version = result
-                if command_idx not in chain_state["approved_indices"]:
-                    chain_state["approved_indices"].append(command_idx)
-                await self._save_chain_state(request_id, chain_state, version)
-        debug_chain(f"Saved chain state", approved_count=len(chain_state["approved_indices"]), total=len(chain_state["commands"]))
+            else:
+                # Initialize chain state from tool_input
+                try:
+                    data = json.loads(request.tool_input)
+                    cmd = data.get("command", "")
+                    # Parse commands from the bash chain using split_chain
+                    parser = CommandParser()
+                    commands = parser.split_chain(cmd)
+                    chain_state = {
+                        "commands": commands,
+                        "approved_indices": [],
+                    }
+                    version = 0
+                except Exception:
+                    await self.notifier.answer_callback(callback_id, "Failed to parse chain")
+                    return
 
-        await self.notifier.answer_callback(callback_id, "Approved")
+            # Mark this command as approved
+            if command_idx not in chain_state["approved_indices"]:
+                chain_state["approved_indices"].append(command_idx)
+                debug_chain(f"Added command to approved", command_idx=command_idx, approved=chain_state["approved_indices"])
 
-        # Check if all commands are approved
-        if len(chain_state["approved_indices"]) >= len(chain_state["commands"]):
-            debug_chain(f"All commands approved, auto-approving chain")
-            # All approved - auto-approve the entire chain (no extra button click needed)
-            await self.storage.resolve_request(
-                request_id=request_id,
-                status="approved",
-                resolved_by="user:chain_all_approved",
-            )
-            await self._clear_chain_state(request_id)
+            # Save updated state with optimistic locking
+            if not await self._save_chain_state(request_id, chain_state, version):
+                # Conflict - re-read and retry once
+                debug_chain(f"Save conflict, retrying", request_id=request_id)
+                result = await self._get_chain_state(request_id)
+                if result:
+                    chain_state, version = result
+                    if command_idx not in chain_state["approved_indices"]:
+                        chain_state["approved_indices"].append(command_idx)
+                    await self._save_chain_state(request_id, chain_state, version)
+            debug_chain(f"Saved chain state", approved_count=len(chain_state["approved_indices"]), total=len(chain_state["commands"]))
 
-            if message_id:
-                session = await self.storage.get_session(request.session_id)
-                project_id = format_project_id(session.project_path if session else None, request.session_id)
-                msg = self._format_chain_approved_message(chain_state["commands"], project_id)
-                await self.notifier.edit_message(message_id, msg)
+            await self.notifier.answer_callback(callback_id, "Approved")
 
-            await self.storage.log_audit(
-                event_type="response",
-                session_id=request.session_id,
-                details={
-                    "request_id": request_id,
-                    "action": "approve",
-                    "resolved_by": "user:chain_all_approved",
-                    "chain": True,
-                    "command_count": len(chain_state["commands"]),
-                },
-            )
-        else:
-            # Find first unapproved command (start from 0, not command_idx + 1)
-            next_idx = 0
-            while next_idx < len(chain_state["commands"]) and next_idx in chain_state["approved_indices"]:
-                next_idx += 1
-
-            debug_chain(f"Moving to next command", next_idx=next_idx, approved_indices=chain_state["approved_indices"])
-
-            if message_id and next_idx < len(chain_state["commands"]):
-                session = await self.storage.get_session(request.session_id)
-                await self.notifier.update_chain_progress(
-                    message_id=message_id,
+            # Check if all commands are approved
+            if len(chain_state["approved_indices"]) >= len(chain_state["commands"]):
+                debug_chain(f"All commands approved, auto-approving chain")
+                # All approved - auto-approve the entire chain (no extra button click needed)
+                await self.storage.resolve_request(
                     request_id=request_id,
-                    session_id=request.session_id,
-                    commands=chain_state["commands"],
-                    current_idx=next_idx,
-                    approved_indices=chain_state["approved_indices"],
-                    project_path=session.project_path if session else None,
+                    status="approved",
+                    resolved_by="user:chain_all_approved",
                 )
+                await self._clear_chain_state(request_id)
+
+                if message_id:
+                    session = await self.storage.get_session(request.session_id)
+                    project_id = format_project_id(session.project_path if session else None, request.session_id)
+                    msg = self._format_chain_approved_message(chain_state["commands"], project_id)
+                    await self.notifier.edit_message(message_id, msg)
+
+                await self.storage.log_audit(
+                    event_type="response",
+                    session_id=request.session_id,
+                    details={
+                        "request_id": request_id,
+                        "action": "approve",
+                        "resolved_by": "user:chain_all_approved",
+                        "chain": True,
+                        "command_count": len(chain_state["commands"]),
+                    },
+                )
+            else:
+                # Find first unapproved command (start from 0, not command_idx + 1)
+                next_idx = 0
+                while next_idx < len(chain_state["commands"]) and next_idx in chain_state["approved_indices"]:
+                    next_idx += 1
+
+                debug_chain(f"Moving to next command", next_idx=next_idx, approved_indices=chain_state["approved_indices"])
+
+                if message_id and next_idx < len(chain_state["commands"]):
+                    session = await self.storage.get_session(request.session_id)
+                    await self.notifier.update_chain_progress(
+                        message_id=message_id,
+                        request_id=request_id,
+                        session_id=request.session_id,
+                        commands=chain_state["commands"],
+                        current_idx=next_idx,
+                        approved_indices=chain_state["approved_indices"],
+                        project_path=session.project_path if session else None,
+                    )
+        except Exception as e:
+            debug_callback(f"Error in _handle_chain_approve", error=str(e)[:100], request_id=request_id)
+            await self.notifier.answer_callback(callback_id, "Error occurred")
 
     async def _handle_chain_deny(
         self,
@@ -1029,136 +1044,140 @@ class Poller:
         message_id: Optional[int] = None,
     ) -> None:
         """Handle rule pattern selection for a chain command."""
-        debug_rule(f"chain_rule_pattern called", request_id=request_id, command_idx=command_idx, pattern_idx=pattern_idx)
-        request = await self.storage.get_request(request_id)
-        if not request:
-            debug_rule(f"Request not found", request_id=request_id)
-            await self.notifier.answer_callback(callback_id, "Request not found")
-            if message_id:
-                await self.notifier.edit_message(message_id, "⚠️ Request expired")
-            return
+        try:
+            debug_rule(f"chain_rule_pattern called", request_id=request_id, command_idx=command_idx, pattern_idx=pattern_idx)
+            request = await self.storage.get_request(request_id)
+            if not request:
+                debug_rule(f"Request not found", request_id=request_id)
+                await self.notifier.answer_callback(callback_id, "Request not found")
+                if message_id:
+                    await self.notifier.edit_message(message_id, "⚠️ Request expired")
+                return
 
-        # Get chain state
-        result = await self._get_chain_state(request_id)
-        debug_rule(f"Got chain state", result=result)
-        if not result:
-            debug_rule(f"Chain state not found", request_id=request_id)
-            await self.notifier.answer_callback(callback_id, "Chain state not found")
-            return
-        chain_state, version = result
-        if command_idx >= len(chain_state["commands"]):
-            debug_rule(f"Invalid command", command_idx=command_idx, chain_state=chain_state)
-            await self.notifier.answer_callback(callback_id, "Invalid command")
-            return
-
-        # Get the specific command and generate patterns
-        cmd = chain_state["commands"][command_idx]
-        tool_input = json.dumps({"command": cmd})
-        patterns = self._generate_rule_patterns("Bash", tool_input)
-        debug_rule(f"Generated patterns", cmd=cmd[:50], pattern_count=len(patterns))
-
-        if pattern_idx >= len(patterns):
-            await self.notifier.answer_callback(callback_id, "Invalid pattern")
-            return
-
-        pattern, label = patterns[pattern_idx]
-        debug_rule(f"Selected pattern", pattern=pattern, label=label)
-
-        # Add the rule
-        from pyafk.core.rules import RulesEngine
-        engine = RulesEngine(self.storage)
-        await engine.add_rule(pattern, "approve", priority=0, created_via="telegram")
-
-        # Also mark this command as approved in the chain
-        if command_idx not in chain_state["approved_indices"]:
-            chain_state["approved_indices"].append(command_idx)
-            debug_rule(f"Marked command approved", command_idx=command_idx, approved=chain_state["approved_indices"])
-
-        # Check if the new rule also matches other commands in the chain
-        auto_approved = []
-        for idx, other_cmd in enumerate(chain_state["commands"]):
-            if idx in chain_state["approved_indices"]:
-                continue  # Already approved
-
-            # Check if this command matches the new rule
-            other_input = json.dumps({"command": other_cmd})
-            rule_result = await engine.check("Bash", other_input)
-            if rule_result == "approve":
-                chain_state["approved_indices"].append(idx)
-                auto_approved.append(idx)
-                debug_rule(f"Auto-approved by new rule", idx=idx, cmd=other_cmd[:50])
-
-        # Save with optimistic locking
-        if not await self._save_chain_state(request_id, chain_state, version):
-            # Conflict - re-read and retry once
-            debug_rule(f"Save conflict, retrying", request_id=request_id)
+            # Get chain state
             result = await self._get_chain_state(request_id)
-            if result:
-                chain_state, version = result
-                # Re-apply changes
-                if command_idx not in chain_state["approved_indices"]:
-                    chain_state["approved_indices"].append(command_idx)
-                # Re-check auto-approvals
-                auto_approved = []
-                for idx, other_cmd in enumerate(chain_state["commands"]):
-                    if idx in chain_state["approved_indices"]:
-                        continue
-                    other_input = json.dumps({"command": other_cmd})
-                    rule_result = await engine.check("Bash", other_input)
-                    if rule_result == "approve":
-                        chain_state["approved_indices"].append(idx)
-                        auto_approved.append(idx)
-                await self._save_chain_state(request_id, chain_state, version)
+            debug_rule(f"Got chain state", result=result)
+            if not result:
+                debug_rule(f"Chain state not found", request_id=request_id)
+                await self.notifier.answer_callback(callback_id, "Chain state not found")
+                return
+            chain_state, version = result
+            if command_idx >= len(chain_state["commands"]):
+                debug_rule(f"Invalid command", command_idx=command_idx, chain_state=chain_state)
+                await self.notifier.answer_callback(callback_id, "Invalid command")
+                return
 
-        if auto_approved:
-            await self.notifier.answer_callback(callback_id, f"Rule added (+{len(auto_approved)} auto-approved)")
-        else:
-            await self.notifier.answer_callback(callback_id, "Rule added")
+            # Get the specific command and generate patterns
+            cmd = chain_state["commands"][command_idx]
+            tool_input = json.dumps({"command": cmd})
+            patterns = self._generate_rule_patterns("Bash", tool_input)
+            debug_rule(f"Generated patterns", cmd=cmd[:50], pattern_count=len(patterns))
 
-        # Update UI to show progress
-        if message_id:
-            session = await self.storage.get_session(request.session_id)
+            if pattern_idx >= len(patterns):
+                await self.notifier.answer_callback(callback_id, "Invalid pattern")
+                return
 
-            # Check if all commands are approved
-            if len(chain_state["approved_indices"]) >= len(chain_state["commands"]):
-                # All approved - auto-approve the entire chain instead of showing button
-                await self.storage.resolve_request(
-                    request_id=request_id,
-                    status="approved",
-                    resolved_by="chain_all_approved",
-                )
-                await self._clear_chain_state(request_id)
+            pattern, label = patterns[pattern_idx]
+            debug_rule(f"Selected pattern", pattern=pattern, label=label)
 
-                await self.storage.log_audit(
-                    event_type="chain_approved",
-                    session_id=request.session_id,
-                    details={
-                        "request_id": request_id,
-                        "commands": chain_state["commands"],
-                        "method": "all_commands_approved",
-                    },
-                )
+            # Add the rule
+            from pyafk.core.rules import RulesEngine
+            engine = RulesEngine(self.storage)
+            await engine.add_rule(pattern, "approve", priority=0, created_via="telegram")
 
-                # Update message to show all approved
-                project_id = format_project_id(session.project_path if session else None, request.session_id)
-                msg = self._format_chain_approved_message(chain_state["commands"], project_id)
-                await self.notifier.edit_message(message_id, msg)
+            # Also mark this command as approved in the chain
+            if command_idx not in chain_state["approved_indices"]:
+                chain_state["approved_indices"].append(command_idx)
+                debug_rule(f"Marked command approved", command_idx=command_idx, approved=chain_state["approved_indices"])
+
+            # Check if the new rule also matches other commands in the chain
+            auto_approved = []
+            for idx, other_cmd in enumerate(chain_state["commands"]):
+                if idx in chain_state["approved_indices"]:
+                    continue  # Already approved
+
+                # Check if this command matches the new rule
+                other_input = json.dumps({"command": other_cmd})
+                rule_result = await engine.check("Bash", other_input)
+                if rule_result == "approve":
+                    chain_state["approved_indices"].append(idx)
+                    auto_approved.append(idx)
+                    debug_rule(f"Auto-approved by new rule", idx=idx, cmd=other_cmd[:50])
+
+            # Save with optimistic locking
+            if not await self._save_chain_state(request_id, chain_state, version):
+                # Conflict - re-read and retry once
+                debug_rule(f"Save conflict, retrying", request_id=request_id)
+                result = await self._get_chain_state(request_id)
+                if result:
+                    chain_state, version = result
+                    # Re-apply changes
+                    if command_idx not in chain_state["approved_indices"]:
+                        chain_state["approved_indices"].append(command_idx)
+                    # Re-check auto-approvals
+                    auto_approved = []
+                    for idx, other_cmd in enumerate(chain_state["commands"]):
+                        if idx in chain_state["approved_indices"]:
+                            continue
+                        other_input = json.dumps({"command": other_cmd})
+                        rule_result = await engine.check("Bash", other_input)
+                        if rule_result == "approve":
+                            chain_state["approved_indices"].append(idx)
+                            auto_approved.append(idx)
+                    await self._save_chain_state(request_id, chain_state, version)
+
+            if auto_approved:
+                await self.notifier.answer_callback(callback_id, f"Rule added (+{len(auto_approved)} auto-approved)")
             else:
-                # Find first unapproved command (start from 0, not command_idx + 1)
-                next_idx = 0
-                while next_idx < len(chain_state["commands"]) and next_idx in chain_state["approved_indices"]:
-                    next_idx += 1
+                await self.notifier.answer_callback(callback_id, "Rule added")
 
-                if next_idx < len(chain_state["commands"]):
-                    await self.notifier.update_chain_progress(
-                        message_id=message_id,
+            # Update UI to show progress
+            if message_id:
+                session = await self.storage.get_session(request.session_id)
+
+                # Check if all commands are approved
+                if len(chain_state["approved_indices"]) >= len(chain_state["commands"]):
+                    # All approved - auto-approve the entire chain instead of showing button
+                    await self.storage.resolve_request(
                         request_id=request_id,
-                        session_id=request.session_id,
-                        commands=chain_state["commands"],
-                        current_idx=next_idx,
-                        approved_indices=chain_state["approved_indices"],
-                        project_path=session.project_path if session else None,
+                        status="approved",
+                        resolved_by="chain_all_approved",
                     )
+                    await self._clear_chain_state(request_id)
+
+                    await self.storage.log_audit(
+                        event_type="chain_approved",
+                        session_id=request.session_id,
+                        details={
+                            "request_id": request_id,
+                            "commands": chain_state["commands"],
+                            "method": "all_commands_approved",
+                        },
+                    )
+
+                    # Update message to show all approved
+                    project_id = format_project_id(session.project_path if session else None, request.session_id)
+                    msg = self._format_chain_approved_message(chain_state["commands"], project_id)
+                    await self.notifier.edit_message(message_id, msg)
+                else:
+                    # Find first unapproved command (start from 0, not command_idx + 1)
+                    next_idx = 0
+                    while next_idx < len(chain_state["commands"]) and next_idx in chain_state["approved_indices"]:
+                        next_idx += 1
+
+                    if next_idx < len(chain_state["commands"]):
+                        await self.notifier.update_chain_progress(
+                            message_id=message_id,
+                            request_id=request_id,
+                            session_id=request.session_id,
+                            commands=chain_state["commands"],
+                            current_idx=next_idx,
+                            approved_indices=chain_state["approved_indices"],
+                            project_path=session.project_path if session else None,
+                        )
+        except Exception as e:
+            debug_callback(f"Error in _handle_chain_rule_pattern", error=str(e)[:100], request_id=request_id)
+            await self.notifier.answer_callback(callback_id, "Error occurred")
 
     async def _handle_chain_approve_all(
         self,
@@ -1223,54 +1242,58 @@ class Poller:
         message_id: Optional[int] = None,
     ) -> None:
         """Handle upfront approval of entire chain (without individual command approval)."""
-        debug_chain(f"chain_approve_entire called", request_id=request_id)
-        request = await self.storage.get_request(request_id)
-        if not request:
-            debug_chain(f"Request not found", request_id=request_id)
-            await self.notifier.answer_callback(callback_id, "Request not found")
-            if message_id:
-                await self.notifier.edit_message(message_id, "⚠️ Request expired")
-            return
-
-        # Parse commands from tool_input
         try:
-            data = json.loads(request.tool_input)
-            cmd = data.get("command", "")
-            parser = CommandParser()
-            commands = parser.split_chain(cmd)
-        except Exception:
-            commands = []
+            debug_chain(f"chain_approve_entire called", request_id=request_id)
+            request = await self.storage.get_request(request_id)
+            if not request:
+                debug_chain(f"Request not found", request_id=request_id)
+                await self.notifier.answer_callback(callback_id, "Request not found")
+                if message_id:
+                    await self.notifier.edit_message(message_id, "⚠️ Request expired")
+                return
 
-        # Approve the request directly
-        await self.storage.resolve_request(
-            request_id=request_id,
-            status="approved",
-            resolved_by="user:chain_entire",
-        )
+            # Parse commands from tool_input
+            try:
+                data = json.loads(request.tool_input)
+                cmd = data.get("command", "")
+                parser = CommandParser()
+                commands = parser.split_chain(cmd)
+            except Exception:
+                commands = []
 
-        await self.notifier.answer_callback(callback_id, "Chain approved")
+            # Approve the request directly
+            await self.storage.resolve_request(
+                request_id=request_id,
+                status="approved",
+                resolved_by="user:chain_entire",
+            )
 
-        # Update message
-        if message_id:
-            session = await self.storage.get_session(request.session_id)
-            project_id = format_project_id(session.project_path if session else None, request.session_id)
-            if commands:
-                msg = self._format_chain_approved_message(commands, project_id)
-            else:
-                msg = f"<i>{project_id}</i>\n✅ <b>Chain approved</b>"
-            await self.notifier.edit_message(message_id, msg)
+            await self.notifier.answer_callback(callback_id, "Chain approved")
 
-        await self.storage.log_audit(
-            event_type="response",
-            session_id=request.session_id,
-            details={
-                "request_id": request_id,
-                "action": "approve",
-                "resolved_by": "user:chain_entire",
-                "chain": True,
-                "command_count": len(commands) if commands else 0,
-            },
-        )
+            # Update message
+            if message_id:
+                session = await self.storage.get_session(request.session_id)
+                project_id = format_project_id(session.project_path if session else None, request.session_id)
+                if commands:
+                    msg = self._format_chain_approved_message(commands, project_id)
+                else:
+                    msg = f"<i>{project_id}</i>\n✅ <b>Chain approved</b>"
+                await self.notifier.edit_message(message_id, msg)
+
+            await self.storage.log_audit(
+                event_type="response",
+                session_id=request.session_id,
+                details={
+                    "request_id": request_id,
+                    "action": "approve",
+                    "resolved_by": "user:chain_entire",
+                    "chain": True,
+                    "command_count": len(commands) if commands else 0,
+                },
+            )
+        except Exception as e:
+            debug_callback(f"Error in _handle_chain_approve_entire", error=str(e)[:100], request_id=request_id)
+            await self.notifier.answer_callback(callback_id, "Error occurred")
 
     def _chain_state_key(self, request_id: str) -> int:
         """Generate stable key for chain state storage.
