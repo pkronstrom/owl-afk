@@ -5,7 +5,7 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import aiosqlite
 
@@ -124,14 +124,14 @@ class Storage:
         self.db_path = db_path
         self._conn: Optional[aiosqlite.Connection] = None
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "Storage":
         await self.connect()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         await self.close()
 
-    async def connect(self):
+    async def connect(self) -> None:
         """Open database connection."""
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = await aiosqlite.connect(self.db_path)
@@ -147,7 +147,7 @@ class Storage:
         await self._conn.executescript(SCHEMA)
         await self._conn.commit()
 
-    async def close(self):
+    async def close(self) -> None:
         """Close database connection."""
         if self._conn:
             await self._conn.close()
@@ -212,7 +212,7 @@ class Storage:
         status: str,
         resolved_by: str,
         denial_reason: Optional[str] = None,
-    ):
+    ) -> None:
         """Update request status."""
         now = time.time()
         await self._conn.execute(
@@ -232,7 +232,7 @@ class Storage:
         rows = await cursor.fetchall()
         return [Request(**dict(row)) for row in rows]
 
-    async def set_telegram_msg_id(self, request_id: str, msg_id: int):
+    async def set_telegram_msg_id(self, request_id: str, msg_id: int) -> None:
         """Set the Telegram message ID for a request."""
         await self._conn.execute(
             "UPDATE requests SET telegram_msg_id = ? WHERE id = ?",
@@ -242,7 +242,7 @@ class Storage:
 
     # Pending feedback
 
-    async def set_pending_feedback(self, prompt_msg_id: int, request_id: str):
+    async def set_pending_feedback(self, prompt_msg_id: int, request_id: str) -> None:
         """Track a feedback prompt message."""
         now = time.time()
         await self._conn.execute(
@@ -263,7 +263,7 @@ class Storage:
         row = await cursor.fetchone()
         return row["request_id"] if row else None
 
-    async def clear_pending_feedback(self, prompt_msg_id: int):
+    async def clear_pending_feedback(self, prompt_msg_id: int) -> None:
         """Remove a pending feedback entry."""
         await self._conn.execute(
             "DELETE FROM pending_feedback WHERE prompt_msg_id = ?",
@@ -273,7 +273,7 @@ class Storage:
 
     # Pending subagent responses
 
-    async def create_pending_subagent(self, subagent_id: str, telegram_msg_id: Optional[int] = None):
+    async def create_pending_subagent(self, subagent_id: str, telegram_msg_id: Optional[int] = None) -> None:
         """Create a pending subagent entry."""
         now = time.time()
         await self._conn.execute(
@@ -285,7 +285,7 @@ class Storage:
         )
         await self._conn.commit()
 
-    async def get_pending_subagent(self, subagent_id: str) -> Optional[dict]:
+    async def get_pending_subagent(self, subagent_id: str) -> Optional[dict[str, Any]]:
         """Get pending subagent entry."""
         cursor = await self._conn.execute(
             "SELECT * FROM pending_subagent WHERE subagent_id = ?",
@@ -294,7 +294,7 @@ class Storage:
         row = await cursor.fetchone()
         return dict(row) if row else None
 
-    async def get_subagent_by_telegram_msg(self, telegram_msg_id: int) -> Optional[dict]:
+    async def get_subagent_by_telegram_msg(self, telegram_msg_id: int) -> Optional[dict[str, Any]]:
         """Get pending subagent entry by telegram message ID."""
         cursor = await self._conn.execute(
             "SELECT * FROM pending_subagent WHERE telegram_msg_id = ? AND status = 'pending'",
@@ -303,7 +303,7 @@ class Storage:
         row = await cursor.fetchone()
         return dict(row) if row else None
 
-    async def resolve_subagent(self, subagent_id: str, status: str, response: Optional[str] = None):
+    async def resolve_subagent(self, subagent_id: str, status: str, response: Optional[str] = None) -> None:
         """Resolve a pending subagent."""
         await self._conn.execute(
             "UPDATE pending_subagent SET status = ?, response = ? WHERE subagent_id = ?",
@@ -311,7 +311,7 @@ class Storage:
         )
         await self._conn.commit()
 
-    async def set_subagent_continue_prompt(self, subagent_id: str, prompt_msg_id: int):
+    async def set_subagent_continue_prompt(self, subagent_id: str, prompt_msg_id: int) -> None:
         """Track the continue prompt message for a subagent."""
         await self._conn.execute(
             """
@@ -328,7 +328,7 @@ class Storage:
         self,
         session_id: str,
         project_path: Optional[str] = None,
-    ):
+    ) -> None:
         """Create or update a session."""
         now = time.time()
         await self._conn.execute(
@@ -367,8 +367,8 @@ class Storage:
         self,
         event_type: str,
         session_id: Optional[str] = None,
-        details: Optional[dict] = None,
-    ):
+        details: Optional[dict[str, Any]] = None,
+    ) -> None:
         """Append to audit log."""
         now = time.time()
         details_json = json.dumps(details) if details else None
@@ -395,7 +395,7 @@ class Storage:
         return entries
 
     # Pending messages for /msg command
-    async def add_pending_message(self, session_id: str, message: str):
+    async def add_pending_message(self, session_id: str, message: str) -> None:
         """Add a pending message for a session."""
         await self._conn.execute(
             """
@@ -421,7 +421,7 @@ class Storage:
         )
         return [(row["id"], row["message"]) for row in await cursor.fetchall()]
 
-    async def mark_message_delivered(self, message_id: int):
+    async def mark_message_delivered(self, message_id: int) -> None:
         """Mark a message as delivered."""
         await self._conn.execute(
             "UPDATE pending_messages SET delivered_at = ? WHERE id = ?",
@@ -440,7 +440,7 @@ class Storage:
         row = await cursor.fetchone()
         return row["request_id"] if row else None
 
-    async def save_chain_state(self, msg_id: int, state_json: str):
+    async def save_chain_state(self, msg_id: int, state_json: str) -> None:
         """Save chain approval state JSON."""
         await self._conn.execute(
             """
@@ -451,7 +451,7 @@ class Storage:
         )
         await self._conn.commit()
 
-    async def clear_chain_state(self, msg_id: int):
+    async def clear_chain_state(self, msg_id: int) -> None:
         """Clear chain approval state."""
         await self._conn.execute(
             "DELETE FROM pending_feedback WHERE prompt_msg_id = ?",
@@ -461,7 +461,7 @@ class Storage:
 
     # Auto-approve rules
 
-    async def get_rules(self) -> list[dict]:
+    async def get_rules(self) -> list[dict[str, Any]]:
         """Get all auto-approve rules sorted by priority."""
         cursor = await self._conn.execute(
             "SELECT * FROM auto_approve_rules ORDER BY priority DESC, id"
@@ -477,7 +477,7 @@ class Storage:
         rows = await cursor.fetchall()
         return [(row["pattern"], row["action"]) for row in rows]
 
-    async def get_rule_by_pattern(self, pattern: str, action: str) -> Optional[dict]:
+    async def get_rule_by_pattern(self, pattern: str, action: str) -> Optional[dict[str, Any]]:
         """Get a rule by pattern and action."""
         cursor = await self._conn.execute(
             "SELECT * FROM auto_approve_rules WHERE pattern = ? AND action = ?",
