@@ -180,7 +180,7 @@ class Poller:
                 await self.storage.resolve_subagent(subagent_id, "continue", instructions)
                 await self.notifier.send_message(f"📨 Instructions sent to agent")
                 # Update the original message to show it's been handled
-                await self.notifier.edit_message(reply_msg_id, "✅ Subagent continued with instructions")
+                await self.notifier.edit_message(reply_msg_id, "✅ Subagent continued with instructions", parse_mode=None)
                 debug_callback(f"Sent instructions to subagent", subagent_id=subagent_id[:8])
                 return
 
@@ -683,6 +683,7 @@ class Poller:
             await self.notifier.edit_message(
                 message_id,
                 "⏳ Waiting for instructions...",
+                parse_mode=None,
             )
 
     async def _handle_chain_approve(
