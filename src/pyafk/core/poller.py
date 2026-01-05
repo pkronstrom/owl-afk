@@ -137,10 +137,17 @@ class Poller:
         return processed
 
     async def _handle_message(self, message: dict):
-        """Handle a text message - check if it's feedback for a denial or subagent."""
+        """Handle a text message - check for commands, feedback, or subagent replies."""
+        text = message.get("text", "")
+        debug_callback(f"_handle_message called", text=text[:50] if text else "", has_text=bool(text))
+
+        # Handle /msg command
+        if text.startswith("/msg"):
+            await self._handle_msg_command(text, message)
+            return
+
         reply_to = message.get("reply_to_message", {})
         reply_msg_id = reply_to.get("message_id")
-        debug_callback(f"_handle_message called", reply_msg_id=reply_msg_id, has_text=bool(message.get("text")))
         if not reply_msg_id:
             debug_callback(f"No reply_to_message, ignoring")
             return
@@ -148,7 +155,29 @@ class Poller:
         # Check if this is a reply to a feedback prompt we sent
         request_id = await self.storage.get_pending_feedback(reply_msg_id)
         debug_callback(f"Looked up pending_feedback", reply_msg_id=reply_msg_id, request_id=request_id)
+
         if not request_id:
+            # Check if it's a reply to a subagent finish message
+            subagent = await self.storage.get_subagent_by_telegram_msg(reply_msg_id)
+            if subagent:
+                instructions = message.get("text", "")
+                subagent_id = subagent["subagent_id"]
+                await self.storage.resolve_subagent(subagent_id, "continue", instructions)
+                await self.notifier.send_message(f"📨 Instructions sent to agent")
+                # Update the original message to show it's been handled
+                await self.notifier.edit_message(reply_msg_id, "✅ Subagent continued with instructions")
+                debug_callback(f"Sent instructions to subagent", subagent_id=subagent_id[:8])
+                return
+
+            # Check if it's a reply to an approval message (for followup instructions)
+            request = await self.storage.get_request_by_telegram_msg(reply_msg_id)
+            if request:
+                followup = message.get("text", "")
+                await self.storage.add_pending_message(request.session_id, followup)
+                await self.notifier.send_message(
+                    f"📝 Followup queued for next tool call"
+                )
+                debug_callback(f"Queued followup message", session_id=request.session_id[:8])
             return
 
         feedback = message.get("text", "")
@@ -170,11 +199,75 @@ class Poller:
         prompt_msg_id: int,
     ):
         """Handle subagent continue instructions."""
+        debug_callback(f"_handle_subagent_feedback called", subagent_id=subagent_id, instructions=instructions[:50])
+
         # Clear the pending feedback entry
         await self.storage.clear_pending_feedback(prompt_msg_id)
 
         # Resolve the subagent with continue status and instructions
         await self.storage.resolve_subagent(subagent_id, "continue", instructions)
+        debug_callback(f"Resolved subagent with continue", subagent_id=subagent_id)
+
+        # Delete the prompt message and send confirmation
+        await self.notifier.delete_message(prompt_msg_id)
+        await self.notifier.send_message(f"📨 Instructions sent to agent")
+
+    async def _handle_msg_command(self, text: str, message: dict):
+        """Handle /msg command to send message to a Claude session.
+
+        Usage:
+            /msg - Show active sessions
+            /msg <session_id> <message> - Send message to session
+        """
+        parts = text.split(None, 2)  # Split: /msg, session_id, message
+
+        if len(parts) == 1:
+            # Just /msg - show active sessions
+            sessions = await self.storage.get_active_sessions()
+            if not sessions:
+                await self.notifier.send_message("No active sessions")
+                return
+
+            lines = ["<b>Active sessions:</b>\n"]
+            for s in sessions[-10:]:  # Last 10 sessions
+                # Show short ID and project path
+                short_id = s.session_id[:8]
+                project = s.project_path.split("/")[-1] if s.project_path else "unknown"
+                lines.append(f"<code>{short_id}</code> - {project}")
+
+            lines.append("\n<i>Use: /msg &lt;id&gt; &lt;message&gt;</i>")
+            await self.notifier.send_message("\n".join(lines))
+            return
+
+        if len(parts) < 3:
+            await self.notifier.send_message("Usage: /msg <session_id> <message>")
+            return
+
+        session_prefix = parts[1]
+        msg_text = parts[2]
+
+        # Find session by prefix
+        sessions = await self.storage.get_active_sessions()
+        matching = [s for s in sessions if s.session_id.startswith(session_prefix)]
+
+        if not matching:
+            await self.notifier.send_message(f"No session found matching '{session_prefix}'")
+            return
+
+        if len(matching) > 1:
+            await self.notifier.send_message(
+                f"Multiple sessions match '{session_prefix}'. Be more specific."
+            )
+            return
+
+        session = matching[0]
+        await self.storage.add_pending_message(session.session_id, msg_text)
+
+        short_id = session.session_id[:8]
+        project = session.project_path.split("/")[-1] if session.project_path else "unknown"
+        await self.notifier.send_message(
+            f"📨 Message queued for <code>{short_id}</code> ({project})"
+        )
 
     async def _handle_callback(self, callback: dict):
         """Handle a callback query from inline button."""
@@ -243,6 +336,14 @@ class Poller:
             await self._handle_chain_rule(request_id, command_idx, callback_id, message_id)
         elif action == "chain_approve_all":
             await self._handle_chain_approve_all(target_id, callback_id, message_id)
+        elif action == "chain_approve_entire":
+            await self._handle_chain_approve_entire(target_id, callback_id, message_id)
+        elif action == "chain_cancel_rule":
+            # Format: chain_cancel_rule:request_id:command_index
+            parts = target_id.split(":", 1)
+            request_id = parts[0]
+            command_idx = int(parts[1]) if len(parts) > 1 else 0
+            await self._handle_chain_cancel_rule(request_id, command_idx, callback_id, message_id)
 
     async def _handle_approval(
         self,
@@ -360,33 +461,66 @@ class Poller:
         )
 
     async def _handle_approve_all(self, session_id: str, tool_name: Optional[str], callback_id: str):
-        """Approve all pending requests for a session and tool type."""
-        pending = await self.storage.get_pending_requests()
+        """Approve all pending requests for a session and tool type, and add a rule for future requests."""
+        try:
+            import traceback
+            from pyafk.core.rules import RulesEngine
+            debug_callback(f"_handle_approve_all called", session_id=session_id, tool_name=tool_name)
+            pending = await self.storage.get_pending_requests()
+            debug_callback(f"Found pending requests", count=len(pending), pending_session_ids=[r.session_id for r in pending])
 
-        # Filter by session and tool type
-        to_approve = [
-            r for r in pending
-            if r.session_id == session_id and (tool_name is None or r.tool_name == tool_name)
-        ]
+            # Filter by session and tool type
+            to_approve = [
+                r for r in pending
+                if r.session_id == session_id and (tool_name is None or r.tool_name == tool_name)
+            ]
+            debug_callback(f"Filtered to_approve", count=len(to_approve))
 
-        for request in to_approve:
-            await self.storage.resolve_request(
-                request_id=request.id,
-                status="approved",
-                resolved_by="user:approve_all",
-            )
-            # Update the Telegram message
-            if request.telegram_msg_id:
-                await self.notifier.edit_message(
-                    request.telegram_msg_id,
-                    f"✅ APPROVED (all) - {request.tool_name}",
+            for request in to_approve:
+                debug_callback(f"Approving request", request_id=request.id, tool=request.tool_name)
+                await self.storage.resolve_request(
+                    request_id=request.id,
+                    status="approved",
+                    resolved_by="user:approve_all",
                 )
+                # Update the Telegram message
+                if request.telegram_msg_id:
+                    session = await self.storage.get_session(request.session_id)
+                    project_id = self._format_project_id(session.project_path if session else None, request.session_id)
+                    tool_summary = self._format_tool_summary(request.tool_name, request.tool_input)
+                    await self.notifier.edit_message(
+                        request.telegram_msg_id,
+                        f"<i>{project_id}</i>\n✅ <b>[{request.tool_name}]</b> <code>{tool_summary}</code>",
+                    )
+                debug_callback(f"Request approved", request_id=request.id)
 
-        tool_label = tool_name or "all"
-        await self.notifier.answer_callback(
-            callback_id,
-            f"Approved {len(to_approve)} {tool_label}",
-        )
+            # Add a rule to auto-approve future requests of this tool type
+            rule_added = False
+            if tool_name:
+                pattern = f"{tool_name}(*)"
+                engine = RulesEngine(self.storage)
+                await engine.add_rule(pattern, "approve", priority=0, created_via="telegram:approve_all")
+                debug_callback(f"Added rule for future requests", pattern=pattern)
+                rule_added = True
+
+            tool_label = tool_name or "all"
+            debug_callback(f"Approve all complete", approved=len(to_approve), tool=tool_label, rule_added=rule_added)
+
+            if rule_added:
+                await self.notifier.answer_callback(
+                    callback_id,
+                    f"Approved {len(to_approve)} + added rule for all {tool_name}",
+                )
+            else:
+                await self.notifier.answer_callback(
+                    callback_id,
+                    f"Approved {len(to_approve)} {tool_label}",
+                )
+        except Exception as e:
+            import traceback as tb
+            debug_callback(f"ERROR in _handle_approve_all", error=str(e), tb=tb.format_exc()[:500])
+            await self.notifier.answer_callback(callback_id, f"Error: {str(e)[:50]}")
+            raise
 
     async def _handle_cancel_rule(
         self,
@@ -425,8 +559,12 @@ class Poller:
                 await self.notifier.edit_message(message_id, "⚠️ Request expired")
             return
 
+        # Get session for project_path
+        session = await self.storage.get_session(request.session_id)
+        project_path = session.project_path if session else None
+
         # Generate pattern options
-        patterns = self._generate_rule_patterns(request.tool_name, request.tool_input)
+        patterns = self._generate_rule_patterns(request.tool_name, request.tool_input, project_path)
 
         await self.notifier.answer_callback(callback_id, "Choose pattern")
 
@@ -447,8 +585,12 @@ class Poller:
                 await self.notifier.edit_message(message_id, "⚠️ Request expired")
             return
 
+        # Get session for project_path
+        session = await self.storage.get_session(request.session_id)
+        project_path = session.project_path if session else None
+
         # Get the selected pattern (tuple of pattern, label)
-        patterns = self._generate_rule_patterns(request.tool_name, request.tool_input)
+        patterns = self._generate_rule_patterns(request.tool_name, request.tool_input, project_path)
         pattern, label = patterns[pattern_idx] if pattern_idx < len(patterns) else patterns[0]
 
         # Add the rule
@@ -485,15 +627,19 @@ class Poller:
         message_id: Optional[int] = None,
     ):
         """Handle subagent OK button - let subagent stop normally."""
+        debug_callback(f"_handle_subagent_ok called", subagent_id=subagent_id, message_id=message_id)
         await self.storage.resolve_subagent(subagent_id, "ok")
+        debug_callback(f"Resolved subagent", status="ok")
 
         await self.notifier.answer_callback(callback_id, "OK")
 
         if message_id:
+            debug_callback(f"Editing message", message_id=message_id)
             await self.notifier.edit_message(
                 message_id,
                 "✅ Subagent finished",
             )
+            debug_callback(f"Message edited")
 
     async def _handle_subagent_continue(
         self,
@@ -502,12 +648,22 @@ class Poller:
         message_id: Optional[int] = None,
     ):
         """Handle subagent Continue button - prompt for instructions."""
+        debug_callback(f"_handle_subagent_continue called", subagent_id=subagent_id, message_id=message_id)
         await self.notifier.answer_callback(callback_id, "Reply with instructions")
 
         # Send continue prompt
         prompt_msg_id = await self.notifier.send_continue_prompt()
+        debug_callback(f"Sent continue prompt", prompt_msg_id=prompt_msg_id)
         if prompt_msg_id:
             await self.storage.set_subagent_continue_prompt(subagent_id, prompt_msg_id)
+            debug_callback(f"Stored continue prompt", subagent_id=subagent_id)
+
+        # Update the original message to show waiting for instructions
+        if message_id:
+            await self.notifier.edit_message(
+                message_id,
+                "⏳ Waiting for instructions...",
+            )
 
     async def _handle_chain_approve(
         self,
@@ -559,20 +715,32 @@ class Poller:
 
         # Check if all commands are approved
         if len(chain_state["approved_indices"]) >= len(chain_state["commands"]):
-            debug_chain(f"All commands approved, showing final button")
-            # All approved - show final approval button
+            debug_chain(f"All commands approved, auto-approving chain")
+            # All approved - auto-approve the entire chain (no extra button click needed)
+            await self.storage.resolve_request(
+                request_id=request_id,
+                status="approved",
+                resolved_by="user:chain_all_approved",
+            )
+            await self._clear_chain_state(request_id)
+
             if message_id:
                 session = await self.storage.get_session(request.session_id)
-                await self.notifier.update_chain_progress(
-                    message_id=message_id,
-                    request_id=request_id,
-                    session_id=request.session_id,
-                    commands=chain_state["commands"],
-                    current_idx=len(chain_state["commands"]) - 1,
-                    approved_indices=chain_state["approved_indices"],
-                    project_path=session.project_path if session else None,
-                    final_approve=True,
-                )
+                project_id = self._format_project_id(session.project_path if session else None, request.session_id)
+                msg = self._format_chain_approved_message(chain_state["commands"], project_id)
+                await self.notifier.edit_message(message_id, msg)
+
+            await self.storage.log_audit(
+                event_type="response",
+                session_id=request.session_id,
+                details={
+                    "request_id": request_id,
+                    "action": "approve",
+                    "resolved_by": "user:chain_all_approved",
+                    "chain": True,
+                    "command_count": len(chain_state["commands"]),
+                },
+            )
         else:
             # Find first unapproved command (start from 0, not command_idx + 1)
             next_idx = 0
@@ -655,6 +823,7 @@ class Poller:
         message_id: Optional[int] = None,
     ):
         """Handle chain deny with message - prompt for feedback."""
+        print(f"[pyafk] _handle_chain_deny_msg called: {request_id}", file=sys.stderr)
         debug_callback(f"_handle_chain_deny_msg called", request_id=request_id)
         request = await self.storage.get_request(request_id)
         if not request:
@@ -694,17 +863,19 @@ class Poller:
         await self.storage.resolve_request(
             request_id=request_id,
             status="denied",
-            resolved_by="user",
-            reason=feedback,
+            resolved_by="user:feedback",
+            denial_reason=feedback,
         )
 
         # Clear chain state
         await self._clear_chain_state(request_id)
 
         # Delete the feedback prompt message
+        debug_callback(f"Deleting feedback prompt", prompt_msg_id=prompt_msg_id)
         await self.notifier.delete_message(prompt_msg_id)
 
         # Update the original approval message
+        debug_callback(f"Updating original message", telegram_msg_id=request.telegram_msg_id)
         if request.telegram_msg_id:
             session = await self.storage.get_session(request.session_id)
             project_id = self._format_project_id(session.project_path if session else None, request.session_id)
@@ -713,6 +884,7 @@ class Poller:
                 request.telegram_msg_id,
                 f"<i>{project_id}</i>\n❌ <b>[{request.tool_name}]</b> <code>{tool_summary}</code>\n\n💬 {feedback}",
             )
+            debug_callback(f"Message updated for chain denial")
 
         await self.storage.log_audit(
             event_type="response",
@@ -785,7 +957,44 @@ class Poller:
                 request_id,
                 patterns,
                 callback_prefix=f"chain_rule_pattern:{request_id}:{command_idx}",
-                cancel_callback=f"chain_approve:{request_id}:{command_idx}",
+                cancel_callback=f"chain_cancel_rule:{request_id}:{command_idx}",
+            )
+
+    async def _handle_chain_cancel_rule(
+        self,
+        request_id: str,
+        command_idx: int,
+        callback_id: str,
+        message_id: Optional[int] = None,
+    ):
+        """Handle cancel from chain rule menu - go back to chain progress."""
+        debug_rule(f"chain_cancel_rule called", request_id=request_id, command_idx=command_idx)
+        request = await self.storage.get_request(request_id)
+        if not request:
+            await self.notifier.answer_callback(callback_id, "Request not found")
+            if message_id:
+                await self.notifier.edit_message(message_id, "⚠️ Request expired")
+            return
+
+        # Get chain state
+        chain_state = await self._get_chain_state(request_id)
+        if not chain_state:
+            await self.notifier.answer_callback(callback_id, "Chain state not found")
+            return
+
+        await self.notifier.answer_callback(callback_id, "Cancelled")
+
+        # Restore the chain progress view
+        if message_id:
+            session = await self.storage.get_session(request.session_id)
+            await self.notifier.update_chain_progress(
+                message_id=message_id,
+                request_id=request_id,
+                session_id=request.session_id,
+                commands=chain_state["commands"],
+                current_idx=command_idx,
+                approved_indices=chain_state["approved_indices"],
+                project_path=session.project_path if session else None,
             )
 
     async def _handle_chain_rule_pattern(
@@ -836,9 +1045,27 @@ class Poller:
         if command_idx not in chain_state["approved_indices"]:
             chain_state["approved_indices"].append(command_idx)
             debug_rule(f"Marked command approved", command_idx=command_idx, approved=chain_state["approved_indices"])
+
+        # Check if the new rule also matches other commands in the chain
+        auto_approved = []
+        for idx, other_cmd in enumerate(chain_state["commands"]):
+            if idx in chain_state["approved_indices"]:
+                continue  # Already approved
+
+            # Check if this command matches the new rule
+            other_input = json.dumps({"command": other_cmd})
+            rule_result = await engine.check("Bash", other_input)
+            if rule_result == "approve":
+                chain_state["approved_indices"].append(idx)
+                auto_approved.append(idx)
+                debug_rule(f"Auto-approved by new rule", idx=idx, cmd=other_cmd[:50])
+
         await self._save_chain_state(request_id, chain_state)
 
-        await self.notifier.answer_callback(callback_id, "Rule added")
+        if auto_approved:
+            await self.notifier.answer_callback(callback_id, f"Rule added (+{len(auto_approved)} auto-approved)")
+        else:
+            await self.notifier.answer_callback(callback_id, "Rule added")
 
         # Update UI to show progress
         if message_id:
@@ -865,22 +1092,9 @@ class Poller:
                 )
 
                 # Update message to show all approved
-                await self.notifier.update_chain_progress(
-                    message_id=message_id,
-                    request_id=request_id,
-                    session_id=request.session_id,
-                    commands=chain_state["commands"],
-                    current_idx=len(chain_state["commands"]) - 1,
-                    approved_indices=chain_state["approved_indices"],
-                    project_path=session.project_path if session else None,
-                    final_approve=False,  # Don't show button, just show all approved
-                    denied=False,
-                )
-
-                await self.notifier.edit_message(
-                    message_id,
-                    f"✅ Chain approved - all {len(chain_state['commands'])} commands matched rules or were approved"
-                )
+                project_id = self._format_project_id(session.project_path if session else None, request.session_id)
+                msg = self._format_chain_approved_message(chain_state["commands"], project_id)
+                await self.notifier.edit_message(message_id, msg)
             else:
                 # Find first unapproved command (start from 0, not command_idx + 1)
                 next_idx = 0
@@ -938,10 +1152,8 @@ class Poller:
         if message_id:
             session = await self.storage.get_session(request.session_id)
             project_id = self._format_project_id(session.project_path if session else None, request.session_id)
-            await self.notifier.edit_message(
-                message_id,
-                f"<i>{project_id}</i>\n✅ <b>Chain approved</b> ({len(chain_state['commands'])} commands)",
-            )
+            msg = self._format_chain_approved_message(chain_state["commands"], project_id)
+            await self.notifier.edit_message(message_id, msg)
 
         await self.storage.log_audit(
             event_type="response",
@@ -952,6 +1164,62 @@ class Poller:
                 "resolved_by": "user",
                 "chain": True,
                 "command_count": len(chain_state["commands"]),
+            },
+        )
+
+    async def _handle_chain_approve_entire(
+        self,
+        request_id: str,
+        callback_id: str,
+        message_id: Optional[int] = None,
+    ):
+        """Handle upfront approval of entire chain (without individual command approval)."""
+        debug_chain(f"chain_approve_entire called", request_id=request_id)
+        request = await self.storage.get_request(request_id)
+        if not request:
+            debug_chain(f"Request not found", request_id=request_id)
+            await self.notifier.answer_callback(callback_id, "Request not found")
+            if message_id:
+                await self.notifier.edit_message(message_id, "⚠️ Request expired")
+            return
+
+        # Parse commands from tool_input
+        try:
+            data = json.loads(request.tool_input)
+            cmd = data.get("command", "")
+            parser = CommandParser()
+            commands = parser.split_chain(cmd)
+        except Exception:
+            commands = []
+
+        # Approve the request directly
+        await self.storage.resolve_request(
+            request_id=request_id,
+            status="approved",
+            resolved_by="user:chain_entire",
+        )
+
+        await self.notifier.answer_callback(callback_id, "Chain approved")
+
+        # Update message
+        if message_id:
+            session = await self.storage.get_session(request.session_id)
+            project_id = self._format_project_id(session.project_path if session else None, request.session_id)
+            if commands:
+                msg = self._format_chain_approved_message(commands, project_id)
+            else:
+                msg = f"<i>{project_id}</i>\n✅ <b>Chain approved</b>"
+            await self.notifier.edit_message(message_id, msg)
+
+        await self.storage.log_audit(
+            event_type="response",
+            session_id=request.session_id,
+            details={
+                "request_id": request_id,
+                "action": "approve",
+                "resolved_by": "user:chain_entire",
+                "chain": True,
+                "command_count": len(commands) if commands else 0,
             },
         )
 
@@ -1012,8 +1280,18 @@ class Poller:
         )
         await self.storage._conn.commit()
 
-    def _generate_rule_patterns(self, tool_name: str, tool_input: Optional[str]) -> list[tuple[str, str]]:
+    def _generate_rule_patterns(
+        self,
+        tool_name: str,
+        tool_input: Optional[str],
+        project_path: Optional[str] = None,
+    ) -> list[tuple[str, str]]:
         """Generate rule pattern options with labels.
+
+        Args:
+            tool_name: Name of the tool (Bash, Edit, Read, etc.)
+            tool_input: JSON string of tool input
+            project_path: Optional project path for directory-scoped patterns
 
         Returns list of (pattern, label) tuples.
         """
@@ -1089,6 +1367,14 @@ class Poller:
                 short_dir = dir_path.split("/")[-1] or dir_path
                 patterns.append((f"{tool_name}({dir_path}/*)", f"📁 Any in .../{short_dir}/"))
 
+            # Add project-scoped pattern if project_path is available
+            if project_path and path.startswith(project_path):
+                project_name = project_path.rstrip("/").split("/")[-1]
+                if "." in path:
+                    ext = path.rsplit(".", 1)[-1]
+                    patterns.append((f"{tool_name}({project_path}/*.{ext})", f"📂 Any *.{ext} in {project_name}/"))
+                patterns.append((f"{tool_name}({project_path}/*)", f"📂 Any in {project_name}/"))
+
             patterns.append((f"{tool_name}(*)", f"⚡ Any {tool_name}"))
 
         # For Read - directory patterns
@@ -1102,6 +1388,11 @@ class Poller:
                 dir_path = path.rsplit("/", 1)[0]
                 short_dir = dir_path.split("/")[-1] or dir_path
                 patterns.append((f"Read({dir_path}/*)", f"📁 Any in .../{short_dir}/"))
+
+            # Add project-scoped pattern if project_path is available
+            if project_path and path.startswith(project_path):
+                project_name = project_path.rstrip("/").split("/")[-1]
+                patterns.append((f"Read({project_path}/*)", f"📂 Any in {project_name}/"))
 
             patterns.append(("Read(*)", "⚡ Any Read"))
 
@@ -1172,6 +1463,21 @@ class Poller:
             parts = project_path.rstrip("/").split("/")
             return "/".join(parts[-2:]) if len(parts) >= 2 else parts[-1]
         return session_id[:8]
+
+    def _format_chain_approved_message(
+        self,
+        commands: list[str],
+        project_id: str,
+    ) -> str:
+        """Format chain approved message with list of commands."""
+        cmd_lines = []
+        for cmd in commands:
+            # Truncate long commands
+            if len(cmd) > 60:
+                cmd = cmd[:57] + "..."
+            cmd_lines.append(f"  • <code>{cmd}</code>")
+
+        return f"<i>{project_id}</i>\n✅ <b>Chain approved</b>\n" + "\n".join(cmd_lines)
 
     def _format_tool_summary(self, tool_name: str, tool_input: Optional[str]) -> str:
         """Format tool input for display."""

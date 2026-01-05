@@ -219,6 +219,34 @@ class TelegramNotifier(Notifier):
             data["reply_markup"] = json.dumps({"inline_keyboard": []})
         await self._api_request("editMessageText", data=data)
 
+    async def delete_message(self, message_id: int):
+        """Delete a message."""
+        data = {
+            "chat_id": self.chat_id,
+            "message_id": message_id,
+        }
+        try:
+            await self._api_request("deleteMessage", data=data)
+        except Exception:
+            pass  # Ignore errors - message may already be deleted
+
+    async def send_message(self, text: str) -> Optional[int]:
+        """Send a simple text message.
+
+        Returns message ID if successful.
+        """
+        result = await self._api_request(
+            "sendMessage",
+            data={
+                "chat_id": self.chat_id,
+                "text": text,
+                "parse_mode": "HTML",
+            },
+        )
+        if result and result.get("ok") and result.get("result"):
+            return result["result"].get("message_id")
+        return None
+
     async def edit_message_with_rule_keyboard(
         self,
         message_id: int,
@@ -238,7 +266,11 @@ class TelegramNotifier(Notifier):
         # Build keyboard with one button per pattern
         buttons = []
         for idx, (pattern, label) in enumerate(patterns):
-            buttons.append([{"text": label, "callback_data": f"{callback_prefix}:{idx}"}])
+            # callback_prefix already includes request_id for chain patterns
+            if ":" in callback_prefix:
+                buttons.append([{"text": label, "callback_data": f"{callback_prefix}:{idx}"}])
+            else:
+                buttons.append([{"text": label, "callback_data": f"{callback_prefix}:{request_id}:{idx}"}])
         # Add approve and cancel buttons at the bottom
         if cancel_callback is None:
             cancel_callback = f"cancel_rule:{request_id}"
@@ -331,6 +363,7 @@ class TelegramNotifier(Notifier):
 
     async def send_feedback_prompt(self, tool_name: str) -> Optional[int]:
         """Send a message asking for denial feedback with force_reply."""
+        debug_chain(f"send_feedback_prompt called", tool_name=tool_name)
         result = await self._api_request(
             "sendMessage",
             data={
@@ -339,8 +372,12 @@ class TelegramNotifier(Notifier):
                 "reply_markup": json.dumps({"force_reply": True, "selective": True}),
             },
         )
+        debug_chain(f"send_feedback_prompt result", ok=result.get("ok"), has_result="result" in result)
         if result.get("ok") and "result" in result:
-            return result["result"].get("message_id")
+            msg_id = result["result"].get("message_id")
+            debug_chain(f"send_feedback_prompt returning", msg_id=msg_id)
+            return msg_id
+        debug_chain(f"send_feedback_prompt failed", result=result)
         return None
 
     async def send_subagent_stop(
@@ -535,15 +572,14 @@ class TelegramNotifier(Notifier):
         lines.extend(cmd_lines)
         message = "\n".join(lines)
 
-        # Keyboard for first command
+        # Keyboard for first command - Approve Chain first (full width), then step approve
         keyboard = {
             "inline_keyboard": [
-                [
-                    {"text": "✅ Approve", "callback_data": f"chain_approve:{request_id}:0"},
-                    {"text": "❌ Deny", "callback_data": f"chain_deny:{request_id}"},
-                ],
+                [{"text": "⏩ Approve Chain", "callback_data": f"chain_approve_entire:{request_id}"}],
+                [{"text": "✅ Approve Step", "callback_data": f"chain_approve:{request_id}:0"}],
                 [
                     {"text": "📝 Rule", "callback_data": f"chain_rule:{request_id}:0"},
+                    {"text": "❌ Deny", "callback_data": f"chain_deny:{request_id}"},
                     {"text": "✍️ Deny+Msg", "callback_data": f"chain_deny_msg:{request_id}"},
                 ],
             ]
@@ -676,7 +712,8 @@ class TelegramNotifier(Notifier):
             # Chain was denied - no keyboard
             keyboard = {"inline_keyboard": []}
         elif final_approve:
-            # All commands approved - show final approval button
+            # All commands approved - this shouldn't happen anymore (auto-approve)
+            # but keep for backwards compatibility
             keyboard = {
                 "inline_keyboard": [
                     [
@@ -686,15 +723,14 @@ class TelegramNotifier(Notifier):
                 ]
             }
         else:
-            # Show keyboard for current command
+            # Show keyboard for current command - Approve Chain first (full width), then step approve
             keyboard = {
                 "inline_keyboard": [
-                    [
-                        {"text": "✅ Approve", "callback_data": f"chain_approve:{request_id}:{current_idx}"},
-                        {"text": "❌ Deny", "callback_data": f"chain_deny:{request_id}"},
-                    ],
+                    [{"text": "⏩ Approve Chain", "callback_data": f"chain_approve_entire:{request_id}"}],
+                    [{"text": "✅ Approve Step", "callback_data": f"chain_approve:{request_id}:{current_idx}"}],
                     [
                         {"text": "📝 Rule", "callback_data": f"chain_rule:{request_id}:{current_idx}"},
+                        {"text": "❌ Deny", "callback_data": f"chain_deny:{request_id}"},
                         {"text": "✍️ Deny+Msg", "callback_data": f"chain_deny_msg:{request_id}"},
                     ],
                 ]

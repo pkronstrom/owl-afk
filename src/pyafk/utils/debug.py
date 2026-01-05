@@ -23,6 +23,16 @@ def reload_config():
     _config = None
 
 
+def _log_to_file(line: str):
+    """Append line to debug log file."""
+    try:
+        log_path = get_pyafk_dir() / "debug.log"
+        with open(log_path, "a") as f:
+            f.write(line + "\n")
+    except Exception:
+        pass
+
+
 def debug(category: str, message: str, **kwargs):
     """Log debug message if debug mode is enabled.
 
@@ -35,11 +45,14 @@ def debug(category: str, message: str, **kwargs):
     if not config.debug:
         return
 
-    timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
     extras = " ".join(f"{k}={v}" for k, v in kwargs.items()) if kwargs else ""
     line = f"[pyafk:{category}] {timestamp} {message}"
     if extras:
         line += f" | {extras}"
+
+    # Log to file (always) and stderr
+    _log_to_file(line)
     print(line, file=sys.stderr)
 
 

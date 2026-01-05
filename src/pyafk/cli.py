@@ -51,11 +51,47 @@ def on_command(ctx):
 @main.command("off")
 @click.pass_context
 def off_command(ctx):
-    """Disable pyafk."""
+    """Disable pyafk and clean up pending messages."""
     pyafk_dir = ctx.obj["pyafk_dir"]
     config = Config(pyafk_dir)
     config.set_mode("off")
-    click.echo("pyafk disabled")
+
+    # Clean up pending Telegram messages
+    async def cleanup():
+        from pyafk.core.storage import Storage
+        from pyafk.notifiers.telegram import TelegramNotifier
+
+        if not config.telegram_bot_token or not config.telegram_chat_id:
+            return 0
+
+        storage = Storage(pyafk_dir / "pyafk.db")
+        await storage.connect()
+
+        notifier = TelegramNotifier(
+            bot_token=config.telegram_bot_token,
+            chat_id=config.telegram_chat_id,
+        )
+
+        # Get and clean up pending requests
+        pending = await storage.get_pending_requests()
+        for request in pending:
+            if request.telegram_msg_id:
+                await notifier.edit_message(
+                    request.telegram_msg_id,
+                    "⏸️ pyafk disabled - auto-approving",
+                )
+            # Resolve as approved since mode is off
+            await storage.resolve_request(
+                request_id=request.id,
+                status="approved",
+                resolved_by="pyafk_off",
+            )
+
+        await storage.close()
+        return len(pending)
+
+    cleaned = asyncio.run(cleanup())
+    click.echo(f"pyafk disabled ({cleaned} pending requests auto-approved)")
 
 
 @main.group()

@@ -102,9 +102,18 @@ CREATE TABLE IF NOT EXISTS audit_log (
     details         TEXT
 );
 
+CREATE TABLE IF NOT EXISTS pending_messages (
+    id              INTEGER PRIMARY KEY,
+    session_id      TEXT NOT NULL,
+    message         TEXT NOT NULL,
+    created_at      REAL,
+    delivered_at    REAL
+);
+
 CREATE INDEX IF NOT EXISTS idx_requests_status ON requests(status);
 CREATE INDEX IF NOT EXISTS idx_requests_session ON requests(session_id);
 CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp);
+CREATE INDEX IF NOT EXISTS idx_pending_messages_session ON pending_messages(session_id);
 """
 
 
@@ -180,6 +189,17 @@ class Storage:
         """Get a request by ID."""
         cursor = await self._conn.execute(
             "SELECT * FROM requests WHERE id = ?", (request_id,)
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        return Request(**dict(row))
+
+    async def get_request_by_telegram_msg(self, telegram_msg_id: int) -> Optional[Request]:
+        """Get a request by Telegram message ID."""
+        cursor = await self._conn.execute(
+            "SELECT * FROM requests WHERE telegram_msg_id = ? ORDER BY created_at DESC LIMIT 1",
+            (telegram_msg_id,)
         )
         row = await cursor.fetchone()
         if not row:
@@ -274,6 +294,15 @@ class Storage:
         row = await cursor.fetchone()
         return dict(row) if row else None
 
+    async def get_subagent_by_telegram_msg(self, telegram_msg_id: int) -> Optional[dict]:
+        """Get pending subagent entry by telegram message ID."""
+        cursor = await self._conn.execute(
+            "SELECT * FROM pending_subagent WHERE telegram_msg_id = ? AND status = 'pending'",
+            (telegram_msg_id,),
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
     async def resolve_subagent(self, subagent_id: str, status: str, response: Optional[str] = None):
         """Resolve a pending subagent."""
         await self._conn.execute(
@@ -364,3 +393,38 @@ class Storage:
             d["details"] = json.loads(d["details"]) if d["details"] else {}
             entries.append(AuditEntry(**d))
         return entries
+
+    # Pending messages for /msg command
+    async def add_pending_message(self, session_id: str, message: str):
+        """Add a pending message for a session."""
+        await self._conn.execute(
+            """
+            INSERT INTO pending_messages (session_id, message, created_at)
+            VALUES (?, ?, ?)
+            """,
+            (session_id, message, time.time()),
+        )
+        await self._conn.commit()
+
+    async def get_pending_messages(self, session_id: str) -> list[tuple[int, str]]:
+        """Get pending messages for a session.
+
+        Returns list of (id, message) tuples.
+        """
+        cursor = await self._conn.execute(
+            """
+            SELECT id, message FROM pending_messages
+            WHERE session_id = ? AND delivered_at IS NULL
+            ORDER BY created_at
+            """,
+            (session_id,),
+        )
+        return [(row["id"], row["message"]) for row in await cursor.fetchall()]
+
+    async def mark_message_delivered(self, message_id: int):
+        """Mark a message as delivered."""
+        await self._conn.execute(
+            "UPDATE pending_messages SET delivered_at = ? WHERE id = ?",
+            (time.time(), message_id),
+        )
+        await self._conn.commit()

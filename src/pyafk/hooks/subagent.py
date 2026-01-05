@@ -11,8 +11,60 @@ from pyafk.notifiers.telegram import TelegramNotifier
 from pyafk.utils.config import Config
 
 
+def _format_transcript_markdown(content: str, max_chars: int = 50000) -> str:
+    """Format JSONL transcript as readable markdown."""
+    lines = content.strip().split("\n")
+    sections = []
+
+    for line in lines:
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        msg_type = entry.get("type", "")
+        message = entry.get("message", {})
+
+        if msg_type == "user":
+            # User message
+            content_blocks = message.get("content", [])
+            text = ""
+            if isinstance(content_blocks, str):
+                text = content_blocks
+            elif isinstance(content_blocks, list):
+                for block in content_blocks:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        text += block.get("text", "")
+            if text:
+                sections.append(f"## 👤 User\n\n{text}")
+
+        elif msg_type == "assistant":
+            # Assistant message
+            content_blocks = message.get("content", [])
+            texts = []
+            if isinstance(content_blocks, str):
+                texts.append(content_blocks)
+            elif isinstance(content_blocks, list):
+                for block in content_blocks:
+                    if isinstance(block, dict):
+                        if block.get("type") == "text":
+                            texts.append(block.get("text", ""))
+                        elif block.get("type") == "tool_use":
+                            tool_name = block.get("name", "tool")
+                            texts.append(f"*[Using {tool_name}]*")
+            if texts:
+                sections.append(f"## 🤖 Assistant\n\n" + "\n\n".join(texts))
+
+    result = "# Agent Session Log\n\n" + "\n\n---\n\n".join(sections)
+
+    if len(result) > max_chars:
+        result = result[:max_chars] + "\n\n... (truncated)"
+
+    return result
+
+
 def _extract_last_output(transcript_path: Optional[str], max_chars: int = 2000) -> str:
-    """Extract the last meaningful output from transcript."""
+    """Extract the last assistant message from transcript."""
     if not transcript_path:
         return "(no transcript available)"
 
@@ -26,8 +78,7 @@ def _extract_last_output(transcript_path: Optional[str], max_chars: int = 2000) 
         # Transcript is JSONL format - one JSON object per line
         lines = content.strip().split("\n")
 
-        # Collect text from assistant messages (in reverse order)
-        texts = []
+        # Find the last assistant message (in reverse order)
         for line in reversed(lines):
             try:
                 entry = json.loads(line)
@@ -41,6 +92,8 @@ def _extract_last_output(transcript_path: Optional[str], max_chars: int = 2000) 
             message = entry.get("message", {})
             content_blocks = message.get("content", [])
 
+            # Extract text from this message only
+            texts = []
             if isinstance(content_blocks, str):
                 texts.append(content_blocks)
             elif isinstance(content_blocks, list):
@@ -50,24 +103,15 @@ def _extract_last_output(transcript_path: Optional[str], max_chars: int = 2000) 
                         if text:
                             texts.append(text)
 
-            # Stop once we have enough content
-            total_len = sum(len(t) for t in texts)
-            if total_len >= max_chars:
-                break
+            if texts:
+                result = "\n\n".join(texts)
+                # Truncate if too long
+                if len(result) > max_chars:
+                    result = result[-max_chars:]
+                    result = "..." + result
+                return result
 
-        if not texts:
-            return "(no agent output found)"
-
-        # Reverse to get chronological order, join
-        texts.reverse()
-        result = "\n\n".join(texts)
-
-        # Truncate if too long
-        if len(result) > max_chars:
-            result = result[-max_chars:]
-            result = "..." + result
-
-        return result
+        return "(no agent output found)"
 
     except Exception as e:
         return f"(error reading transcript: {e})"
@@ -123,18 +167,17 @@ async def handle_subagent_stop(
             project_path=project_path,
         )
 
-        # Also send the transcript as a file if available
+        # Also send the transcript as a formatted markdown file if available
         if transcript_path:
             transcript_file = Path(transcript_path)
             if transcript_file.exists():
-                # Create a temporary markdown file with the transcript
                 import tempfile
+                formatted = _format_transcript_markdown(transcript_file.read_text())
                 with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
-                    f.write(f"# Subagent Transcript\n\n")
-                    f.write(f"```\n{transcript_file.read_text()[:50000]}\n```\n")
+                    f.write(formatted)
                     temp_path = Path(f.name)
                 try:
-                    await notifier.send_document(temp_path, caption="Full transcript")
+                    await notifier.send_document(temp_path, caption="📜 Session log")
                 finally:
                     temp_path.unlink(missing_ok=True)
 
