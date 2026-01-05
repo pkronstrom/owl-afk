@@ -946,14 +946,23 @@ class Poller:
             },
         )
 
+    def _chain_state_key(self, request_id: str) -> int:
+        """Generate stable key for chain state storage.
+
+        Uses hashlib for stable hashing across process restarts
+        (Python's hash() is randomized by PYTHONHASHSEED).
+        """
+        import hashlib
+        return int(hashlib.md5(f"chain:{request_id}".encode()).hexdigest()[:8], 16)
+
     async def _get_chain_state(self, request_id: str) -> Optional[dict]:
         """Get chain approval state from storage.
 
         Uses pending_feedback table with a hash of request_id as the message_id.
         The state is stored in the request_id field as JSON.
         """
-        # Use a hash of the request_id as a stable message_id
-        msg_id = hash(f"chain:{request_id}") % (2**31)
+        # Use a stable hash of the request_id as the message_id
+        msg_id = self._chain_state_key(request_id)
 
         cursor = await self.storage._conn.execute(
             "SELECT request_id FROM pending_feedback WHERE prompt_msg_id = ?",
@@ -970,11 +979,11 @@ class Poller:
     async def _save_chain_state(self, request_id: str, state: dict):
         """Save chain approval state to storage.
 
-        Uses pending_feedback table with a hash of request_id as the message_id.
+        Uses pending_feedback table with a stable hash of request_id as the message_id.
         The state is stored in the request_id field as JSON.
         """
         state_json = json.dumps(state)
-        msg_id = hash(f"chain:{request_id}") % (2**31)
+        msg_id = self._chain_state_key(request_id)
 
         await self.storage._conn.execute(
             """
@@ -987,7 +996,7 @@ class Poller:
 
     async def _clear_chain_state(self, request_id: str):
         """Clear chain approval state from storage."""
-        msg_id = hash(f"chain:{request_id}") % (2**31)
+        msg_id = self._chain_state_key(request_id)
         await self.storage._conn.execute(
             "DELETE FROM pending_feedback WHERE prompt_msg_id = ?",
             (msg_id,),
