@@ -79,6 +79,11 @@ async def handle_pretool_use(
             description=description,
             project_path=project_path,
         )
+
+        # Handle "fallback" - return empty response to trigger CLI prompt
+        if result == "fallback":
+            return {}
+
         # Map internal result to Claude Code's expected values
         decision = "allow" if result == "approve" else "deny"
         if denial_reason:

@@ -161,6 +161,11 @@ class Poller:
             await self._handle_msg_command(text, message)
             return
 
+        # Handle /afk command
+        if text.startswith("/afk"):
+            await self._handle_afk_command(text)
+            return
+
         reply_to = message.get("reply_to_message", {})
         reply_msg_id = reply_to.get("message_id")
         if not reply_msg_id:
@@ -283,6 +288,77 @@ class Poller:
         await self.notifier.send_message(
             f"📨 Message queued for <code>{short_id}</code> ({project})"
         )
+
+    async def _handle_afk_command(self, text: str) -> None:
+        """Handle /afk command to control AFK mode.
+
+        Usage:
+            /afk - Show current mode
+            /afk on - Enable remote approval (AFK mode)
+            /afk off - Disable remote approval (pending requests fall back to CLI)
+        """
+        from pyafk.utils.config import Config
+
+        config = Config(self.pyafk_dir)
+        parts = text.split()
+
+        if len(parts) == 1:
+            # Just /afk - show current mode
+            mode = config.get_mode()
+            pending = await self.storage.get_pending_requests()
+            pending_count = len(pending)
+            status = "🟢 ON (remote approval)" if mode == "on" else "🔴 OFF (auto-approve)"
+            await self.notifier.send_message(
+                f"<b>AFK Status:</b> {status}\n"
+                f"<b>Pending requests:</b> {pending_count}\n\n"
+                f"<i>Use /afk on or /afk off to change</i>"
+            )
+            return
+
+        action = parts[1].lower()
+
+        if action == "on":
+            config.set_mode("on")
+            await self.notifier.send_message("🟢 AFK mode <b>enabled</b>\n\nRemote approval active via Telegram")
+        elif action == "off":
+            # Get pending requests count before changing mode
+            pending = await self.storage.get_pending_requests()
+            pending_count = len(pending)
+
+            # Resolve all pending requests with "fallback" status
+            # This tells the hook to return empty response, triggering CLI prompt
+            for request in pending:
+                await self.storage.resolve_request(
+                    request_id=request.id,
+                    status="fallback",
+                    resolved_by="afk_off",
+                )
+                # Update the Telegram message if exists
+                if request.telegram_msg_id:
+                    await self.notifier.edit_message(
+                        request.telegram_msg_id,
+                        "⏸️ Deferred to CLI prompt",
+                        parse_mode=None,
+                    )
+
+            config.set_mode("off")
+
+            if pending_count > 0:
+                await self.notifier.send_message(
+                    f"🔴 AFK mode <b>disabled</b>\n\n"
+                    f"{pending_count} pending request(s) deferred to CLI prompt"
+                )
+            else:
+                await self.notifier.send_message(
+                    "🔴 AFK mode <b>disabled</b>\n\nAll tools will auto-approve"
+                )
+        else:
+            await self.notifier.send_message(
+                "Usage:\n"
+                "/afk - Show status\n"
+                "/afk on - Enable remote approval\n"
+                "/afk off - Disable (defer to CLI)"
+            )
 
     async def _handle_callback(self, callback: dict[str, Any]) -> None:
         """Handle a callback query from inline button."""

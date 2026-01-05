@@ -221,6 +221,8 @@ class ApprovalManager:
             if request and request.status != "pending":
                 if request.status == "approved":
                     return ("approve", None)
+                elif request.status == "fallback":
+                    return ("fallback", None)
                 else:
                     return ("deny", request.denial_reason)
 
