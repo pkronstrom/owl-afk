@@ -300,7 +300,20 @@ class CommandParser:
         # Full command pattern
         patterns.append(node.full_cmd)
 
-        # Wildcard pattern: command_name *
+        # Generate intermediate patterns by progressively wildcarding args
+        # For "git branch -a --no-merged", generate:
+        # - "git branch -a --no-merged" (exact)
+        # - "git branch -a *"
+        # - "git branch *"
+        # - "git *"
+        if node.name and node.args:
+            # Generate patterns from most specific to most general
+            for i in range(len(node.args) - 1, 0, -1):
+                # Include first i args + wildcard
+                partial_args = " ".join(node.args[:i])
+                patterns.append(f"{node.name} {partial_args} *")
+
+        # Final wildcard pattern: command_name *
         if node.name:
             patterns.append(f"{node.name} *")
 

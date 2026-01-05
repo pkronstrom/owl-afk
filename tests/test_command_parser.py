@@ -207,9 +207,11 @@ def test_generate_patterns_file_op():
 
     patterns = parser.generate_patterns(node)
 
-    assert len(patterns) == 2
+    # Should generate: exact, "cp file1 *", "cp *"
+    assert len(patterns) == 3
     assert patterns[0] == "cp file1 file2"
-    assert patterns[1] == "cp *"
+    assert patterns[1] == "cp file1 *"
+    assert patterns[2] == "cp *"
 
 
 def test_generate_patterns_vcs():
@@ -219,6 +221,7 @@ def test_generate_patterns_vcs():
 
     patterns = parser.generate_patterns(node)
 
+    # Should generate: exact, "git *"
     assert len(patterns) == 2
     assert patterns[0] == "git log"
     assert patterns[1] == "git *"
@@ -231,6 +234,7 @@ def test_generate_patterns_generic():
 
     patterns = parser.generate_patterns(node)
 
+    # Should generate: exact, "npm *"
     assert len(patterns) == 2
     assert patterns[0] == "npm test"
     assert patterns[1] == "npm *"

@@ -148,10 +148,13 @@ class Poller:
 
         feedback = message.get("text", "")
 
-        # Check if this is for a subagent
+        # Check if this is for a subagent or chain denial
         if request_id.startswith("subagent:"):
             subagent_id = request_id[9:]  # Strip "subagent:" prefix
             await self._handle_subagent_feedback(subagent_id, feedback, reply_msg_id)
+        elif request_id.startswith("chain:"):
+            chain_request_id = request_id[6:]  # Strip "chain:" prefix
+            await self._handle_chain_deny_with_feedback(chain_request_id, feedback, reply_msg_id)
         else:
             await self._handle_deny_with_feedback(request_id, feedback, reply_msg_id)
 
@@ -222,6 +225,8 @@ class Poller:
             await self._handle_chain_approve(request_id, command_idx, callback_id, message_id)
         elif action == "chain_deny":
             await self._handle_chain_deny(target_id, callback_id, message_id)
+        elif action == "chain_deny_msg":
+            await self._handle_chain_deny_msg(target_id, callback_id, message_id)
         elif action == "chain_rule":
             # Format: chain_rule:request_id:command_index
             parts = target_id.split(":", 1)
@@ -556,8 +561,8 @@ class Poller:
                     final_approve=True,
                 )
         else:
-            # Move to next unapproved command
-            next_idx = command_idx + 1
+            # Find first unapproved command (start from 0, not command_idx + 1)
+            next_idx = 0
             while next_idx < len(chain_state["commands"]) and next_idx in chain_state["approved_indices"]:
                 next_idx += 1
 
@@ -628,6 +633,78 @@ class Poller:
             },
         )
 
+    async def _handle_chain_deny_msg(
+        self,
+        request_id: str,
+        callback_id: str,
+        message_id: Optional[int] = None,
+    ):
+        """Handle chain deny with message - prompt for feedback."""
+        request = await self.storage.get_request(request_id)
+        if not request:
+            await self.notifier.answer_callback(callback_id, "Request not found")
+            if message_id:
+                await self.notifier.edit_message(message_id, "⚠️ Request expired")
+            return
+
+        # Store the chain context for when feedback arrives
+        prompt_msg_id = await self.notifier.send_feedback_prompt(request.tool_name)
+        if prompt_msg_id:
+            # Store with chain prefix so feedback handler knows it's a chain denial
+            await self.storage.set_pending_feedback(prompt_msg_id, f"chain:{request_id}")
+
+        await self.notifier.answer_callback(callback_id, "Reply with feedback")
+
+    async def _handle_chain_deny_with_feedback(
+        self,
+        request_id: str,
+        feedback: str,
+        prompt_msg_id: int,
+    ):
+        """Handle chain denial with user feedback."""
+        request = await self.storage.get_request(request_id)
+        if not request:
+            return
+
+        # Clear the pending feedback entry
+        await self.storage.clear_pending_feedback(prompt_msg_id)
+
+        # Resolve the request with denial reason
+        await self.storage.resolve_request(
+            request_id=request_id,
+            status="denied",
+            resolved_by="user",
+            reason=feedback,
+        )
+
+        # Clear chain state
+        await self._clear_chain_state(request_id)
+
+        # Delete the feedback prompt message
+        await self.notifier.delete_message(prompt_msg_id)
+
+        # Update the original approval message
+        if request.telegram_msg_id:
+            session = await self.storage.get_session(request.session_id)
+            project_id = self._format_project_id(session.project_path if session else None, request.session_id)
+            tool_summary = self._format_tool_summary(request.tool_name, request.tool_input)
+            await self.notifier.edit_message(
+                request.telegram_msg_id,
+                f"<i>{project_id}</i>\n❌ <b>[{request.tool_name}]</b> <code>{tool_summary}</code>\n\n💬 {feedback}",
+            )
+
+        await self.storage.log_audit(
+            event_type="response",
+            session_id=request.session_id,
+            details={
+                "request_id": request_id,
+                "action": "deny",
+                "resolved_by": "user",
+                "feedback": feedback,
+                "chain": True,
+            },
+        )
+
     async def _handle_chain_rule(
         self,
         request_id: str,
@@ -643,10 +720,27 @@ class Poller:
                 await self.notifier.edit_message(message_id, "⚠️ Request expired")
             return
 
-        # Get chain state
+        # Get chain state - initialize if not present
         chain_state = await self._get_chain_state(request_id)
-        if not chain_state or command_idx >= len(chain_state["commands"]):
-            await self.notifier.answer_callback(callback_id, "Invalid command")
+        if not chain_state:
+            # Initialize chain state from tool_input
+            try:
+                data = json.loads(request.tool_input)
+                cmd = data.get("command", "")
+                # Parse commands from the bash chain using split_chain
+                parser = CommandParser()
+                commands = parser.split_chain(cmd)
+                chain_state = {
+                    "commands": commands,
+                    "approved_indices": [],
+                }
+                await self._save_chain_state(request_id, chain_state)
+            except Exception:
+                await self.notifier.answer_callback(callback_id, "Failed to parse chain")
+                return
+
+        if command_idx >= len(chain_state["commands"]):
+            await self.notifier.answer_callback(callback_id, "Invalid command index")
             return
 
         # Get the specific command
@@ -661,12 +755,13 @@ class Poller:
         # Show rule pattern keyboard for this command
         # Note: We encode command_idx in the callback data for the rule pattern
         if message_id:
-            # TODO: We need to get original message text - for now use a simple placeholder
             await self.notifier.edit_message_with_rule_keyboard(
                 message_id,
                 f"Command {command_idx + 1}: <code>{cmd[:60]}</code>",
-                f"chain_rule_pattern:{request_id}:{command_idx}",
-                patterns
+                request_id,
+                patterns,
+                callback_prefix=f"chain_rule_pattern:{request_id}:{command_idx}",
+                cancel_callback=f"chain_approve:{request_id}:{command_idx}",
             )
 
     async def _handle_chain_rule_pattern(
@@ -720,7 +815,25 @@ class Poller:
 
             # Check if all commands are approved
             if len(chain_state["approved_indices"]) >= len(chain_state["commands"]):
-                # All approved - show final approval button
+                # All approved - auto-approve the entire chain instead of showing button
+                await self.storage.resolve_request(
+                    request_id=request_id,
+                    status="approved",
+                    resolved_by="chain_all_approved",
+                )
+                await self._clear_chain_state(request_id)
+
+                await self.storage.log_audit(
+                    event_type="chain_approved",
+                    session_id=request.session_id,
+                    details={
+                        "request_id": request_id,
+                        "commands": chain_state["commands"],
+                        "method": "all_commands_approved",
+                    },
+                )
+
+                # Update message to show all approved
                 await self.notifier.update_chain_progress(
                     message_id=message_id,
                     request_id=request_id,
@@ -729,11 +842,17 @@ class Poller:
                     current_idx=len(chain_state["commands"]) - 1,
                     approved_indices=chain_state["approved_indices"],
                     project_path=session.project_path if session else None,
-                    final_approve=True,
+                    final_approve=False,  # Don't show button, just show all approved
+                    denied=False,
+                )
+
+                await self.notifier.edit_message(
+                    message_id,
+                    f"✅ Chain approved - all {len(chain_state['commands'])} commands matched rules or were approved"
                 )
             else:
-                # Move to next unapproved command
-                next_idx = command_idx + 1
+                # Find first unapproved command (start from 0, not command_idx + 1)
+                next_idx = 0
                 while next_idx < len(chain_state["commands"]) and next_idx in chain_state["approved_indices"]:
                     next_idx += 1
 

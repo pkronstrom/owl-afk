@@ -224,20 +224,27 @@ class TelegramNotifier(Notifier):
         original_text: str,
         request_id: str,
         patterns: list[tuple[str, str]],
+        callback_prefix: str = "add_rule_pattern",
+        cancel_callback: str | None = None,
     ):
         """Edit message to show rule pattern options inline.
 
         Args:
             patterns: List of (pattern, label) tuples
+            callback_prefix: Prefix for pattern selection callbacks (default: "add_rule_pattern")
+            cancel_callback: Optional custom cancel callback (default: "cancel_rule:{request_id}")
         """
         # Build keyboard with one button per pattern
         buttons = []
         for idx, (pattern, label) in enumerate(patterns):
-            buttons.append([{"text": label, "callback_data": f"add_rule_pattern:{request_id}:{idx}"}])
+            buttons.append([{"text": label, "callback_data": f"{callback_prefix}:{idx}"}])
         # Add approve and cancel buttons at the bottom
+        if cancel_callback is None:
+            cancel_callback = f"cancel_rule:{request_id}"
+
         buttons.append([
             {"text": "✅ Approve", "callback_data": f"approve:{request_id}"},
-            {"text": "↩️ Cancel", "callback_data": f"cancel_rule:{request_id}"},
+            {"text": "↩️ Cancel", "callback_data": cancel_callback},
         ])
 
         keyboard = {"inline_keyboard": buttons}
@@ -536,6 +543,7 @@ class TelegramNotifier(Notifier):
                 ],
                 [
                     {"text": "📝 Rule", "callback_data": f"chain_rule:{request_id}:0"},
+                    {"text": "✍️ Deny+Msg", "callback_data": f"chain_deny_msg:{request_id}"},
                 ],
             ]
         }
@@ -685,6 +693,7 @@ class TelegramNotifier(Notifier):
                     ],
                     [
                         {"text": "📝 Rule", "callback_data": f"chain_rule:{request_id}:{current_idx}"},
+                        {"text": "✍️ Deny+Msg", "callback_data": f"chain_deny_msg:{request_id}"},
                     ],
                 ]
             }
