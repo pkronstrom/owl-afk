@@ -160,6 +160,40 @@ class TelegramNotifier(Notifier):
             debug_api(f"JSON decode error", method=method, error=str(e)[:100])
             return {"ok": False, "error": str(e)}
 
+    def _build_approval_keyboard(
+        self, request_id: str, session_id: str, tool_name: str
+    ) -> dict[str, list[list[dict[str, str]]]]:
+        """Build standard approval keyboard."""
+        return {
+            "inline_keyboard": [
+                [
+                    {"text": "✅ Approve", "callback_data": f"approve:{request_id}"},
+                    {"text": "📝 Rule", "callback_data": f"add_rule:{request_id}"},
+                    {"text": f"⏩ All {tool_name}", "callback_data": f"approve_all:{session_id}:{tool_name}"},
+                ],
+                [
+                    {"text": "❌ Deny", "callback_data": f"deny:{request_id}"},
+                    {"text": "💬 Deny+Msg", "callback_data": f"deny_msg:{request_id}"},
+                ],
+            ]
+        }
+
+    def _build_chain_keyboard(
+        self, request_id: str, current_idx: int
+    ) -> dict[str, list[list[dict[str, str]]]]:
+        """Build chain approval keyboard."""
+        return {
+            "inline_keyboard": [
+                [{"text": "⏩ Approve Chain", "callback_data": f"chain_approve_entire:{request_id}"}],
+                [{"text": "✅ Approve Step", "callback_data": f"chain_approve:{request_id}:{current_idx}"}],
+                [
+                    {"text": "📝 Rule", "callback_data": f"chain_rule:{request_id}:{current_idx}"},
+                    {"text": "❌ Deny", "callback_data": f"chain_deny:{request_id}"},
+                    {"text": "✍️ Deny+Msg", "callback_data": f"chain_deny_msg:{request_id}"},
+                ],
+            ]
+        }
+
     async def send_approval_request(
         self,
         request_id: str,
@@ -183,19 +217,7 @@ class TelegramNotifier(Notifier):
             project_path=project_path,
         )
 
-        keyboard = {
-            "inline_keyboard": [
-                [
-                    {"text": "✅ Approve", "callback_data": f"approve:{request_id}"},
-                    {"text": "📝 Rule", "callback_data": f"add_rule:{request_id}"},
-                    {"text": f"⏩ All {tool_name}", "callback_data": f"approve_all:{session_id}:{tool_name}"},
-                ],
-                [
-                    {"text": "❌ Deny", "callback_data": f"deny:{request_id}"},
-                    {"text": "💬 Deny+Msg", "callback_data": f"deny_msg:{request_id}"},
-                ],
-            ]
-        }
+        keyboard = self._build_approval_keyboard(request_id, session_id, tool_name)
 
         result = await self._api_request(
             "sendMessage",
@@ -342,19 +364,7 @@ class TelegramNotifier(Notifier):
         )
 
         # Rebuild the keyboard
-        keyboard = {
-            "inline_keyboard": [
-                [
-                    {"text": "✅ Approve", "callback_data": f"approve:{request_id}"},
-                    {"text": "📝 Rule", "callback_data": f"add_rule:{request_id}"},
-                    {"text": f"⏩ All {tool_name}", "callback_data": f"approve_all:{session_id}:{tool_name}"},
-                ],
-                [
-                    {"text": "❌ Deny", "callback_data": f"deny:{request_id}"},
-                    {"text": "💬 Deny+Msg", "callback_data": f"deny_msg:{request_id}"},
-                ],
-            ]
-        }
+        keyboard = self._build_approval_keyboard(request_id, session_id, tool_name)
 
         await self._api_request(
             "editMessageText",
@@ -590,17 +600,7 @@ class TelegramNotifier(Notifier):
         message = "\n".join(lines)
 
         # Keyboard for first command - Approve Chain first (full width), then step approve
-        keyboard = {
-            "inline_keyboard": [
-                [{"text": "⏩ Approve Chain", "callback_data": f"chain_approve_entire:{request_id}"}],
-                [{"text": "✅ Approve Step", "callback_data": f"chain_approve:{request_id}:0"}],
-                [
-                    {"text": "📝 Rule", "callback_data": f"chain_rule:{request_id}:0"},
-                    {"text": "❌ Deny", "callback_data": f"chain_deny:{request_id}"},
-                    {"text": "✍️ Deny+Msg", "callback_data": f"chain_deny_msg:{request_id}"},
-                ],
-            ]
-        }
+        keyboard = self._build_chain_keyboard(request_id, current_idx=0)
 
         result = await self._api_request(
             "sendMessage",
@@ -741,17 +741,7 @@ class TelegramNotifier(Notifier):
             }
         else:
             # Show keyboard for current command - Approve Chain first (full width), then step approve
-            keyboard = {
-                "inline_keyboard": [
-                    [{"text": "⏩ Approve Chain", "callback_data": f"chain_approve_entire:{request_id}"}],
-                    [{"text": "✅ Approve Step", "callback_data": f"chain_approve:{request_id}:{current_idx}"}],
-                    [
-                        {"text": "📝 Rule", "callback_data": f"chain_rule:{request_id}:{current_idx}"},
-                        {"text": "❌ Deny", "callback_data": f"chain_deny:{request_id}"},
-                        {"text": "✍️ Deny+Msg", "callback_data": f"chain_deny_msg:{request_id}"},
-                    ],
-                ]
-            }
+            keyboard = self._build_chain_keyboard(request_id, current_idx)
 
         await self._api_request(
             "editMessageText",
