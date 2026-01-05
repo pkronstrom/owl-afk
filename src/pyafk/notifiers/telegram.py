@@ -6,6 +6,7 @@ from typing import Optional
 import httpx
 
 from pyafk.notifiers.base import Notifier
+from pyafk.utils.debug import debug_chain
 
 
 def format_approval_message(
@@ -592,6 +593,7 @@ class TelegramNotifier(Notifier):
         Raises:
             ValueError: If current_idx is out of bounds
         """
+        debug_chain(f"update_chain_progress", current_idx=current_idx, approved_indices=approved_indices, final_approve=final_approve, denied=denied)
         # Validate current_idx
         if current_idx < 0 or current_idx >= len(commands):
             raise ValueError(
