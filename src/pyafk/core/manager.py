@@ -130,7 +130,8 @@ class ApprovalManager:
                 pass
 
         # If no chain result, use regular rule checking
-        if rule_result is None:
+        # But NOT for chains - chain rules must match all commands individually
+        if rule_result is None and not is_chain:
             rule_result = await self.rules.check(tool_name, tool_input)
 
         if rule_result:

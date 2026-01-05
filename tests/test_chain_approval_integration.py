@@ -64,12 +64,14 @@ async def test_full_chain_approval_flow(mock_pyafk_dir):
                 "commands": commands,
                 "approved_indices": [],
             }
-            await manager.poller._save_chain_state(request_id, chain_state)
+            version = 0
+            await manager.poller._save_chain_state(request_id, chain_state, version)
 
             # Approve each command
             for idx in range(len(commands)):
                 chain_state["approved_indices"].append(idx)
-                await manager.poller._save_chain_state(request_id, chain_state)
+                version += 1
+                await manager.poller._save_chain_state(request_id, chain_state, version)
 
             # Final approval
             await manager.storage.resolve_request(
@@ -214,7 +216,8 @@ async def test_chain_rule_creation(mock_pyafk_dir):
                 "commands": commands,
                 "approved_indices": [],
             }
-            await manager.poller._save_chain_state(request_id, chain_state)
+            version = 0
+            await manager.poller._save_chain_state(request_id, chain_state, version)
 
             # Create rule for first command (git status)
             engine = RulesEngine(manager.storage)
@@ -224,12 +227,14 @@ async def test_chain_rule_creation(mock_pyafk_dir):
 
             # Mark first command as approved
             chain_state["approved_indices"].append(0)
-            await manager.poller._save_chain_state(request_id, chain_state)
+            version += 1
+            await manager.poller._save_chain_state(request_id, chain_state, version)
 
             # Approve remaining commands
             for idx in range(1, len(commands)):
                 chain_state["approved_indices"].append(idx)
-                await manager.poller._save_chain_state(request_id, chain_state)
+                version += 1
+                await manager.poller._save_chain_state(request_id, chain_state, version)
 
             # Final approval
             await manager.storage.resolve_request(
@@ -571,11 +576,14 @@ async def test_chain_state_persistence(mock_pyafk_dir):
     }
 
     # Save state
-    await poller._save_chain_state(request_id, chain_state)
+    await poller._save_chain_state(request_id, chain_state, version=0)
 
-    # Retrieve state
-    retrieved_state = await poller._get_chain_state(request_id)
+    # Retrieve state - returns (state, version) tuple
+    result = await poller._get_chain_state(request_id)
+    assert result is not None
+    retrieved_state, retrieved_version = result
     assert retrieved_state == chain_state
+    assert retrieved_version > 0  # Version is a timestamp
 
     # Clear state
     await poller._clear_chain_state(request_id)
