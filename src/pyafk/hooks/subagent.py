@@ -130,6 +130,7 @@ async def handle_subagent_stop(
     Returns:
         Response dict for Claude Code
     """
+    import sys
     from pyafk.core.poller import Poller
     from pyafk.utils.config import get_pyafk_dir
 
@@ -138,12 +139,26 @@ async def handle_subagent_stop(
 
     config = Config(pyafk_dir)
 
+    # Pass through when mode is off
+    if config.get_mode() != "on":
+        return {}
+
     # Check if Telegram is configured
     if not config.telegram_bot_token or not config.telegram_chat_id:
         return {}  # Let it stop normally
 
-    # Extract info from hook input
-    subagent_id = hook_input.get("tool_use_id", hook_input.get("session_id", "unknown"))
+    # Extract info from hook input - use session_id since tool_use_id isn't provided
+    subagent_id = hook_input.get("session_id", "unknown")
+    stop_hook_active = hook_input.get("stop_hook_active", False)
+
+    # Debug log to file for visibility
+    debug_log = pyafk_dir / "subagent_debug.log"
+    def log(msg: str) -> None:
+        with open(debug_log, "a") as f:
+            f.write(f"{time.strftime('%H:%M:%S')} {msg}\n")
+        print(f"[pyafk] {msg}", file=sys.stderr, flush=True)
+
+    log(f"SubagentStop: subagent_id={subagent_id[:8]}, stop_hook_active={stop_hook_active}")
     transcript_path = hook_input.get("transcript_path")
     project_path = hook_input.get("cwd")
 
@@ -167,25 +182,30 @@ async def handle_subagent_stop(
             project_path=project_path,
         )
 
-        # Also send the transcript as a formatted markdown file if available
-        if transcript_path:
-            transcript_file = Path(transcript_path)
-            if transcript_file.exists():
-                import tempfile
-                formatted = _format_transcript_markdown(transcript_file.read_text())
-                with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
-                    f.write(formatted)
-                    temp_path = Path(f.name)
+        # Check if there's an existing entry for this subagent - if so, update the message
+        existing = await storage.get_pending_subagent(subagent_id)
+        if existing and existing.get("telegram_msg_id"):
+            old_msg_id = existing["telegram_msg_id"]
+            if old_msg_id != msg_id:
+                # Edit old message to show it's superseded
                 try:
-                    await notifier.send_document(temp_path, caption="📜 Session log")
-                finally:
-                    temp_path.unlink(missing_ok=True)
+                    await notifier.edit_message(
+                        old_msg_id,
+                        "⏭️ Superseded by newer finish",
+                        parse_mode=None,
+                    )
+                except Exception:
+                    pass  # Old message might be deleted
 
-        # Create pending entry
+        # Create/update pending entry
         await storage.create_pending_subagent(subagent_id, msg_id)
+        log(f"Created pending entry, msg_id={msg_id}")
 
         # Create poller and wait for response
+        from pyafk.daemon import is_daemon_running
+
         poller = Poller(storage, notifier, pyafk_dir)
+        daemon_running = is_daemon_running(pyafk_dir)
 
         timeout = 3600  # 1 hour
         start = time.monotonic()
@@ -193,25 +213,39 @@ async def handle_subagent_stop(
         while True:
             elapsed = time.monotonic() - start
             if elapsed >= timeout:
+                log(f"Timeout reached after {elapsed:.0f}s")
                 return {}  # Timeout, let it stop
 
-            # Poll for updates
-            try:
-                await poller.process_updates_once()
-            except Exception:
-                pass
+            # Poll for updates (only if daemon is not running)
+            if not daemon_running:
+                try:
+                    await poller.process_updates_once()
+                except Exception:
+                    pass
 
             # Check if resolved
             entry = await storage.get_pending_subagent(subagent_id)
             if entry and entry["status"] != "pending":
                 if entry["status"] == "continue" and entry["response"]:
                     # User wants to continue with instructions
-                    return {
+                    # Format as explicit user instruction so Claude treats it as a new task
+                    user_instructions = f"The user has sent you new instructions via remote approval:\n\n{entry['response']}\n\nPlease follow these instructions."
+                    # Try both formats - with and without hookSpecificOutput
+                    response = {
                         "decision": "block",
-                        "reason": entry["response"],
+                        "reason": user_instructions,
+                        # Also try hookSpecificOutput format in case that's needed
+                        "hookSpecificOutput": {
+                            "hookEventName": "SubagentStop",
+                            "decision": "block",
+                            "reason": user_instructions,
+                        }
                     }
+                    log(f"Returning BLOCK with reason: {entry['response'][:100]}")
+                    return response
                 else:
                     # OK, let it stop
+                    log(f"Returning empty (let stop), status={entry['status']}")
                     return {}
 
             await asyncio.sleep(0.5)

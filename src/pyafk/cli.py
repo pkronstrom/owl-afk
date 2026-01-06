@@ -37,24 +37,70 @@ def status(ctx):
     else:
         click.echo("Telegram: not configured")
 
+    # Daemon status
+    from pyafk.daemon import get_daemon_pid, is_daemon_running
+
+    if is_daemon_running(pyafk_dir):
+        pid = get_daemon_pid(pyafk_dir)
+        click.echo(f"Daemon: running (pid {pid})")
+    else:
+        click.echo("Daemon: not running")
+
 
 @main.command("on")
 @click.pass_context
 def on_command(ctx):
-    """Enable pyafk."""
+    """Enable pyafk and start background daemon."""
     pyafk_dir = ctx.obj["pyafk_dir"]
     config = Config(pyafk_dir)
     config.set_mode("on")
-    click.echo("pyafk enabled")
+
+    # Start daemon if Telegram is configured
+    if config.telegram_bot_token and config.telegram_chat_id:
+        from pyafk.daemon import is_daemon_running, start_daemon
+
+        if is_daemon_running(pyafk_dir):
+            click.echo("pyafk enabled (daemon already running)")
+        elif start_daemon(pyafk_dir):
+            click.echo("pyafk enabled (daemon started)")
+        else:
+            click.echo("pyafk enabled (daemon failed to start)")
+    else:
+        click.echo("pyafk enabled (no Telegram configured)")
 
 
 @main.command("off")
 @click.pass_context
 def off_command(ctx):
-    """Disable pyafk and clean up pending messages."""
+    """Disable pyafk and clean up pending messages (daemon keeps running for /afk on)."""
     pyafk_dir = ctx.obj["pyafk_dir"]
     config = Config(pyafk_dir)
     config.set_mode("off")
+
+    # Keep daemon running so /afk on works from Telegram
+    # Pending requests stay pending - can still approve via Telegram after /afk on
+    from pyafk.daemon import is_daemon_running
+
+    if is_daemon_running(pyafk_dir):
+        click.echo("pyafk off (daemon still running, use /afk on in Telegram to re-enable)")
+    else:
+        click.echo("pyafk off (daemon not running, use 'pyafk on' to start)")
+
+
+@main.command("disable")
+@click.pass_context
+def disable_command(ctx):
+    """Fully disable pyafk - stop daemon and set mode off."""
+    pyafk_dir = ctx.obj["pyafk_dir"]
+    config = Config(pyafk_dir)
+    config.set_mode("off")
+
+    # Stop daemon
+    from pyafk.daemon import is_daemon_running, stop_daemon
+
+    daemon_stopped = False
+    if is_daemon_running(pyafk_dir):
+        daemon_stopped = stop_daemon(pyafk_dir)
 
     # Clean up pending Telegram messages
     async def cleanup():
@@ -72,26 +118,26 @@ def off_command(ctx):
             chat_id=config.telegram_chat_id,
         )
 
-        # Get and clean up pending requests
+        # Get and clean up pending requests - fallback to CLI
         pending = await storage.get_pending_requests()
         for request in pending:
             if request.telegram_msg_id:
                 await notifier.edit_message(
                     request.telegram_msg_id,
-                    "⏸️ pyafk disabled - auto-approving",
+                    "⏸️ pyafk disabled - falling back to CLI",
                 )
-            # Resolve as approved since mode is off
             await storage.resolve_request(
                 request_id=request.id,
-                status="approved",
-                resolved_by="pyafk_off",
+                status="fallback",
+                resolved_by="pyafk_disable",
             )
 
         await storage.close()
         return len(pending)
 
     cleaned = asyncio.run(cleanup())
-    click.echo(f"pyafk disabled ({cleaned} pending requests auto-approved)")
+    daemon_msg = ", daemon stopped" if daemon_stopped else ""
+    click.echo(f"pyafk disabled ({cleaned} pending requests -> CLI fallback{daemon_msg})")
 
 
 @main.group()
@@ -309,6 +355,10 @@ def hook(ctx, hook_type: str):
     elif result == FastPathResult.DENY:
         click.echo(json.dumps({"decision": "deny"}))
         return
+    elif result == FastPathResult.FALLBACK:
+        # Return empty to fall back to Claude's CLI approval
+        click.echo(json.dumps({}))
+        return
 
     # Read stdin
     try:
@@ -391,6 +441,17 @@ def _get_pyafk_hooks() -> dict:
                 ],
             }
         ],
+        "PostToolUse": [
+            {
+                "matcher": "Bash|Edit|Write|MultiEdit|WebFetch|Skill|mcp__.*",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "pyafk hook PostToolUse",
+                    }
+                ],
+            }
+        ],
         "PermissionRequest": [
             {
                 "matcher": "Bash|Edit|Write|MultiEdit|WebFetch|Skill|mcp__.*",
@@ -430,6 +491,26 @@ def _get_pyafk_hooks() -> dict:
                     {
                         "type": "command",
                         "command": "pyafk hook SessionStart",
+                    }
+                ],
+            }
+        ],
+        "PreCompact": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "pyafk hook PreCompact",
+                    }
+                ],
+            }
+        ],
+        "SessionEnd": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "pyafk hook SessionEnd",
                     }
                 ],
             }

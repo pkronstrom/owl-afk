@@ -192,9 +192,15 @@ class ApprovalManager:
     async def _wait_for_response(self, request_id: str) -> tuple[str, Optional[str]]:
         """Wait for approval response with polling.
 
+        When daemon is running, we just poll storage for status changes.
+        When daemon is not running, we poll Telegram directly.
+
         Returns:
             Tuple of (decision, denial_reason)
         """
+        from pyafk.daemon import is_daemon_running
+
+        daemon_running = is_daemon_running(self.pyafk_dir)
         start = time.monotonic()
 
         while True:
@@ -212,7 +218,8 @@ class ApprovalManager:
                 )
                 return (self.timeout_action, None)
 
-            if self.poller:
+            # Only poll Telegram directly if daemon is not running
+            if self.poller and not daemon_running:
                 try:
                     await self.poller.process_updates_once()
                 except Exception:

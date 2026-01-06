@@ -11,6 +11,7 @@ class FastPathResult(Enum):
     APPROVE = "approve"
     DENY = "deny"
     CONTINUE = "continue"
+    FALLBACK = "fallback"  # Return empty {} to use Claude's CLI
 
 
 def check_fast_path(pyafk_dir: Optional[Path] = None) -> FastPathResult:
@@ -45,7 +46,7 @@ def check_fast_path(pyafk_dir: Optional[Path] = None) -> FastPathResult:
         return FastPathResult.CONTINUE
 
     if mode == "off":
-        return FastPathResult.APPROVE
+        return FastPathResult.FALLBACK  # Fall back to Claude's CLI approval
     elif mode == "on":
         return FastPathResult.CONTINUE
     else:

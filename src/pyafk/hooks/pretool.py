@@ -14,6 +14,9 @@ def _make_response(decision: str, reason: str = "") -> dict:
     Args:
         decision: "allow" or "deny"
         reason: Optional reason for the decision
+
+    Note: PreToolUse does NOT support additionalContext.
+    Use PostToolUse hook for message delivery.
     """
     return {
         "hookSpecificOutput": {
@@ -84,12 +87,15 @@ async def handle_pretool_use(
         if result == "fallback":
             return {}
 
+        # Note: Message delivery moved to PostToolUse hook (PreToolUse doesn't support additionalContext)
+
         # Map internal result to Claude Code's expected values
         decision = "allow" if result == "approve" else "deny"
         if denial_reason:
             reason = f"pyafk: denied - {denial_reason}"
         else:
             reason = f"pyafk: {'allowed' if decision == 'allow' else 'denied'} via Telegram"
+
         return _make_response(decision, reason)
     finally:
         await manager.close()

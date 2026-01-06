@@ -13,7 +13,7 @@ from pyafk.core.command_parser import CommandParser
 from pyafk.core.storage import Storage
 from pyafk.notifiers.telegram import TelegramNotifier
 from pyafk.utils.debug import debug_callback, debug_chain, debug_rule
-from pyafk.utils.formatting import format_project_id, truncate_command
+from pyafk.utils.formatting import escape_html, format_project_id, truncate_command
 
 
 def _safe_int(value: str, default: int = 0) -> int:
@@ -90,10 +90,19 @@ class Poller:
     ) -> None:
         self.storage = storage
         self.notifier = notifier
+        self.pyafk_dir = pyafk_dir
         self.lock = PollLock(pyafk_dir / "poll.lock")
         self._offset_file = pyafk_dir / "telegram_offset"
         self._offset: Optional[int] = self._load_offset()
         self._running = False
+        self._debug_log = pyafk_dir / "subagent_debug.log"
+
+    def _log_debug(self, msg: str) -> None:
+        """Log debug message to file and stderr."""
+        import time as time_module
+        with open(self._debug_log, "a") as f:
+            f.write(f"{time_module.strftime('%H:%M:%S')} [poller] {msg}\n")
+        print(f"[pyafk] {msg}", file=sys.stderr, flush=True)
 
     def _load_offset(self) -> Optional[int]:
         """Load persisted Telegram update offset."""
@@ -166,6 +175,11 @@ class Poller:
             await self._handle_afk_command(text)
             return
 
+        # Handle /start command
+        if text.startswith("/start"):
+            await self._handle_start_command()
+            return
+
         reply_to = message.get("reply_to_message", {})
         reply_msg_id = reply_to.get("message_id")
         if not reply_msg_id:
@@ -174,14 +188,17 @@ class Poller:
 
         # Check if this is a reply to a feedback prompt we sent
         request_id = await self.storage.get_pending_feedback(reply_msg_id)
+        self._log_debug(f"pending_feedback lookup: msg_id={reply_msg_id} -> {request_id}")
         debug_callback(f"Looked up pending_feedback", reply_msg_id=reply_msg_id, request_id=request_id)
 
         if not request_id:
             # Check if it's a reply to a subagent finish message
             subagent = await self.storage.get_subagent_by_telegram_msg(reply_msg_id)
+            self._log_debug(f"get_subagent_by_telegram_msg({reply_msg_id}) = {subagent}")
             if subagent:
                 instructions = message.get("text", "")
                 subagent_id = subagent["subagent_id"]
+                self._log_debug(f"Resolving subagent {subagent_id[:16]} with: {instructions[:50]}")
                 await self.storage.resolve_subagent(subagent_id, "continue", instructions)
                 await self.notifier.send_message(f"📨 Instructions sent to agent")
                 # Update the original message to show it's been handled
@@ -202,13 +219,16 @@ class Poller:
 
         feedback = message.get("text", "")
 
-        # Check if this is for a subagent or chain denial
+        # Check if this is for a subagent, chain denial, or /msg
         if request_id.startswith("subagent:"):
             subagent_id = request_id[9:]  # Strip "subagent:" prefix
             await self._handle_subagent_feedback(subagent_id, feedback, reply_msg_id)
         elif request_id.startswith("chain:"):
             chain_request_id = request_id[6:]  # Strip "chain:" prefix
             await self._handle_chain_deny_with_feedback(chain_request_id, feedback, reply_msg_id)
+        elif request_id.startswith("msg:"):
+            session_id = request_id[4:]  # Strip "msg:" prefix
+            await self._handle_msg_feedback(session_id, feedback, reply_msg_id)
         else:
             await self._handle_deny_with_feedback(request_id, feedback, reply_msg_id)
 
@@ -219,6 +239,7 @@ class Poller:
         prompt_msg_id: int,
     ) -> None:
         """Handle subagent continue instructions."""
+        self._log_debug(f"_handle_subagent_feedback: id={subagent_id[:16]}, instr={instructions[:30]}")
         debug_callback(f"_handle_subagent_feedback called", subagent_id=subagent_id, instructions=instructions[:50])
 
         # Clear the pending feedback entry
@@ -226,37 +247,82 @@ class Poller:
 
         # Resolve the subagent with continue status and instructions
         await self.storage.resolve_subagent(subagent_id, "continue", instructions)
+        self._log_debug(f"Resolved subagent with continue status")
         debug_callback(f"Resolved subagent with continue", subagent_id=subagent_id)
 
         # Delete the prompt message and send confirmation
         await self.notifier.delete_message(prompt_msg_id)
         await self.notifier.send_message(f"📨 Instructions sent to agent")
 
+    async def _handle_msg_feedback(
+        self,
+        session_id: str,
+        message_text: str,
+        prompt_msg_id: int,
+    ) -> None:
+        """Handle message input for /msg command."""
+        self._log_debug(f"_handle_msg_feedback: session={session_id[:16]}, msg={message_text[:30]}")
+
+        # Clear the pending feedback entry
+        await self.storage.clear_pending_feedback(prompt_msg_id)
+
+        # Store the message
+        await self.storage.add_pending_message(session_id, message_text)
+        self._log_debug(f"Message stored in pending_messages")
+
+        # Get session info for confirmation
+        session = await self.storage.get_session(session_id)
+        if session:
+            short_id = session.session_id[:8]
+            project = session.project_path.split("/")[-1] if session.project_path else "unknown"
+            await self.notifier.send_message(
+                f"📨 Message queued for <code>{short_id}</code> ({project})"
+            )
+        else:
+            await self.notifier.send_message(f"📨 Message queued")
+
+        # Delete the prompt
+        await self.notifier.delete_message(prompt_msg_id)
+
     async def _handle_msg_command(self, text: str, message: dict[str, Any]) -> None:
         """Handle /msg command to send message to a Claude session.
 
         Usage:
-            /msg - Show active sessions
-            /msg <session_id> <message> - Send message to session
+            /msg - Show inline keyboard with session buttons
+            /msg <session_id> <message> - Send message to session directly
         """
+        self._log_debug(f"_handle_msg_command: {text[:50]}")
         parts = text.split(None, 2)  # Split: /msg, session_id, message
 
         if len(parts) == 1:
-            # Just /msg - show active sessions
+            # Just /msg - show inline keyboard with sessions
             sessions = await self.storage.get_active_sessions()
+            self._log_debug(f"Found {len(sessions)} active sessions")
             if not sessions:
                 await self.notifier.send_message("No active sessions")
                 return
 
-            lines = ["<b>Active sessions:</b>\n"]
-            for s in sessions[-10:]:  # Last 10 sessions
-                # Show short ID and project path
+            # Build inline keyboard with session buttons
+            buttons = []
+            for s in sessions[-6:]:  # Last 6 sessions (Telegram limit)
                 short_id = s.session_id[:8]
                 project = s.project_path.split("/")[-1] if s.project_path else "unknown"
-                lines.append(f"<code>{short_id}</code> - {project}")
+                buttons.append([{
+                    "text": f"{project} ({short_id})",
+                    "callback_data": f"msg_select:{s.session_id[:16]}"
+                }])
+                self._log_debug(f"  Session: {short_id} - {project}")
 
-            lines.append("\n<i>Use: /msg &lt;id&gt; &lt;message&gt;</i>")
-            await self.notifier.send_message("\n".join(lines))
+            keyboard = {"inline_keyboard": buttons}
+            await self.notifier._api_request(
+                "sendMessage",
+                data={
+                    "chat_id": self.notifier.chat_id,
+                    "text": "📨 <b>Send message to session:</b>",
+                    "parse_mode": "HTML",
+                    "reply_markup": json.dumps(keyboard),
+                },
+            )
             return
 
         if len(parts) < 3:
@@ -287,6 +353,84 @@ class Poller:
         project = session.project_path.split("/")[-1] if session.project_path else "unknown"
         await self.notifier.send_message(
             f"📨 Message queued for <code>{short_id}</code> ({project})"
+        )
+
+    async def _handle_msg_select(
+        self,
+        session_prefix: str,
+        callback_id: str,
+        message_id: Optional[int] = None,
+    ) -> None:
+        """Handle session selection for /msg command."""
+        self._log_debug(f"_handle_msg_select: prefix={session_prefix}")
+
+        # Find session by prefix
+        sessions = await self.storage.get_active_sessions()
+        matching = [s for s in sessions if s.session_id.startswith(session_prefix)]
+
+        if not matching:
+            self._log_debug(f"No session found for prefix {session_prefix}")
+            await self.notifier.answer_callback(callback_id, "Session not found")
+            return
+
+        session = matching[0]
+        short_id = session.session_id[:8]
+        project = session.project_path.split("/")[-1] if session.project_path else "unknown"
+        self._log_debug(f"Selected session: {session.session_id[:16]} ({project})")
+
+        await self.notifier.answer_callback(callback_id, f"Selected {project}")
+
+        # Send force_reply prompt
+        result = await self.notifier._api_request(
+            "sendMessage",
+            data={
+                "chat_id": self.notifier.chat_id,
+                "text": f"💬 Type message for <b>{project}</b> ({short_id}):",
+                "parse_mode": "HTML",
+                "reply_markup": json.dumps({"force_reply": True, "selective": True}),
+            },
+        )
+
+        if result.get("ok") and result.get("result"):
+            prompt_msg_id = result["result"].get("message_id")
+            if prompt_msg_id:
+                # Store in pending_feedback with special prefix
+                await self.storage.set_pending_feedback(
+                    prompt_msg_id, f"msg:{session.session_id}"
+                )
+                self._log_debug(f"Stored pending_feedback: msg_id={prompt_msg_id}, session={session.session_id[:16]}")
+        else:
+            self._log_debug(f"Failed to send force_reply prompt: {result}")
+
+        # Update the original message
+        if message_id:
+            await self.notifier.edit_message(
+                message_id,
+                f"📨 Sending to <b>{project}</b> ({short_id})...",
+                remove_keyboard=True,
+            )
+
+    async def _handle_start_command(self) -> None:
+        """Handle /start command - show welcome message and status."""
+        from pyafk.utils.config import Config
+
+        config = Config(self.pyafk_dir)
+        mode = config.get_mode()
+        pending = await self.storage.get_pending_requests()
+        sessions = await self.storage.get_active_sessions()
+
+        status_emoji = "🟢" if mode == "on" else "🔴"
+        status_text = "ON" if mode == "on" else "OFF"
+
+        await self.notifier.send_message(
+            f"<b>🤖 pyafk - Remote Approval for Claude Code</b>\n\n"
+            f"<b>Status:</b> {status_emoji} {status_text}\n"
+            f"<b>Active sessions:</b> {len(sessions)}\n"
+            f"<b>Pending requests:</b> {len(pending)}\n\n"
+            f"<b>Commands:</b>\n"
+            f"/afk - Toggle remote approval mode\n"
+            f"/msg - Send message to a Claude session\n"
+            f"/start - Show this message"
         )
 
     async def _handle_afk_command(self, text: str) -> None:
@@ -409,6 +553,8 @@ class Poller:
             await self._handle_subagent_ok(target_id, callback_id, message_id)
         elif action == "subagent_continue":
             await self._handle_subagent_continue(target_id, callback_id, message_id)
+        elif action == "msg_select":
+            await self._handle_msg_select(target_id, callback_id, message_id)
         elif action == "chain_approve":
             # Format: chain_approve:request_id:command_index
             parts = target_id.split(":", 1)
@@ -744,15 +890,20 @@ class Poller:
         message_id: Optional[int] = None,
     ) -> None:
         """Handle subagent Continue button - prompt for instructions."""
+        self._log_debug(f"_handle_subagent_continue: id={subagent_id[:16]}, msg_id={message_id}")
         debug_callback(f"_handle_subagent_continue called", subagent_id=subagent_id, message_id=message_id)
         await self.notifier.answer_callback(callback_id, "Reply with instructions")
 
         # Send continue prompt
         prompt_msg_id = await self.notifier.send_continue_prompt()
+        self._log_debug(f"Sent continue prompt, prompt_msg_id={prompt_msg_id}")
         debug_callback(f"Sent continue prompt", prompt_msg_id=prompt_msg_id)
         if prompt_msg_id:
             await self.storage.set_subagent_continue_prompt(subagent_id, prompt_msg_id)
+            self._log_debug(f"Stored continue prompt for id={subagent_id[:16]}")
             debug_callback(f"Stored continue prompt", subagent_id=subagent_id)
+        else:
+            self._log_debug(f"ERROR: Failed to send continue prompt!")
 
         # Update the original message to show waiting for instructions
         if message_id:
@@ -1073,7 +1224,7 @@ class Poller:
         if message_id:
             await self.notifier.edit_message_with_rule_keyboard(
                 message_id,
-                f"Command {command_idx + 1}: <code>{truncate_command(cmd)}</code>",
+                f"Command {command_idx + 1}: <code>{escape_html(truncate_command(cmd))}</code>",
                 request_id,
                 patterns,
                 callback_prefix=f"chain_rule_pattern:{request_id}:{command_idx}",
@@ -1620,9 +1771,11 @@ class Poller:
         """Format chain approved message with list of commands."""
         cmd_lines = []
         for cmd in commands:
-            cmd_lines.append(f"  • <code>{truncate_command(cmd)}</code>")
+            # Escape HTML entities in command to prevent parse errors
+            cmd_escaped = escape_html(truncate_command(cmd))
+            cmd_lines.append(f"  • <code>{cmd_escaped}</code>")
 
-        return f"<i>{project_id}</i>\n✅ <b>Chain approved</b>\n" + "\n".join(cmd_lines)
+        return f"<i>{escape_html(project_id)}</i>\n✅ <b>Chain approved</b>\n" + "\n".join(cmd_lines)
 
     def _format_tool_summary(self, tool_name: str, tool_input: Optional[str]) -> str:
         """Format tool input for display."""

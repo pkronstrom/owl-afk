@@ -170,6 +170,15 @@ class CommandParser:
         if len(tokens) < param_count + 1:
             return None
 
+        # Check subcommand whitelist if present (e.g., docker only wraps exec/run)
+        if "subcommands" in wrapper_info:
+            # First param is typically the subcommand (action)
+            if len(tokens) > 1:
+                subcommand = tokens[1]
+                if subcommand not in wrapper_info["subcommands"]:
+                    # Not a wrapper subcommand, treat as regular command
+                    return None
+
         params = {}
         for i, key in enumerate(param_keys):
             if i + 1 < len(tokens):
@@ -384,14 +393,17 @@ class CommandNode:
 
 
 # Registry of wrapper types that can contain nested commands
+# For commands with subcommand-specific behavior, use "subcommands" to whitelist
 WRAPPERS = {
     "ssh": {
         "param_keys": ["host"],
         "param_count": 1,
     },
     "docker": {
+        # Only exec and run have nested commands
         "param_keys": ["action", "container"],
         "param_count": 2,
+        "subcommands": ["exec", "run"],  # Only these are wrappers
     },
     "sudo": {
         "param_keys": [],
@@ -402,8 +414,9 @@ WRAPPERS = {
         "param_count": 0,
     },
     "kubectl": {
-        "param_keys": ["action"],
-        "param_count": 1,
+        "param_keys": ["action", "pod"],
+        "param_count": 2,
+        "subcommands": ["exec"],  # Only kubectl exec is a wrapper
     },
     "screen": {
         "param_keys": ["session"],

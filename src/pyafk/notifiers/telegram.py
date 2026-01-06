@@ -433,9 +433,9 @@ class TelegramNotifier(Notifier):
             output_summary = output_summary[-3000:]
             output_summary = "..." + output_summary
 
-        # Use Markdown for the output (agent responses are often in markdown)
-        # Header in bold, then the markdown content as-is
-        text = f"*{_escape_markdown(project_id)}*\n🤖 *Subagent finished*\n\n{output_summary}"
+        # Use HTML for reliability - agent output may contain Markdown special chars
+        # that would break Markdown parsing
+        text = f"<i>{_escape_html(project_id)}</i>\n🤖 <b>Subagent finished</b>\n\n<pre>{_escape_html(output_summary)}</pre>"
 
         keyboard = {
             "inline_keyboard": [
@@ -451,7 +451,7 @@ class TelegramNotifier(Notifier):
             data={
                 "chat_id": self.chat_id,
                 "text": text,
-                "parse_mode": "Markdown",
+                "parse_mode": "HTML",
                 "reply_markup": json.dumps(keyboard),
             },
         )
