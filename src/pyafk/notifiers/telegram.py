@@ -326,12 +326,15 @@ class TelegramNotifier(Notifier):
 
         keyboard = {"inline_keyboard": buttons}
 
+        # Escape HTML in original text to prevent parsing errors
+        escaped_text = _escape_html(original_text)
+
         await self._api_request(
             "editMessageText",
             data={
                 "chat_id": self.chat_id,
                 "message_id": message_id,
-                "text": f"{original_text}\n\n📝 <b>Approve rule pattern:</b>",
+                "text": f"{escaped_text}\n\n📝 <b>Approve rule pattern:</b>",
                 "parse_mode": "HTML",
                 "reply_markup": json.dumps(keyboard),
             },
