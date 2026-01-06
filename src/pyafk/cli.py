@@ -68,11 +68,11 @@ def on_command(ctx):
     # Build status parts
     mode_info = f"via {hooks_mode}" if hooks_installed else "no hooks"
 
-    # Start daemon if Telegram is configured (only for standalone mode)
+    # Start daemon if Telegram is configured and daemon is enabled
     if config.telegram_bot_token and config.telegram_chat_id:
-        if hooks_mode == "captain-hook":
-            # No daemon needed for captain-hook mode
-            click.echo(f"pyafk enabled ({mode_info})")
+        if hooks_mode == "captain-hook" or not config.daemon_enabled:
+            # No daemon needed for captain-hook mode or when daemon disabled
+            click.echo(f"pyafk enabled ({mode_info}, inline polling)")
         else:
             from pyafk.daemon import is_daemon_running, start_daemon
 

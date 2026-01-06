@@ -30,6 +30,8 @@ class Config:
         self.timeout_seconds = 3600
         self.timeout_action = "deny"
         self.debug = False
+        # WARNING: experimental - daemon_enabled=False means hooks poll inline
+        self.daemon_enabled = False
 
         if self._config_file.exists():
             try:
@@ -39,6 +41,7 @@ class Config:
                 self.timeout_seconds = data.get("timeout_seconds", 3600)
                 self.timeout_action = data.get("timeout_action", "deny")
                 self.debug = data.get("debug", False)
+                self.daemon_enabled = data.get("daemon_enabled", False)
             except (json.JSONDecodeError, IOError):
                 pass
 
@@ -51,6 +54,7 @@ class Config:
             "timeout_seconds": self.timeout_seconds,
             "timeout_action": self.timeout_action,
             "debug": self.debug,
+            "daemon_enabled": self.daemon_enabled,
         }
         self._config_file.write_text(json.dumps(data, indent=2))
 
