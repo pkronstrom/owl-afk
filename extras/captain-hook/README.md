@@ -8,6 +8,16 @@ Use pyafk's Telegram approval system with captain-hook as the hook manager.
 2. **captain-hook set up**: Run `captain-hook` to initialize
 3. **Telegram bot configured**: Run `pyafk setup` to configure your bot token and chat ID
 
+## Switching from Standalone Mode
+
+If you previously used `pyafk install` (standalone mode), uninstall those hooks first:
+
+```bash
+pyafk uninstall
+```
+
+This prevents duplicate hooks running.
+
 ## Installation
 
 ```bash
