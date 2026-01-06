@@ -53,20 +53,37 @@ def on_command(ctx):
     """Enable pyafk and start background daemon."""
     pyafk_dir = ctx.obj["pyafk_dir"]
     config = Config(pyafk_dir)
+
+    # Check if hooks are installed
+    hooks_installed, hooks_mode = _check_hooks_installed()
+    if not hooks_installed:
+        click.echo("Warning: No pyafk hooks installed!")
+        click.echo("Install hooks with one of:")
+        click.echo("  pyafk install           # Standalone mode")
+        click.echo("  pyafk captain-hook install  # With captain-hook")
+        click.echo()
+
     config.set_mode("on")
 
-    # Start daemon if Telegram is configured
-    if config.telegram_bot_token and config.telegram_chat_id:
-        from pyafk.daemon import is_daemon_running, start_daemon
+    # Build status parts
+    mode_info = f"via {hooks_mode}" if hooks_installed else "no hooks"
 
-        if is_daemon_running(pyafk_dir):
-            click.echo("pyafk enabled (daemon already running)")
-        elif start_daemon(pyafk_dir):
-            click.echo("pyafk enabled (daemon started)")
+    # Start daemon if Telegram is configured (only for standalone mode)
+    if config.telegram_bot_token and config.telegram_chat_id:
+        if hooks_mode == "captain-hook":
+            # No daemon needed for captain-hook mode
+            click.echo(f"pyafk enabled ({mode_info})")
         else:
-            click.echo("pyafk enabled (daemon failed to start)")
+            from pyafk.daemon import is_daemon_running, start_daemon
+
+            if is_daemon_running(pyafk_dir):
+                click.echo(f"pyafk enabled ({mode_info}, daemon already running)")
+            elif start_daemon(pyafk_dir):
+                click.echo(f"pyafk enabled ({mode_info}, daemon started)")
+            else:
+                click.echo(f"pyafk enabled ({mode_info}, daemon failed to start)")
     else:
-        click.echo("pyafk enabled (no Telegram configured)")
+        click.echo(f"pyafk enabled ({mode_info}, no Telegram configured)")
 
 
 @main.command("off")
@@ -588,6 +605,30 @@ def _is_pyafk_hook(hook_entry: dict) -> bool:
         if "pyafk hook" in hook.get("command", ""):
             return True
     return False
+
+
+def _check_hooks_installed() -> tuple[bool, str]:
+    """Check if pyafk hooks are installed (standalone or captain-hook).
+
+    Returns:
+        (installed, mode) where mode is 'standalone', 'captain-hook', or 'none'
+    """
+    # Check standalone installation in Claude settings
+    settings_path = _get_claude_settings_path()
+    if settings_path and settings_path.exists():
+        settings = _load_claude_settings(settings_path)
+        hooks = settings.get("hooks", {})
+        for hook_entries in hooks.values():
+            for entry in hook_entries:
+                if _is_pyafk_hook(entry):
+                    return True, "standalone"
+
+    # Check captain-hook installation
+    captain_hook_dir = Path.home() / ".config" / "captain-hook" / "hooks"
+    if (captain_hook_dir / "pre_tool_use" / "pyafk.sh").exists():
+        return True, "captain-hook"
+
+    return False, "none"
 
 
 @main.command("install")
