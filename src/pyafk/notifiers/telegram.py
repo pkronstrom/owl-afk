@@ -433,9 +433,8 @@ class TelegramNotifier(Notifier):
             output_summary = output_summary[-3000:]
             output_summary = "..." + output_summary
 
-        # Use HTML for reliability - agent output may contain Markdown special chars
-        # that would break Markdown parsing
-        text = f"<i>{_escape_html(project_id)}</i>\n🤖 <b>Subagent finished</b>\n\n<pre>{_escape_html(output_summary)}</pre>"
+        # Use Markdown for nicer rendering of agent output
+        text = f"_{project_id}_\n🤖 *Subagent finished*\n\n{output_summary}"
 
         keyboard = {
             "inline_keyboard": [
@@ -445,15 +444,27 @@ class TelegramNotifier(Notifier):
             ]
         }
 
+        # Try Markdown first, fall back to plain text if parsing fails
         result = await self._api_request(
             "sendMessage",
             data={
                 "chat_id": self.chat_id,
                 "text": text,
-                "parse_mode": "HTML",
+                "parse_mode": "Markdown",
                 "reply_markup": json.dumps(keyboard),
             },
         )
+
+        # If Markdown parsing failed, retry without parse_mode
+        if not result.get("ok") and "can't parse" in str(result.get("description", "")).lower():
+            result = await self._api_request(
+                "sendMessage",
+                data={
+                    "chat_id": self.chat_id,
+                    "text": text,
+                    "reply_markup": json.dumps(keyboard),
+                },
+            )
 
         if result.get("ok") and "result" in result:
             msg_id = result["result"].get("message_id")
