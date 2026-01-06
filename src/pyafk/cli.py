@@ -888,7 +888,7 @@ exec pyafk hook {hook_type}
         click.echo(f"Installed: {event}/{wrapper_name}")
 
     click.echo()
-    click.echo("Done! Run 'captain-hook toggle' to enable pyafk hooks.")
+    click.echo("Done! Run 'captain-hook toggle' to select and enable pyafk hooks.")
 
 
 @captain_hook.command("uninstall")
