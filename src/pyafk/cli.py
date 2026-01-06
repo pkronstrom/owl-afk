@@ -356,8 +356,11 @@ def hook(ctx, hook_type: str):
         click.echo(json.dumps({"decision": "deny"}))
         return
     elif result == FastPathResult.FALLBACK:
-        # Return empty to fall back to Claude's CLI approval
-        click.echo(json.dumps({}))
+        # pyafk is off - reject with explanation
+        click.echo(json.dumps({
+            "decision": "block",
+            "reason": "pyafk is currently disabled. Use /afk on in Telegram or run 'pyafk on' to enable remote approvals.",
+        }))
         return
 
     # Read stdin
