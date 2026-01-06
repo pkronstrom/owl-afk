@@ -2,9 +2,9 @@
 
 import asyncio
 import json
+import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
 
 import click
 
@@ -213,7 +213,9 @@ def disable_command(ctx):
 
     cleaned = asyncio.run(cleanup())
     daemon_msg = ", daemon stopped" if daemon_stopped else ""
-    click.echo(f"pyafk disabled ({cleaned} pending requests -> CLI fallback{daemon_msg})")
+    click.echo(
+        f"pyafk disabled ({cleaned} pending requests -> CLI fallback{daemon_msg})"
+    )
 
 
 @main.group()
@@ -279,9 +281,17 @@ def rules_list(ctx):
 
 @rules.command("add")
 @click.argument("pattern")
-@click.option("--approve", "action", flag_value="approve", default=True, help="Auto-approve matching tools")
+@click.option(
+    "--approve",
+    "action",
+    flag_value="approve",
+    default=True,
+    help="Auto-approve matching tools",
+)
 @click.option("--deny", "action", flag_value="deny", help="Auto-deny matching tools")
-@click.option("--priority", default=0, type=int, help="Rule priority (higher = checked first)")
+@click.option(
+    "--priority", default=0, type=int, help="Rule priority (higher = checked first)"
+)
 @click.pass_context
 def rules_add(ctx, pattern: str, action: str, priority: int):
     """Add a new rule."""
@@ -296,7 +306,9 @@ def rules_add(ctx, pattern: str, action: str, priority: int):
         await storage.connect()
         try:
             engine = RulesEngine(storage)
-            rule_id = await engine.add_rule(pattern, action, priority, created_via="cli")
+            rule_id = await engine.add_rule(
+                pattern, action, priority, created_via="cli"
+            )
             return rule_id
         finally:
             await storage.close()
@@ -463,11 +475,11 @@ def reset_command(ctx, force):
 
     # Show what will be deleted
     db_size = db_path.stat().st_size
-    click.echo(f"This will delete:")
+    click.echo("This will delete:")
     click.echo(f"  - Database: {db_size / 1024:.1f} KB")
-    click.echo(f"  - All pending requests")
-    click.echo(f"  - All auto-approve rules")
-    click.echo(f"  - All session history")
+    click.echo("  - All pending requests")
+    click.echo("  - All auto-approve rules")
+    click.echo("  - All session history")
     click.echo()
     click.echo("Config (Telegram credentials) will be kept.")
     click.echo()
@@ -659,7 +671,9 @@ def install_command(ctx):
         if hook_type not in new_hooks:
             new_hooks[hook_type] = []
         # Remove any existing pyafk hooks for this type
-        new_hooks[hook_type] = [h for h in new_hooks[hook_type] if not _is_pyafk_hook(h)]
+        new_hooks[hook_type] = [
+            h for h in new_hooks[hook_type] if not _is_pyafk_hook(h)
+        ]
         # Add the new pyafk hooks
         new_hooks[hook_type].extend(hook_entries)
 
@@ -887,8 +901,29 @@ exec pyafk hook {hook_type}
         wrapper_path.chmod(0o755)
         click.echo(f"Installed: {event}/{wrapper_name}")
 
+    # Enable hooks via captain-hook CLI
     click.echo()
-    click.echo("Done! Run 'captain-hook toggle' to select and enable pyafk hooks.")
+    click.echo("Enabling hooks...")
+    hook_names = [f"{event}/pyafk-{event}" for event in HOOK_EVENTS]
+    try:
+        subprocess.run(
+            ["captain-hook", "enable"] + hook_names,
+            check=True,
+            capture_output=True,
+        )
+        # Regenerate runners
+        subprocess.run(
+            ["captain-hook", "toggle"],
+            check=True,
+            capture_output=True,
+        )
+        click.echo("Done! pyafk hooks installed and enabled.")
+    except subprocess.CalledProcessError as e:
+        click.echo(f"Warning: Failed to auto-enable hooks: {e}")
+        click.echo("Run 'captain-hook toggle' to select and enable pyafk hooks.")
+    except FileNotFoundError:
+        click.echo("Warning: captain-hook CLI not found in PATH")
+        click.echo("Run 'captain-hook toggle' to select and enable pyafk hooks.")
 
 
 @captain_hook.command("uninstall")
