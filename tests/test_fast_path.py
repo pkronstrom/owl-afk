@@ -6,13 +6,13 @@ from pyafk.fast_path import check_fast_path, FastPathResult
 
 
 def test_fast_path_off_mode(mock_pyafk_dir):
-    """Fast path should return approve when mode is off."""
+    """Fast path should return fallback when mode is off (let Claude CLI handle it)."""
     mode_file = mock_pyafk_dir / "mode"
     mode_file.write_text("off")
 
     result = check_fast_path(mock_pyafk_dir)
 
-    assert result == FastPathResult.APPROVE
+    assert result == FastPathResult.FALLBACK
 
 
 def test_fast_path_on_mode(mock_pyafk_dir):

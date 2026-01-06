@@ -40,28 +40,34 @@ class PollLock:
 
         start = time.monotonic()
         while True:
+            fd = None
             try:
-                self._fd = os.open(
+                fd = os.open(
                     str(self.lock_path),
                     os.O_CREAT | os.O_RDWR,
                 )
-                fcntl.flock(self._fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                os.ftruncate(self._fd, 0)
-                os.write(self._fd, str(os.getpid()).encode())
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                os.ftruncate(fd, 0)
+                os.write(fd, str(os.getpid()).encode())
+                self._fd = fd  # Only store after successful lock
                 return True
             except (BlockingIOError, OSError):
-                if self._fd is not None:
+                pass  # Lock held by another process, retry
+            except Exception:
+                pass  # Unexpected error, retry
+            finally:
+                # Clean up fd if we didn't successfully acquire the lock
+                if fd is not None and self._fd != fd:
                     try:
-                        os.close(self._fd)
+                        os.close(fd)
                     except OSError:
                         pass
-                    self._fd = None
 
-                elapsed = time.monotonic() - start
-                if elapsed >= timeout:
-                    return False
+            elapsed = time.monotonic() - start
+            if elapsed >= timeout:
+                return False
 
-                await asyncio.sleep(0.1)
+            await asyncio.sleep(0.1)
 
     async def release(self) -> None:
         """Release the lock."""
@@ -1600,9 +1606,10 @@ class Poller:
 
         Uses hashlib for stable hashing across process restarts
         (Python's hash() is randomized by PYTHONHASHSEED).
+        Uses 16 hex chars (64 bits) for low collision probability.
         """
         import hashlib
-        return int(hashlib.md5(f"chain:{request_id}".encode()).hexdigest()[:8], 16)
+        return int(hashlib.md5(f"chain:{request_id}".encode()).hexdigest()[:16], 16)
 
     async def _get_chain_state(self, request_id: str) -> Optional[tuple[dict[str, Any], int]]:
         """Get chain approval state and version from storage.

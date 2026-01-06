@@ -88,28 +88,33 @@ def off_command(ctx):
         storage = Storage(pyafk_dir / "pyafk.db")
         await storage.connect()
 
-        notifier = TelegramNotifier(
-            bot_token=config.telegram_bot_token,
-            chat_id=config.telegram_chat_id,
-        )
-
-        # Reject pending requests
-        pending = await storage.get_pending_requests()
-        for request in pending:
-            if request.telegram_msg_id:
-                await notifier.edit_message(
-                    request.telegram_msg_id,
-                    "⏸️ pyafk off - retry when enabled",
-                )
-            await storage.resolve_request(
-                request_id=request.id,
-                status="denied",
-                resolved_by="pyafk_off",
-                denial_reason="pyafk disabled - retry when enabled",
+        try:
+            notifier = TelegramNotifier(
+                bot_token=config.telegram_bot_token,
+                chat_id=config.telegram_chat_id,
             )
 
-        await storage.close()
-        return len(pending)
+            # Reject pending requests
+            pending = await storage.get_pending_requests()
+            for request in pending:
+                if request.telegram_msg_id:
+                    try:
+                        await notifier.edit_message(
+                            request.telegram_msg_id,
+                            "⏸️ pyafk off - retry when enabled",
+                        )
+                    except Exception:
+                        pass  # Telegram errors shouldn't block cleanup
+                await storage.resolve_request(
+                    request_id=request.id,
+                    status="denied",
+                    resolved_by="pyafk_off",
+                    denial_reason="pyafk disabled - retry when enabled",
+                )
+
+            return len(pending)
+        finally:
+            await storage.close()
 
     cleaned = asyncio.run(cleanup())
 
@@ -149,27 +154,32 @@ def disable_command(ctx):
         storage = Storage(pyafk_dir / "pyafk.db")
         await storage.connect()
 
-        notifier = TelegramNotifier(
-            bot_token=config.telegram_bot_token,
-            chat_id=config.telegram_chat_id,
-        )
-
-        # Get and clean up pending requests - fallback to CLI
-        pending = await storage.get_pending_requests()
-        for request in pending:
-            if request.telegram_msg_id:
-                await notifier.edit_message(
-                    request.telegram_msg_id,
-                    "⏸️ pyafk disabled - falling back to CLI",
-                )
-            await storage.resolve_request(
-                request_id=request.id,
-                status="fallback",
-                resolved_by="pyafk_disable",
+        try:
+            notifier = TelegramNotifier(
+                bot_token=config.telegram_bot_token,
+                chat_id=config.telegram_chat_id,
             )
 
-        await storage.close()
-        return len(pending)
+            # Get and clean up pending requests - fallback to CLI
+            pending = await storage.get_pending_requests()
+            for request in pending:
+                if request.telegram_msg_id:
+                    try:
+                        await notifier.edit_message(
+                            request.telegram_msg_id,
+                            "⏸️ pyafk disabled - falling back to CLI",
+                        )
+                    except Exception:
+                        pass  # Telegram errors shouldn't block cleanup
+                await storage.resolve_request(
+                    request_id=request.id,
+                    status="fallback",
+                    resolved_by="pyafk_disable",
+                )
+
+            return len(pending)
+        finally:
+            await storage.close()
 
     cleaned = asyncio.run(cleanup())
     daemon_msg = ", daemon stopped" if daemon_stopped else ""

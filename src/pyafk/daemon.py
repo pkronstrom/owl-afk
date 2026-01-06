@@ -188,7 +188,9 @@ async def daemon_main(pyafk_dir: Path) -> None:
     stop_event = asyncio.Event()
 
     def handle_signal(sig: int, frame: object) -> None:
-        stop_event.set()
+        # Use call_soon_threadsafe since signal handlers run in main thread
+        # and asyncio.Event is not thread-safe
+        loop.call_soon_threadsafe(stop_event.set)
 
     signal.signal(signal.SIGTERM, handle_signal)
     signal.signal(signal.SIGINT, handle_signal)
