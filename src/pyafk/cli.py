@@ -72,19 +72,55 @@ def on_command(ctx):
 @main.command("off")
 @click.pass_context
 def off_command(ctx):
-    """Disable pyafk and clean up pending messages (daemon keeps running for /afk on)."""
+    """Disable pyafk and reject pending requests (daemon keeps running for /afk on)."""
     pyafk_dir = ctx.obj["pyafk_dir"]
     config = Config(pyafk_dir)
     config.set_mode("off")
 
+    # Reject pending requests with explanation
+    async def cleanup():
+        from pyafk.core.storage import Storage
+        from pyafk.notifiers.telegram import TelegramNotifier
+
+        if not config.telegram_bot_token or not config.telegram_chat_id:
+            return 0
+
+        storage = Storage(pyafk_dir / "pyafk.db")
+        await storage.connect()
+
+        notifier = TelegramNotifier(
+            bot_token=config.telegram_bot_token,
+            chat_id=config.telegram_chat_id,
+        )
+
+        # Reject pending requests
+        pending = await storage.get_pending_requests()
+        for request in pending:
+            if request.telegram_msg_id:
+                await notifier.edit_message(
+                    request.telegram_msg_id,
+                    "⏸️ pyafk off - retry when enabled",
+                )
+            await storage.resolve_request(
+                request_id=request.id,
+                status="denied",
+                resolved_by="pyafk_off",
+                denial_reason="pyafk disabled - retry when enabled",
+            )
+
+        await storage.close()
+        return len(pending)
+
+    cleaned = asyncio.run(cleanup())
+
     # Keep daemon running so /afk on works from Telegram
-    # Pending requests stay pending - can still approve via Telegram after /afk on
     from pyafk.daemon import is_daemon_running
 
     if is_daemon_running(pyafk_dir):
-        click.echo("pyafk off (daemon still running, use /afk on in Telegram to re-enable)")
+        msg = f"pyafk off ({cleaned} pending rejected, use /afk on in Telegram)"
     else:
-        click.echo("pyafk off (daemon not running, use 'pyafk on' to start)")
+        msg = f"pyafk off ({cleaned} pending rejected, use 'pyafk on' to start)"
+    click.echo(msg)
 
 
 @main.command("disable")
@@ -356,14 +392,7 @@ def hook(ctx, hook_type: str):
         click.echo(json.dumps({"decision": "deny"}))
         return
     elif result == FastPathResult.FALLBACK:
-        # pyafk is off - only block permission-related hooks
-        if hook_type in ("PreToolUse", "PermissionRequest"):
-            click.echo(json.dumps({
-                "decision": "block",
-                "reason": "pyafk is currently disabled. Use /afk on in Telegram or run 'pyafk on' to enable remote approvals.",
-            }))
-            return
-        # Other hooks (PostToolUse, Stop, SessionStart, etc.) just pass through
+        # pyafk is off - pass through all hooks (auto-approve)
         click.echo(json.dumps({}))
         return
 
