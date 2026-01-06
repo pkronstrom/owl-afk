@@ -115,7 +115,7 @@ pyafk uses Claude Code hooks to intercept tool calls:
 
 ## Captain-Hook Integration
 
-pyafk can also be used with [captain-hook](https://github.com/bembu/captain-hook) as the hook manager. See [extras/captain-hook/README.md](extras/captain-hook/README.md) for setup instructions.
+pyafk can also be used with [captain-hook](https://github.com/pkronstrom/captain-hook) as the hook manager. See [extras/captain-hook/README.md](extras/captain-hook/README.md) for setup instructions.
 
 ## Requirements
 
