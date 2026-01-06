@@ -625,7 +625,7 @@ def _check_hooks_installed() -> tuple[bool, str]:
 
     # Check captain-hook installation
     captain_hook_dir = Path.home() / ".config" / "captain-hook" / "hooks"
-    if (captain_hook_dir / "pre_tool_use" / "pyafk.sh").exists():
+    if (captain_hook_dir / "pre_tool_use" / "pyafk-pre_tool_use.sh").exists():
         return True, "captain-hook"
 
     return False, "none"
@@ -831,13 +831,26 @@ def uninstall_command(ctx):
 
 # Captain-hook integration commands
 CAPTAIN_HOOK_DIR = Path.home() / ".config" / "captain-hook" / "hooks"
-HOOK_EVENTS = ["pre_tool_use", "post_tool_use", "stop", "subagent_stop"]
-HOOK_MODULES = {
-    "pre_tool_use": "pretool",
-    "post_tool_use": "posttool",
-    "stop": "stop",
-    "subagent_stop": "subagent",
+# Map captain-hook event names to pyafk hook config
+HOOK_CONFIG = {
+    "pre_tool_use": {
+        "type": "PreToolUse",
+        "description": "Remote approval for tool calls via Telegram",
+    },
+    "post_tool_use": {
+        "type": "PostToolUse",
+        "description": "Deliver queued Telegram messages after tool execution",
+    },
+    "stop": {
+        "type": "Stop",
+        "description": "Notify on session stop via Telegram",
+    },
+    "subagent_stop": {
+        "type": "SubagentStop",
+        "description": "Notify when subagents complete via Telegram",
+    },
 }
+HOOK_EVENTS = list(HOOK_CONFIG.keys())
 
 
 @main.group("captain-hook")
@@ -854,29 +867,25 @@ def captain_hook_install():
         click.echo("Run 'captain-hook' first to initialize.")
         raise SystemExit(1)
 
-    # Check pyafk is importable
-    try:
-        import pyafk.hooks.pretool  # noqa: F401
-    except ImportError:
-        click.echo("Error: pyafk package not properly installed")
-        raise SystemExit(1)
-
-    # Create wrapper scripts
+    # Create wrapper scripts that use the pyafk CLI
     for event in HOOK_EVENTS:
         event_dir = CAPTAIN_HOOK_DIR / event
         event_dir.mkdir(parents=True, exist_ok=True)
 
-        module = HOOK_MODULES[event]
-        wrapper_path = event_dir / "pyafk.sh"
+        config = HOOK_CONFIG[event]
+        hook_type = config["type"]
+        description = config["description"]
+        wrapper_name = f"pyafk-{event}.sh"
+        wrapper_path = event_dir / wrapper_name
 
         wrapper_content = f"""#!/usr/bin/env bash
-# Description: pyafk Telegram approval
+# Description: {description}
 # Deps: pyafk
-exec python3 -m pyafk.hooks.{module}
+exec pyafk hook {hook_type}
 """
         wrapper_path.write_text(wrapper_content)
         wrapper_path.chmod(0o755)
-        click.echo(f"Installed: {event}/pyafk.sh")
+        click.echo(f"Installed: {event}/{wrapper_name}")
 
     click.echo()
     click.echo("Done! Run 'captain-hook toggle' to enable pyafk hooks.")
@@ -888,10 +897,11 @@ def captain_hook_uninstall():
     removed = False
 
     for event in HOOK_EVENTS:
-        wrapper_path = CAPTAIN_HOOK_DIR / event / "pyafk.sh"
+        wrapper_name = f"pyafk-{event}.sh"
+        wrapper_path = CAPTAIN_HOOK_DIR / event / wrapper_name
         if wrapper_path.exists():
             wrapper_path.unlink()
-            click.echo(f"Removed: {event}/pyafk.sh")
+            click.echo(f"Removed: {event}/{wrapper_name}")
             removed = True
 
     if removed:

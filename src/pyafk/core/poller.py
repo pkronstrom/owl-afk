@@ -1606,10 +1606,10 @@ class Poller:
 
         Uses hashlib for stable hashing across process restarts
         (Python's hash() is randomized by PYTHONHASHSEED).
-        Uses 16 hex chars (64 bits) for low collision probability.
+        Uses 15 hex chars (60 bits) to stay within SQLite signed INTEGER max.
         """
         import hashlib
-        return int(hashlib.md5(f"chain:{request_id}".encode()).hexdigest()[:16], 16)
+        return int(hashlib.md5(f"chain:{request_id}".encode()).hexdigest()[:15], 16)
 
     async def _get_chain_state(self, request_id: str) -> Optional[tuple[dict[str, Any], int]]:
         """Get chain approval state and version from storage.
