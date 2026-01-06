@@ -252,3 +252,8 @@ async def handle_subagent_stop(
 
     finally:
         await storage.close()
+
+
+if __name__ == "__main__":
+    from pyafk.hooks.runner import run_hook
+    run_hook(handle_subagent_stop)

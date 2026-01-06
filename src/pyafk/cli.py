@@ -738,7 +738,7 @@ def uninstall_command(ctx):
     choice = choice.lower()
 
     if choice == "k":
-        click.echo("Data kept. You can remove it later with 'rm -rf ~/.pyafk'")
+        click.echo("Data kept. You can remove it later with 'rm -rf ~/.config/pyafk'")
     elif choice == "e":
         # Export data
         export_path = Path.home() / "pyafk_export.json"

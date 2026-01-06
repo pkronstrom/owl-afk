@@ -73,7 +73,7 @@ pyafk rules remove 1          # Remove rule by ID
 ### Debug Mode
 
 ```bash
-pyafk debug on   # Enable debug logging to ~/.pyafk/debug.log
+pyafk debug on   # Enable debug logging to ~/.config/pyafk/debug.log
 pyafk debug off  # Disable debug logging
 ```
 
@@ -100,7 +100,7 @@ Once a request comes in, you'll see inline buttons:
 ## Architecture
 
 ```
-~/.pyafk/
+~/.config/pyafk/
 ├── mode           # "on" or "off"
 ├── pyafk.db       # SQLite database (requests, rules, sessions)
 ├── debug.log      # Debug log (when enabled)
@@ -109,7 +109,13 @@ Once a request comes in, you'll see inline buttons:
 
 pyafk uses Claude Code hooks to intercept tool calls:
 - `PreToolUse` - Intercepts before tool execution
+- `PostToolUse` - Delivers queued messages
+- `Stop` - Interactive confirmation before Claude stops
 - `SubagentStop` - Notifies when subagents complete
+
+## Captain-Hook Integration
+
+pyafk can also be used with [captain-hook](https://github.com/bembu/captain-hook) as the hook manager. See [extras/captain-hook/README.md](extras/captain-hook/README.md) for setup instructions.
 
 ## Requirements
 

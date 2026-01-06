@@ -7,10 +7,10 @@ from typing import Optional
 
 
 def get_pyafk_dir() -> Path:
-    """Get the pyafk data directory."""
+    """Get the pyafk data directory (XDG-compliant)."""
     if env_dir := os.environ.get("PYAFK_DIR"):
         return Path(env_dir)
-    return Path.home() / ".pyafk"
+    return Path.home() / ".config" / "pyafk"
 
 
 class Config:

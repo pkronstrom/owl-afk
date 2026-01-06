@@ -24,7 +24,7 @@ def check_fast_path(pyafk_dir: Optional[Path] = None) -> FastPathResult:
 
     Args:
         pyafk_dir: Path to pyafk directory. If None, uses PYAFK_DIR env
-                   or defaults to ~/.pyafk
+                   or defaults to ~/.config/pyafk
 
     Returns:
         FastPathResult indicating whether to approve, deny, or continue
@@ -34,7 +34,7 @@ def check_fast_path(pyafk_dir: Optional[Path] = None) -> FastPathResult:
         if env_dir:
             pyafk_dir = Path(env_dir)
         else:
-            pyafk_dir = Path.home() / ".pyafk"
+            pyafk_dir = Path.home() / ".config" / "pyafk"
 
     mode_file = pyafk_dir / "mode"
 

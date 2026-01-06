@@ -50,7 +50,7 @@ Enable debug logging:
 ```bash
 pyafk debug on
 ```
-Logs go to `~/.pyafk/debug.log`.
+Logs go to `~/.config/pyafk/debug.log`.
 
 ## Common Tasks
 

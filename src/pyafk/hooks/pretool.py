@@ -99,3 +99,8 @@ async def handle_pretool_use(
         return _make_response(decision, reason)
     finally:
         await manager.close()
+
+
+if __name__ == "__main__":
+    from pyafk.hooks.runner import run_hook
+    run_hook(handle_pretool_use)

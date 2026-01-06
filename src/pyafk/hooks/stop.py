@@ -113,3 +113,8 @@ async def handle_stop(
 
     finally:
         await storage.close()
+
+
+if __name__ == "__main__":
+    from pyafk.hooks.runner import run_hook
+    run_hook(handle_stop)
