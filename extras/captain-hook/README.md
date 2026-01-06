@@ -6,7 +6,7 @@ Use pyafk's Telegram approval system with captain-hook as the hook manager.
 
 1. **pyafk installed**: `pip install pyafk` or `pipx install pyafk`
 2. **captain-hook set up**: Run `captain-hook` to initialize
-3. **Telegram bot configured**: Run `pyafk setup` to configure your bot token and chat ID
+3. **Telegram bot configured**: Run `pyafk telegram setup` to configure your bot token and chat ID
 
 ## Switching from Standalone Mode
 
@@ -24,21 +24,11 @@ This prevents duplicate hooks running.
 pyafk captain-hook install
 ```
 
-This creates pyafk wrapper scripts in `~/.config/captain-hook/hooks/`.
-
-## Enable Hooks
-
-After installation:
-
-```bash
-captain-hook toggle
-```
-
-Select the pyafk hooks you want to enable:
-- `pre_tool_use/pyafk.sh` - Approval for tool calls (Bash, Edit, etc.)
-- `post_tool_use/pyafk.sh` - Deliver queued messages after tool execution
-- `stop/pyafk.sh` - Interactive confirmation before Claude stops
-- `subagent_stop/pyafk.sh` - Approval for subagent continuation
+This creates and enables pyafk wrapper scripts in `~/.config/captain-hook/hooks/`:
+- `pre_tool_use/pyafk-pre_tool_use.sh` - Remote approval for tool calls
+- `post_tool_use/pyafk-post_tool_use.sh` - Deliver queued messages after tool execution
+- `stop/pyafk-stop.sh` - Notify on session stop
+- `subagent_stop/pyafk-subagent_stop.sh` - Notify when subagents complete
 
 ## How It Works
 
@@ -74,7 +64,7 @@ Config is stored in `~/.config/pyafk/`:
 
 To configure:
 ```bash
-pyafk setup
+pyafk telegram setup
 ```
 
 ## Uninstall
