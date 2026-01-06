@@ -461,6 +461,45 @@ class TelegramNotifier(Notifier):
             return int(msg_id) if msg_id is not None else None
         return None
 
+    async def send_stop_notification(
+        self,
+        session_id: str,
+        project_path: Optional[str] = None,
+    ) -> Optional[int]:
+        """Send stop notification with OK/Comment buttons."""
+        # Format project path
+        if project_path:
+            parts = project_path.rstrip("/").split("/")
+            project_id = "/".join(parts[-2:]) if len(parts) >= 2 else parts[-1]
+        else:
+            project_id = session_id[:8]
+
+        text = f"<i>{_escape_html(project_id)}</i>\n⏸️ <b>Claude is about to stop</b>"
+
+        keyboard = {
+            "inline_keyboard": [
+                [
+                    {"text": "✅ OK", "callback_data": f"stop_ok:{session_id}"},
+                    {"text": "💬 Comment", "callback_data": f"stop_comment:{session_id}"},
+                ],
+            ]
+        }
+
+        result = await self._api_request(
+            "sendMessage",
+            data={
+                "chat_id": self.chat_id,
+                "text": text,
+                "parse_mode": "HTML",
+                "reply_markup": json.dumps(keyboard),
+            },
+        )
+
+        if result.get("ok") and "result" in result:
+            msg_id = result["result"].get("message_id")
+            return int(msg_id) if msg_id is not None else None
+        return None
+
     async def send_rule_menu(self, request_id: str, patterns: list[str]) -> Optional[int]:
         """Send a menu with rule pattern options."""
         # Build keyboard with one button per pattern

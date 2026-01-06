@@ -219,13 +219,16 @@ class Poller:
 
         feedback = message.get("text", "")
 
-        # Check if this is for a subagent, chain denial, or /msg
+        # Check if this is for a subagent, chain denial, stop, or /msg
         if request_id.startswith("subagent:"):
             subagent_id = request_id[9:]  # Strip "subagent:" prefix
             await self._handle_subagent_feedback(subagent_id, feedback, reply_msg_id)
         elif request_id.startswith("chain:"):
             chain_request_id = request_id[6:]  # Strip "chain:" prefix
             await self._handle_chain_deny_with_feedback(chain_request_id, feedback, reply_msg_id)
+        elif request_id.startswith("stop:"):
+            session_id = request_id[5:]  # Strip "stop:" prefix
+            await self._handle_stop_feedback(session_id, feedback, reply_msg_id)
         elif request_id.startswith("msg:"):
             session_id = request_id[4:]  # Strip "msg:" prefix
             await self._handle_msg_feedback(session_id, feedback, reply_msg_id)
@@ -553,6 +556,10 @@ class Poller:
             await self._handle_subagent_ok(target_id, callback_id, message_id)
         elif action == "subagent_continue":
             await self._handle_subagent_continue(target_id, callback_id, message_id)
+        elif action == "stop_ok":
+            await self._handle_stop_ok(target_id, callback_id, message_id)
+        elif action == "stop_comment":
+            await self._handle_stop_comment(target_id, callback_id, message_id)
         elif action == "msg_select":
             await self._handle_msg_select(target_id, callback_id, message_id)
         elif action == "chain_approve":
@@ -918,6 +925,56 @@ class Poller:
                 "⏳ Waiting for instructions...",
                 parse_mode=None,
             )
+
+    async def _handle_stop_ok(
+        self,
+        session_id: str,
+        callback_id: str,
+        message_id: Optional[int] = None,
+    ) -> None:
+        """Handle stop OK button - let Claude stop normally."""
+        await self.storage.resolve_stop(session_id, "ok")
+        await self.notifier.answer_callback(callback_id, "OK")
+
+        if message_id:
+            await self.notifier.edit_message(
+                message_id,
+                "✅ Session ended",
+            )
+
+    async def _handle_stop_comment(
+        self,
+        session_id: str,
+        callback_id: str,
+        message_id: Optional[int] = None,
+    ) -> None:
+        """Handle stop Comment button - prompt for message to Claude."""
+        await self.notifier.answer_callback(callback_id, "Reply with your message")
+
+        # Send continue prompt
+        prompt_msg_id = await self.notifier.send_continue_prompt()
+        if prompt_msg_id:
+            await self.storage.set_stop_comment_prompt(session_id, prompt_msg_id)
+
+        # Update the original message
+        if message_id:
+            await self.notifier.edit_message(
+                message_id,
+                "⏳ Waiting for your message...",
+                parse_mode=None,
+            )
+
+    async def _handle_stop_feedback(
+        self,
+        session_id: str,
+        message: str,
+        prompt_msg_id: int,
+    ) -> None:
+        """Handle reply to stop comment prompt."""
+        # Resolve the stop with the comment
+        await self.storage.resolve_stop(session_id, "comment", message)
+        await self.notifier.send_message("📨 Message will be delivered to Claude")
+        await self.notifier.edit_message(prompt_msg_id, "✅ Message queued", parse_mode=None)
 
     async def _handle_chain_approve(
         self,

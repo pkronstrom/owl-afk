@@ -110,6 +110,14 @@ CREATE TABLE IF NOT EXISTS pending_messages (
     delivered_at    REAL
 );
 
+CREATE TABLE IF NOT EXISTS pending_stop (
+    session_id      TEXT PRIMARY KEY,
+    telegram_msg_id INTEGER,
+    status          TEXT DEFAULT 'pending',
+    response        TEXT,
+    created_at      REAL
+);
+
 CREATE INDEX IF NOT EXISTS idx_requests_status ON requests(status);
 CREATE INDEX IF NOT EXISTS idx_requests_session ON requests(session_id);
 CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp);
@@ -328,6 +336,48 @@ class Storage:
             VALUES (?, ?, ?)
             """,
             (prompt_msg_id, f"subagent:{subagent_id}", time.time()),
+        )
+        await self.conn.commit()
+
+    # Pending stop (main agent stop approval)
+
+    async def create_pending_stop(self, session_id: str, telegram_msg_id: Optional[int] = None) -> None:
+        """Create a pending stop entry."""
+        now = time.time()
+        await self.conn.execute(
+            """
+            INSERT OR REPLACE INTO pending_stop (session_id, telegram_msg_id, status, created_at)
+            VALUES (?, ?, 'pending', ?)
+            """,
+            (session_id, telegram_msg_id, now),
+        )
+        await self.conn.commit()
+
+    async def get_pending_stop(self, session_id: str) -> Optional[dict[str, Any]]:
+        """Get pending stop entry."""
+        cursor = await self.conn.execute(
+            "SELECT * FROM pending_stop WHERE session_id = ?",
+            (session_id,),
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+    async def resolve_stop(self, session_id: str, status: str, response: Optional[str] = None) -> None:
+        """Resolve a pending stop."""
+        await self.conn.execute(
+            "UPDATE pending_stop SET status = ?, response = ? WHERE session_id = ?",
+            (status, response, session_id),
+        )
+        await self.conn.commit()
+
+    async def set_stop_comment_prompt(self, session_id: str, prompt_msg_id: int) -> None:
+        """Track the comment prompt message for a stop."""
+        await self.conn.execute(
+            """
+            INSERT OR REPLACE INTO pending_feedback (prompt_msg_id, request_id, created_at)
+            VALUES (?, ?, ?)
+            """,
+            (prompt_msg_id, f"stop:{session_id}", time.time()),
         )
         await self.conn.commit()
 

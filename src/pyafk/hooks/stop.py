@@ -1,9 +1,12 @@
-"""Stop hook handler - delivers pending messages before Claude stops."""
+"""Stop hook handler - interactive approval before Claude stops."""
 
+import asyncio
+import time
 from pathlib import Path
 from typing import Optional
 
 from pyafk.core.storage import Storage
+from pyafk.notifiers.telegram import TelegramNotifier
 from pyafk.utils.config import Config, get_pyafk_dir
 
 
@@ -11,10 +14,13 @@ async def handle_stop(
     hook_input: dict,
     pyafk_dir: Optional[Path] = None,
 ) -> dict:
-    """Handle Stop hook - deliver pending messages before Claude stops.
+    """Handle Stop hook - ask user for OK or Comment before stopping.
 
-    If there are pending /msg messages, block the stop and deliver them.
-    This ensures messages reach Claude even if no tool calls happen.
+    1. Check for already-pending messages - deliver immediately
+    2. Send interactive notification with OK/Comment buttons
+    3. Wait for user response
+    4. If OK: let Claude stop
+    5. If Comment: block stop and deliver the message
     """
     if pyafk_dir is None:
         pyafk_dir = get_pyafk_dir()
@@ -25,35 +31,85 @@ async def handle_stop(
     if config.get_mode() != "on":
         return {}
 
+    # Check Telegram config
+    if not config.telegram_bot_token or not config.telegram_chat_id:
+        return {}
+
     session_id = hook_input.get("session_id", "unknown")
+    project_path = hook_input.get("cwd")
 
     storage = Storage(config.db_path)
     try:
         await storage.connect()
 
-        # Check for pending messages
+        # First check for already-pending messages (from /msg)
         pending = await storage.get_pending_messages(session_id)
+        if pending:
+            messages = []
+            for msg_id, msg_text in pending:
+                messages.append(f"- {msg_text}")
+                await storage.mark_message_delivered(msg_id)
 
-        if not pending:
-            return {}  # No messages, let Claude stop
+            reason = (
+                "📨 The user sent you a message via remote approval:\n"
+                + "\n".join(messages)
+                + "\n\nPlease address this before stopping."
+            )
+            return {"decision": "block", "reason": reason}
 
-        # Build message content
-        messages = []
-        for msg_id, msg_text in pending:
-            messages.append(f"- {msg_text}")
-            await storage.mark_message_delivered(msg_id)
-
-        reason = (
-            "📨 The user sent you a message via remote approval:\n"
-            + "\n".join(messages)
-            + "\n\nPlease address this before stopping."
+        # No pending messages - send interactive notification
+        notifier = TelegramNotifier(
+            bot_token=config.telegram_bot_token,
+            chat_id=config.telegram_chat_id,
         )
 
-        # Block the stop and deliver messages
-        return {
-            "decision": "block",
-            "reason": reason,
-        }
+        msg_id = await notifier.send_stop_notification(
+            session_id=session_id,
+            project_path=project_path,
+        )
+
+        # Create pending stop entry
+        await storage.create_pending_stop(session_id, msg_id)
+
+        # Poll for response
+        from pyafk.core.poller import Poller
+        from pyafk.daemon import is_daemon_running
+
+        poller = Poller(storage, notifier, pyafk_dir)
+        daemon_running = is_daemon_running(pyafk_dir)
+
+        timeout = 3600  # 1 hour
+        start = time.monotonic()
+
+        while True:
+            elapsed = time.monotonic() - start
+            if elapsed >= timeout:
+                # Timeout - let Claude stop
+                return {}
+
+            # Poll for updates (only if daemon not running)
+            if not daemon_running:
+                try:
+                    await poller.process_updates_once()
+                except Exception:
+                    pass
+
+            # Check status
+            entry = await storage.get_pending_stop(session_id)
+            if entry and entry["status"] != "pending":
+                if entry["status"] == "comment" and entry["response"]:
+                    # User sent a comment - block and deliver
+                    reason = (
+                        "📨 The user sent you a message via remote approval:\n"
+                        f"- {entry['response']}\n\n"
+                        "Please address this before stopping."
+                    )
+                    return {"decision": "block", "reason": reason}
+                else:
+                    # OK - let Claude stop
+                    return {}
+
+            await asyncio.sleep(0.5)
 
     finally:
         await storage.close()
