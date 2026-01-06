@@ -356,11 +356,15 @@ def hook(ctx, hook_type: str):
         click.echo(json.dumps({"decision": "deny"}))
         return
     elif result == FastPathResult.FALLBACK:
-        # pyafk is off - reject with explanation
-        click.echo(json.dumps({
-            "decision": "block",
-            "reason": "pyafk is currently disabled. Use /afk on in Telegram or run 'pyafk on' to enable remote approvals.",
-        }))
+        # pyafk is off - only block permission-related hooks
+        if hook_type in ("PreToolUse", "PermissionRequest"):
+            click.echo(json.dumps({
+                "decision": "block",
+                "reason": "pyafk is currently disabled. Use /afk on in Telegram or run 'pyafk on' to enable remote approvals.",
+            }))
+            return
+        # Other hooks (PostToolUse, Stop, SessionStart, etc.) just pass through
+        click.echo(json.dumps({}))
         return
 
     # Read stdin
