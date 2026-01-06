@@ -420,7 +420,7 @@ class TelegramNotifier(Notifier):
         output_summary: str,
         project_path: Optional[str] = None,
     ) -> Optional[int]:
-        """Send subagent completion notification with continue option."""
+        """Send subagent completion notification."""
         # Format project path
         if project_path:
             parts = project_path.rstrip("/").split("/")
@@ -441,7 +441,6 @@ class TelegramNotifier(Notifier):
             "inline_keyboard": [
                 [
                     {"text": "✅ OK", "callback_data": f"subagent_ok:{subagent_id}"},
-                    {"text": "💬 Continue", "callback_data": f"subagent_continue:{subagent_id}"},
                 ],
             ]
         }
