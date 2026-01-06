@@ -112,7 +112,20 @@ def off_command(ctx):
                     denial_reason="pyafk disabled - retry when enabled",
                 )
 
-            return len(pending)
+            # Resolve pending stops (let sessions end)
+            pending_stops = await storage.get_all_pending_stops()
+            for stop in pending_stops:
+                if stop.get("telegram_msg_id"):
+                    try:
+                        await notifier.edit_message(
+                            stop["telegram_msg_id"],
+                            "⏸️ pyafk off - session ended",
+                        )
+                    except Exception:
+                        pass
+                await storage.resolve_stop(stop["session_id"], "ok")
+
+            return len(pending) + len(pending_stops)
         finally:
             await storage.close()
 

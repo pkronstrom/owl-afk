@@ -362,6 +362,14 @@ class Storage:
         row = await cursor.fetchone()
         return dict(row) if row else None
 
+    async def get_all_pending_stops(self) -> list[dict[str, Any]]:
+        """Get all pending stop entries with status='pending'."""
+        cursor = await self.conn.execute(
+            "SELECT * FROM pending_stop WHERE status = 'pending'"
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
     async def resolve_stop(self, session_id: str, status: str, response: Optional[str] = None) -> None:
         """Resolve a pending stop."""
         await self.conn.execute(
