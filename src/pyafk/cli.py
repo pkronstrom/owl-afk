@@ -606,8 +606,8 @@ def uninstall_command(ctx):
     settings = _load_claude_settings(settings_path)
     hooks = settings.get("hooks", {})
 
-    # Remove pyafk hooks
-    hook_types_to_clean = ["PreToolUse", "PermissionRequest", "SubagentStop", "Stop", "SessionStart"]
+    # Remove pyafk hooks - use same list as _get_pyafk_hooks()
+    hook_types_to_clean = list(_get_pyafk_hooks().keys())
     hooks_removed = False
     for hook_type in hook_types_to_clean:
         if hook_type in hooks:

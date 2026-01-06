@@ -157,8 +157,10 @@ class Storage:
     async def close(self) -> None:
         """Close database connection."""
         if self._conn:
-            await self.conn.close()
-            self._conn = None
+            try:
+                await self._conn.close()
+            finally:
+                self._conn = None
 
     async def list_tables(self) -> list[str]:
         """List all tables (for testing)."""
@@ -403,13 +405,46 @@ class Storage:
 
     # Pending messages for /msg command
     async def add_pending_message(self, session_id: str, message: str) -> None:
-        """Add a pending message for a session."""
+        """Add a pending message for a session.
+
+        Limits: max 100 messages per session, messages expire after 1 hour.
+        """
+        now = time.time()
+        one_hour_ago = now - 3600
+
+        # Clean up expired messages first
+        await self.conn.execute(
+            "DELETE FROM pending_messages WHERE created_at < ?",
+            (one_hour_ago,),
+        )
+
+        # Check message count for this session
+        cursor = await self.conn.execute(
+            "SELECT COUNT(*) FROM pending_messages WHERE session_id = ?",
+            (session_id,),
+        )
+        row = await cursor.fetchone()
+        count = row[0] if row else 0
+
+        if count >= 100:
+            # Delete oldest message to make room
+            await self.conn.execute(
+                """
+                DELETE FROM pending_messages WHERE id = (
+                    SELECT id FROM pending_messages
+                    WHERE session_id = ?
+                    ORDER BY created_at ASC LIMIT 1
+                )
+                """,
+                (session_id,),
+            )
+
         await self.conn.execute(
             """
             INSERT INTO pending_messages (session_id, message, created_at)
             VALUES (?, ?, ?)
             """,
-            (session_id, message, time.time()),
+            (session_id, message, now),
         )
         await self.conn.commit()
 

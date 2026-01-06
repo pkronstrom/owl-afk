@@ -803,6 +803,9 @@ class Poller:
 
         # Generate pattern options
         patterns = self._generate_rule_patterns(request.tool_name, request.tool_input, project_path)
+        if not patterns:
+            await self.notifier.answer_callback(callback_id, "No patterns available")
+            return
 
         await self.notifier.answer_callback(callback_id, "Choose pattern")
 
@@ -830,6 +833,9 @@ class Poller:
 
             # Get the selected pattern (tuple of pattern, label)
             patterns = self._generate_rule_patterns(request.tool_name, request.tool_input, project_path)
+            if not patterns:
+                await self.notifier.answer_callback(callback_id, "No patterns available")
+                return
             pattern, label = patterns[pattern_idx] if pattern_idx < len(patterns) else patterns[0]
 
             # Add the rule
@@ -1575,10 +1581,8 @@ class Poller:
         """
         state_json = json.dumps(state)
         msg_id = self._chain_state_key(request_id)
-        if version == 0:
-            # New state - use regular save
-            await self.storage.save_chain_state(msg_id, state_json)
-            return True
+        # Always use atomic save to handle concurrent access
+        # For version==0, save_chain_state_atomic will try UPDATE (fail), then INSERT
         return await self.storage.save_chain_state_atomic(msg_id, state_json, version)
 
     async def _clear_chain_state(self, request_id: str) -> None:

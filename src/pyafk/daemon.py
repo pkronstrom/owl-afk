@@ -82,19 +82,23 @@ def start_daemon(pyafk_dir: Optional[Path] = None) -> bool:
     # Change working directory
     os.chdir("/")
 
-    # Redirect standard file descriptors
-    sys.stdin.close()
-    sys.stdout.close()
-    sys.stderr.close()
+    # Redirect standard file descriptors to /dev/null
+    # Use os.dup2 to properly redirect without leaking file descriptors
+    devnull_fd = os.open("/dev/null", os.O_RDWR)
+    os.dup2(devnull_fd, sys.stdin.fileno())
+    os.dup2(devnull_fd, sys.stdout.fileno())
+    os.dup2(devnull_fd, sys.stderr.fileno())
+    os.close(devnull_fd)
 
-    # Reopen as /dev/null
-    sys.stdin = open("/dev/null", "r")
-    sys.stdout = open("/dev/null", "w")
-    sys.stderr = open("/dev/null", "w")
-
-    # Write PID file
+    # Write PID file atomically to prevent race conditions
     pid_file = get_pid_file(pyafk_dir)
-    pid_file.write_text(str(os.getpid()))
+    try:
+        fd = os.open(str(pid_file), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        os.write(fd, str(os.getpid()).encode())
+        os.close(fd)
+    except FileExistsError:
+        # Another daemon started between our check and now
+        os._exit(1)
 
     # Set up log file for daemon errors
     log_file = pyafk_dir / "daemon.log"
@@ -152,6 +156,20 @@ async def daemon_main(pyafk_dir: Path) -> None:
     - /afk command (toggle mode)
     - Approval callbacks (update request status)
     """
+    import traceback
+
+    log_file = pyafk_dir / "daemon.log"
+
+    def log_error(msg: str, exc: Optional[Exception] = None) -> None:
+        """Log error to daemon log file."""
+        try:
+            with open(log_file, "a") as f:
+                f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {msg}\n")
+                if exc:
+                    f.write(traceback.format_exc())
+        except Exception:
+            pass  # Can't log, ignore
+
     config = Config(pyafk_dir)
 
     # Check Telegram config
@@ -189,8 +207,8 @@ async def daemon_main(pyafk_dir: Path) -> None:
             while not stop_event.is_set():
                 try:
                     await poller.process_updates_once()
-                except Exception:
-                    pass  # Ignore errors, continue polling
+                except Exception as e:
+                    log_error(f"Poll error: {e}", e)
 
                 # Sleep between polls
                 try:
