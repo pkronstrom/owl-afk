@@ -788,5 +788,77 @@ def uninstall_command(ctx):
     click.echo("Uninstallation complete.")
 
 
+# Captain-hook integration commands
+CAPTAIN_HOOK_DIR = Path.home() / ".config" / "captain-hook" / "hooks"
+HOOK_EVENTS = ["pre_tool_use", "post_tool_use", "stop", "subagent_stop"]
+HOOK_MODULES = {
+    "pre_tool_use": "pretool",
+    "post_tool_use": "posttool",
+    "stop": "stop",
+    "subagent_stop": "subagent",
+}
+
+
+@main.group("captain-hook")
+def captain_hook():
+    """Manage captain-hook integration."""
+    pass
+
+
+@captain_hook.command("install")
+def captain_hook_install():
+    """Install pyafk hooks for captain-hook."""
+    if not CAPTAIN_HOOK_DIR.exists():
+        click.echo(f"Error: captain-hook not found at {CAPTAIN_HOOK_DIR}")
+        click.echo("Run 'captain-hook' first to initialize.")
+        raise SystemExit(1)
+
+    # Check pyafk is importable
+    try:
+        import pyafk.hooks.pretool  # noqa: F401
+    except ImportError:
+        click.echo("Error: pyafk package not properly installed")
+        raise SystemExit(1)
+
+    # Create wrapper scripts
+    for event in HOOK_EVENTS:
+        event_dir = CAPTAIN_HOOK_DIR / event
+        event_dir.mkdir(parents=True, exist_ok=True)
+
+        module = HOOK_MODULES[event]
+        wrapper_path = event_dir / "pyafk.sh"
+
+        wrapper_content = f"""#!/usr/bin/env bash
+# Description: pyafk Telegram approval
+# Deps: pyafk
+exec python3 -m pyafk.hooks.{module}
+"""
+        wrapper_path.write_text(wrapper_content)
+        wrapper_path.chmod(0o755)
+        click.echo(f"Installed: {event}/pyafk.sh")
+
+    click.echo()
+    click.echo("Done! Run 'captain-hook toggle' to enable pyafk hooks.")
+
+
+@captain_hook.command("uninstall")
+def captain_hook_uninstall():
+    """Remove pyafk hooks from captain-hook."""
+    removed = False
+
+    for event in HOOK_EVENTS:
+        wrapper_path = CAPTAIN_HOOK_DIR / event / "pyafk.sh"
+        if wrapper_path.exists():
+            wrapper_path.unlink()
+            click.echo(f"Removed: {event}/pyafk.sh")
+            removed = True
+
+    if removed:
+        click.echo()
+        click.echo("Done! Run 'captain-hook toggle' to update runners.")
+    else:
+        click.echo("No pyafk hooks found in captain-hook.")
+
+
 if __name__ == "__main__":
     main()

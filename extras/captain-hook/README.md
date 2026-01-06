@@ -21,11 +21,10 @@ This prevents duplicate hooks running.
 ## Installation
 
 ```bash
-# From the pyafk repo
-./extras/captain-hook/install.sh
+pyafk captain-hook install
 ```
 
-This copies the pyafk wrapper scripts to `~/.config/captain-hook/hooks/`.
+This creates pyafk wrapper scripts in `~/.config/captain-hook/hooks/`.
 
 ## Enable Hooks
 
@@ -80,9 +79,7 @@ pyafk setup
 
 ## Uninstall
 
-Remove the wrapper scripts:
 ```bash
-rm ~/.config/captain-hook/hooks/*/pyafk.sh
+pyafk captain-hook uninstall
+captain-hook toggle  # Update runners
 ```
-
-Then run `captain-hook toggle` to update the runners.
