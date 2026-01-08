@@ -12,7 +12,7 @@ from pyafk.notifiers.base import Notifier
 from pyafk.notifiers.console import ConsoleNotifier
 from pyafk.notifiers.telegram import TelegramNotifier
 from pyafk.utils.config import Config, get_pyafk_dir
-from pyafk.utils.debug import debug_chain, debug_rule
+from pyafk.utils.debug import debug_chain
 
 
 class ApprovalManager:
@@ -103,30 +103,36 @@ class ApprovalManager:
         is_chain = False
         chain_commands = []
 
-        debug_chain(f"Processing approval request", tool_name=tool_name)
+        debug_chain("Processing approval request", tool_name=tool_name)
         if tool_name == "Bash" and tool_input:
             import json
+
             try:
                 data = json.loads(tool_input)
                 if "command" in data:
                     cmd = data["command"]
-                    debug_chain(f"Bash command", cmd=cmd[:100])
+                    debug_chain("Bash command", cmd=cmd[:100])
                     # Use chain rule checking if poller is available
                     if self.poller:
                         rule_result = await self.poller._check_chain_rules(cmd)
-                        debug_chain(f"Chain rule check result", rule_result=rule_result)
+                        debug_chain("Chain rule check result", rule_result=rule_result)
 
                         # Check if this is actually a chain (multiple commands)
                         from pyafk.core.command_parser import CommandParser
+
                         parser = CommandParser()
                         # Use split_chain to get the individual command strings
                         chain_commands = parser.split_chain(cmd)
-                        debug_chain(f"Split chain result", count=len(chain_commands), commands=chain_commands[:3])
+                        debug_chain(
+                            "Split chain result",
+                            count=len(chain_commands),
+                            commands=chain_commands[:3],
+                        )
                         if len(chain_commands) > 1:
                             is_chain = True
-                            debug_chain(f"Detected as chain")
+                            debug_chain("Detected as chain")
             except (json.JSONDecodeError, TypeError) as e:
-                debug_chain(f"Failed to parse tool_input", error=str(e))
+                debug_chain("Failed to parse tool_input", error=str(e))
                 pass
 
         # If no chain result, use regular rule checking
@@ -156,7 +162,7 @@ class ApprovalManager:
 
         # Use chain approval UI for multi-command chains
         if is_chain and chain_commands and isinstance(self.notifier, TelegramNotifier):
-            debug_chain(f"Using chain approval UI", command_count=len(chain_commands))
+            debug_chain("Using chain approval UI", command_count=len(chain_commands))
             msg_id = await self.notifier.send_chain_approval_request(
                 request_id=request_id,
                 session_id=session_id,
@@ -165,7 +171,12 @@ class ApprovalManager:
                 description=description,
             )
         else:
-            debug_chain(f"Using regular approval UI", is_chain=is_chain, has_commands=bool(chain_commands), is_telegram=isinstance(self.notifier, TelegramNotifier))
+            debug_chain(
+                "Using regular approval UI",
+                is_chain=is_chain,
+                has_commands=bool(chain_commands),
+                is_telegram=isinstance(self.notifier, TelegramNotifier),
+            )
             # Use regular approval UI
             msg_id = await self.notifier.send_approval_request(
                 request_id=request_id,
@@ -200,7 +211,6 @@ class ApprovalManager:
         """
         from pyafk.daemon import is_daemon_running
 
-        daemon_running = is_daemon_running(self.pyafk_dir)
         start = time.monotonic()
 
         while True:
@@ -219,7 +229,8 @@ class ApprovalManager:
                 return (self.timeout_action, None)
 
             # Only poll Telegram directly if daemon is not running
-            if self.poller and not daemon_running:
+            # Re-check each iteration in case daemon crashes
+            if self.poller and not is_daemon_running(self.pyafk_dir):
                 try:
                     await self.poller.process_updates_once()
                 except Exception:

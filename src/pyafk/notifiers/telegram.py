@@ -60,24 +60,41 @@ def format_approval_message(
         desc = description[:100] + "..." if len(description) > 100 else description
         lines.append(f"<i>{_escape_html(desc)}</i>")
 
-    lines.append(f"<b>[{_escape_html(tool_name)}]</b> <code>{_escape_html(input_summary)}</code>")
+    lines.append(
+        f"<b>[{_escape_html(tool_name)}]</b> <code>{_escape_html(input_summary)}</code>"
+    )
 
     return "\n".join(lines)
 
 
 def _escape_html(text: str) -> str:
     """Escape HTML special characters."""
-    return (
-        text.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-    )
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def _escape_markdown(text: str) -> str:
     """Escape Markdown special characters for Telegram."""
     # Characters that need escaping in Telegram Markdown
-    special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+    special_chars = [
+        "_",
+        "*",
+        "[",
+        "]",
+        "(",
+        ")",
+        "~",
+        "`",
+        ">",
+        "#",
+        "+",
+        "-",
+        "=",
+        "|",
+        "{",
+        "}",
+        ".",
+        "!",
+    ]
     for char in special_chars:
         text = text.replace(char, f"\\{char}")
     return text
@@ -129,6 +146,19 @@ class TelegramNotifier(Notifier):
         self.timeout = timeout
         self.timeout_action = timeout_action
         self._base_url = f"https://api.telegram.org/bot{bot_token}"
+        self._client: Optional[httpx.AsyncClient] = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        """Get or create persistent HTTP client."""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=30)
+        return self._client
+
+    async def close(self) -> None:
+        """Close the HTTP client."""
+        if self._client is not None and not self._client.is_closed:
+            await self._client.aclose()
+            self._client = None
 
     async def _api_request(
         self,
@@ -138,43 +168,62 @@ class TelegramNotifier(Notifier):
         """Make a Telegram API request."""
         url = f"{self._base_url}/{method}"
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(url, data=data, timeout=30)
-                result: dict[str, Any] = response.json()
+            client = await self._get_client()
+            response = await client.post(url, data=data)
+            result: dict[str, Any] = response.json()
 
-                # Log API errors (when ok=False)
-                if not result.get("ok"):
-                    error_code = result.get("error_code", "unknown")
-                    description = result.get("description", "no description")
-                    debug_api(
-                        f"Telegram API error",
-                        method=method,
-                        error_code=error_code,
-                        description=description[:100],
-                    )
+            # Log API errors (when ok=False)
+            if not result.get("ok"):
+                error_code = result.get("error_code", "unknown")
+                description = result.get("description", "no description")
+                debug_api(
+                    "Telegram API error",
+                    method=method,
+                    error_code=error_code,
+                    description=description[:100],
+                )
 
-                return result
+            return result
         except httpx.HTTPError as e:
-            debug_api(f"HTTP error", method=method, error=str(e)[:100])
+            debug_api("HTTP error", method=method, error=str(e)[:100])
             return {"ok": False, "error": str(e)}
         except json.JSONDecodeError as e:
-            debug_api(f"JSON decode error", method=method, error=str(e)[:100])
+            debug_api("JSON decode error", method=method, error=str(e)[:100])
             return {"ok": False, "error": str(e)}
 
     def _build_approval_keyboard(
-        self, request_id: str, session_id: str, tool_name: str
+        self,
+        request_id: str,
+        session_id: str,
+        tool_name: str,
+        tool_input: Optional[str] = None,
     ) -> dict[str, list[list[dict[str, str]]]]:
         """Build standard approval keyboard."""
+        # Smart pattern for Bash: "All git *" instead of "All Bash"
+        all_button_text = f"⏩ All {tool_name}"
+        if tool_name == "Bash" and tool_input:
+            try:
+                data = json.loads(tool_input)
+                cmd = data.get("command", "")
+                first_word = cmd.split()[0] if cmd.split() else ""
+                if first_word:
+                    all_button_text = f"⏩ All {first_word} *"
+            except (json.JSONDecodeError, TypeError, IndexError):
+                pass  # Fall back to "All Bash"
+
         return {
             "inline_keyboard": [
                 [
-                    {"text": "✅ Approve", "callback_data": f"approve:{request_id}"},
-                    {"text": "📝 Rule", "callback_data": f"add_rule:{request_id}"},
-                    {"text": f"⏩ All {tool_name}", "callback_data": f"approve_all:{session_id}:{tool_name}"},
+                    {"text": "✅ Allow", "callback_data": f"approve:{request_id}"},
+                    {"text": "📝 Always...", "callback_data": f"add_rule:{request_id}"},
+                    {
+                        "text": all_button_text,
+                        "callback_data": f"approve_all:{session_id}:{tool_name}",
+                    },
                 ],
                 [
                     {"text": "❌ Deny", "callback_data": f"deny:{request_id}"},
-                    {"text": "💬 Deny+Msg", "callback_data": f"deny_msg:{request_id}"},
+                    {"text": "💬 Deny...", "callback_data": f"deny_msg:{request_id}"},
                 ],
             ]
         }
@@ -185,12 +234,28 @@ class TelegramNotifier(Notifier):
         """Build chain approval keyboard."""
         return {
             "inline_keyboard": [
-                [{"text": "⏩ Approve Chain", "callback_data": f"chain_approve_entire:{request_id}"}],
-                [{"text": "✅ Approve Step", "callback_data": f"chain_approve:{request_id}:{current_idx}"}],
                 [
-                    {"text": "📝 Rule", "callback_data": f"chain_rule:{request_id}:{current_idx}"},
+                    {
+                        "text": "⏩ Approve Chain",
+                        "callback_data": f"chain_approve_entire:{request_id}",
+                    }
+                ],
+                [
+                    {
+                        "text": "✅ Step",
+                        "callback_data": f"chain_approve:{request_id}:{current_idx}",
+                    },
+                    {
+                        "text": "📝 Always...",
+                        "callback_data": f"chain_rule:{request_id}:{current_idx}",
+                    },
+                ],
+                [
                     {"text": "❌ Deny", "callback_data": f"chain_deny:{request_id}"},
-                    {"text": "✍️ Deny+Msg", "callback_data": f"chain_deny_msg:{request_id}"},
+                    {
+                        "text": "💬 Deny...",
+                        "callback_data": f"chain_deny_msg:{request_id}",
+                    },
                 ],
             ]
         }
@@ -218,7 +283,9 @@ class TelegramNotifier(Notifier):
             project_path=project_path,
         )
 
-        keyboard = self._build_approval_keyboard(request_id, session_id, tool_name)
+        keyboard = self._build_approval_keyboard(
+            request_id, session_id, tool_name, tool_input
+        )
 
         result = await self._api_request(
             "sendMessage",
@@ -312,17 +379,28 @@ class TelegramNotifier(Notifier):
         for idx, (pattern, label) in enumerate(patterns):
             # callback_prefix already includes request_id for chain patterns
             if ":" in callback_prefix:
-                buttons.append([{"text": label, "callback_data": f"{callback_prefix}:{idx}"}])
+                buttons.append(
+                    [{"text": label, "callback_data": f"{callback_prefix}:{idx}"}]
+                )
             else:
-                buttons.append([{"text": label, "callback_data": f"{callback_prefix}:{request_id}:{idx}"}])
+                buttons.append(
+                    [
+                        {
+                            "text": label,
+                            "callback_data": f"{callback_prefix}:{request_id}:{idx}",
+                        }
+                    ]
+                )
         # Add approve and cancel buttons at the bottom
         if cancel_callback is None:
             cancel_callback = f"cancel_rule:{request_id}"
 
-        buttons.append([
-            {"text": "✅ Approve", "callback_data": f"approve:{request_id}"},
-            {"text": "↩️ Cancel", "callback_data": cancel_callback},
-        ])
+        buttons.append(
+            [
+                {"text": "✅ Approve", "callback_data": f"approve:{request_id}"},
+                {"text": "↩️ Cancel", "callback_data": cancel_callback},
+            ]
+        )
 
         keyboard = {"inline_keyboard": buttons}
 
@@ -372,7 +450,9 @@ class TelegramNotifier(Notifier):
         )
 
         # Rebuild the keyboard
-        keyboard = self._build_approval_keyboard(request_id, session_id, tool_name)
+        keyboard = self._build_approval_keyboard(
+            request_id, session_id, tool_name, tool_input
+        )
 
         await self._api_request(
             "editMessageText",
@@ -385,7 +465,9 @@ class TelegramNotifier(Notifier):
             },
         )
 
-    async def get_updates(self, offset: Optional[int] = None, timeout: int = 30) -> list[dict[str, Any]]:
+    async def get_updates(
+        self, offset: Optional[int] = None, timeout: int = 30
+    ) -> list[dict[str, Any]]:
         """Get updates (for polling)."""
         data = {"timeout": timeout}
         if offset is not None:
@@ -399,7 +481,7 @@ class TelegramNotifier(Notifier):
 
     async def send_feedback_prompt(self, tool_name: str) -> Optional[int]:
         """Send a message asking for denial feedback with force_reply."""
-        debug_chain(f"send_feedback_prompt called", tool_name=tool_name)
+        debug_chain("send_feedback_prompt called", tool_name=tool_name)
         result = await self._api_request(
             "sendMessage",
             data={
@@ -408,13 +490,17 @@ class TelegramNotifier(Notifier):
                 "reply_markup": json.dumps({"force_reply": True, "selective": True}),
             },
         )
-        debug_chain(f"send_feedback_prompt result", ok=result.get("ok"), has_result="result" in result)
+        debug_chain(
+            "send_feedback_prompt result",
+            ok=result.get("ok"),
+            has_result="result" in result,
+        )
         if result.get("ok") and "result" in result:
             raw_id = result["result"].get("message_id")
             msg_id = int(raw_id) if raw_id is not None else None
-            debug_chain(f"send_feedback_prompt returning", msg_id=msg_id)
+            debug_chain("send_feedback_prompt returning", msg_id=msg_id)
             return msg_id
-        debug_chain(f"send_feedback_prompt failed", result=result)
+        debug_chain("send_feedback_prompt failed", result=result)
         return None
 
     async def send_subagent_stop(
@@ -422,8 +508,15 @@ class TelegramNotifier(Notifier):
         subagent_id: str,
         output_summary: str,
         project_path: Optional[str] = None,
-    ) -> Optional[int]:
-        """Send subagent completion notification."""
+        description: Optional[str] = None,
+        duration_seconds: Optional[float] = None,
+        files_modified: Optional[list[str]] = None,
+    ) -> tuple[Optional[int], str]:
+        """Send subagent completion notification.
+
+        Returns:
+            Tuple of (message_id, compact_text for auto-dismiss)
+        """
         # Format project path
         if project_path:
             parts = project_path.rstrip("/").split("/")
@@ -431,48 +524,79 @@ class TelegramNotifier(Notifier):
         else:
             project_id = subagent_id[:8]
 
-        # Truncate output if too long (Telegram limit ~4096 chars)
-        if len(output_summary) > 3000:
-            output_summary = output_summary[-3000:]
-            output_summary = "..." + output_summary
+        # Format duration
+        duration_str = ""
+        if duration_seconds is not None:
+            mins = int(duration_seconds // 60)
+            secs = int(duration_seconds % 60)
+            if mins > 0:
+                duration_str = f" ({mins}m {secs}s)"
+            else:
+                duration_str = f" ({secs}s)"
 
-        # Use Markdown for nicer rendering of agent output
-        text = f"_{project_id}_\n🤖 *Subagent finished*\n\n{output_summary}"
+        # Build message lines (using HTML for consistency with approval messages)
+        lines = [f"<i>{project_id}</i> 🤖 <b>Done</b>{duration_str}"]
+
+        if description:
+            desc = description[:80] + "..." if len(description) > 80 else description
+            lines.append(f"📝 {_escape_html(desc)}")
+
+        if files_modified:
+            if len(files_modified) <= 3:
+                files_str = ", ".join(files_modified)
+            else:
+                files_str = (
+                    ", ".join(files_modified[:3]) + f" (+{len(files_modified) - 3})"
+                )
+            lines.append(f"📁 {_escape_html(files_str)}")
+
+        # Add brief summary (truncated)
+        if output_summary:
+            summary = (
+                output_summary[:200] + "..."
+                if len(output_summary) > 200
+                else output_summary
+            )
+            lines.append(f"\n{_escape_html(summary)}")
+
+        text = "\n".join(lines)
+
+        # Compact text for auto-dismiss (HTML format)
+        brief_desc = (
+            description[:40] + "..."
+            if description and len(description) > 40
+            else (description or "task")
+        )
+        compact_text = (
+            f"<i>{project_id}</i> ✅ Agent: {_escape_html(brief_desc)}{duration_str}"
+        )
 
         keyboard = {
             "inline_keyboard": [
                 [
                     {"text": "✅ OK", "callback_data": f"subagent_ok:{subagent_id}"},
+                    {
+                        "text": "💬 Continue...",
+                        "callback_data": f"subagent_continue:{subagent_id}",
+                    },
                 ],
             ]
         }
 
-        # Try Markdown first, fall back to plain text if parsing fails
         result = await self._api_request(
             "sendMessage",
             data={
                 "chat_id": self.chat_id,
                 "text": text,
-                "parse_mode": "Markdown",
+                "parse_mode": "HTML",
                 "reply_markup": json.dumps(keyboard),
             },
         )
 
-        # If Markdown parsing failed, retry without parse_mode
-        if not result.get("ok") and "can't parse" in str(result.get("description", "")).lower():
-            result = await self._api_request(
-                "sendMessage",
-                data={
-                    "chat_id": self.chat_id,
-                    "text": text,
-                    "reply_markup": json.dumps(keyboard),
-                },
-            )
-
         if result.get("ok") and "result" in result:
             msg_id = result["result"].get("message_id")
-            return int(msg_id) if msg_id is not None else None
-        return None
+            return (int(msg_id) if msg_id is not None else None, compact_text)
+        return (None, compact_text)
 
     async def send_stop_notification(
         self,
@@ -493,7 +617,10 @@ class TelegramNotifier(Notifier):
             "inline_keyboard": [
                 [
                     {"text": "✅ OK", "callback_data": f"stop_ok:{session_id}"},
-                    {"text": "💬 Comment", "callback_data": f"stop_comment:{session_id}"},
+                    {
+                        "text": "💬 Comment",
+                        "callback_data": f"stop_comment:{session_id}",
+                    },
                 ],
             ]
         }
@@ -513,13 +640,22 @@ class TelegramNotifier(Notifier):
             return int(msg_id) if msg_id is not None else None
         return None
 
-    async def send_rule_menu(self, request_id: str, patterns: list[str]) -> Optional[int]:
+    async def send_rule_menu(
+        self, request_id: str, patterns: list[str]
+    ) -> Optional[int]:
         """Send a menu with rule pattern options."""
         # Build keyboard with one button per pattern
         buttons = []
         for idx, pattern in enumerate(patterns):
             label = _truncate_pattern_label(pattern, max_len=40)
-            buttons.append([{"text": label, "callback_data": f"add_rule_pattern:{request_id}:{idx}"}])
+            buttons.append(
+                [
+                    {
+                        "text": label,
+                        "callback_data": f"add_rule_pattern:{request_id}:{idx}",
+                    }
+                ]
+            )
 
         keyboard = {"inline_keyboard": buttons}
 
@@ -561,13 +697,13 @@ class TelegramNotifier(Notifier):
             async with aiofiles.open(file_path, "rb") as f:
                 file_content = await f.read()
 
-            async with httpx.AsyncClient() as client:
-                files = {"document": (file_path.name, file_content)}
-                data = {"chat_id": self.chat_id}
-                if caption:
-                    data["caption"] = caption
-                response = await client.post(url, data=data, files=files, timeout=30)
-                result = response.json()
+            client = await self._get_client()
+            files = {"document": (file_path.name, file_content)}
+            data = {"chat_id": self.chat_id}
+            if caption:
+                data["caption"] = caption
+            response = await client.post(url, data=data, files=files)
+            result = response.json()
 
             if result.get("ok") and "result" in result:
                 msg_id = result["result"].get("message_id")
@@ -647,15 +783,21 @@ class TelegramNotifier(Notifier):
                     cmd = commands[idx]
                     marker = "→" if idx == 0 else " "
                     cmd_display = cmd if len(cmd) <= 60 else cmd[:60] + "..."
-                    truncated_cmd_lines.append(f"{marker} <code>{_escape_html(cmd_display)}</code>")
+                    truncated_cmd_lines.append(
+                        f"{marker} <code>{_escape_html(cmd_display)}</code>"
+                    )
 
-                truncated_cmd_lines.append(f"<i>... {len(commands) - 30} more commands ...</i>")
+                truncated_cmd_lines.append(
+                    f"<i>... {len(commands) - 30} more commands ...</i>"
+                )
 
                 for idx in range(len(commands) - 10, len(commands)):
                     cmd = commands[idx]
                     marker = " "
                     cmd_display = cmd if len(cmd) <= 60 else cmd[:60] + "..."
-                    truncated_cmd_lines.append(f"{marker} <code>{_escape_html(cmd_display)}</code>")
+                    truncated_cmd_lines.append(
+                        f"{marker} <code>{_escape_html(cmd_display)}</code>"
+                    )
 
                 cmd_lines = truncated_cmd_lines
 
@@ -710,7 +852,13 @@ class TelegramNotifier(Notifier):
         Raises:
             ValueError: If current_idx is out of bounds
         """
-        debug_chain(f"update_chain_progress", current_idx=current_idx, approved_indices=approved_indices, final_approve=final_approve, denied=denied)
+        debug_chain(
+            "update_chain_progress",
+            current_idx=current_idx,
+            approved_indices=approved_indices,
+            final_approve=final_approve,
+            denied=denied,
+        )
         # Validate current_idx
         if current_idx < 0 or current_idx >= len(commands):
             raise ValueError(
@@ -766,10 +914,14 @@ class TelegramNotifier(Notifier):
                     else:
                         marker = " "
                     cmd_display = cmd if len(cmd) <= 60 else cmd[:60] + "..."
-                    truncated_cmd_lines.append(f"{marker} <code>{_escape_html(cmd_display)}</code>")
+                    truncated_cmd_lines.append(
+                        f"{marker} <code>{_escape_html(cmd_display)}</code>"
+                    )
 
                 # Add ellipsis
-                truncated_cmd_lines.append(f"<i>... {len(commands) - 30} more commands ...</i>")
+                truncated_cmd_lines.append(
+                    f"<i>... {len(commands) - 30} more commands ...</i>"
+                )
 
                 # Last 10 commands
                 for idx in range(len(commands) - 10, len(commands)):
@@ -781,7 +933,9 @@ class TelegramNotifier(Notifier):
                     else:
                         marker = " "
                     cmd_display = cmd if len(cmd) <= 60 else cmd[:60] + "..."
-                    truncated_cmd_lines.append(f"{marker} <code>{_escape_html(cmd_display)}</code>")
+                    truncated_cmd_lines.append(
+                        f"{marker} <code>{_escape_html(cmd_display)}</code>"
+                    )
 
                 cmd_lines = truncated_cmd_lines
 
@@ -799,8 +953,14 @@ class TelegramNotifier(Notifier):
             keyboard = {
                 "inline_keyboard": [
                     [
-                        {"text": "✅ Approve All", "callback_data": f"chain_approve_all:{request_id}"},
-                        {"text": "❌ Cancel", "callback_data": f"chain_deny:{request_id}"},
+                        {
+                            "text": "✅ Approve All",
+                            "callback_data": f"chain_approve_all:{request_id}",
+                        },
+                        {
+                            "text": "❌ Cancel",
+                            "callback_data": f"chain_deny:{request_id}",
+                        },
                     ],
                 ]
             }

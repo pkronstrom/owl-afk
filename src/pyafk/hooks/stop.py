@@ -27,8 +27,8 @@ async def handle_stop(
 
     config = Config(pyafk_dir)
 
-    # Pass through when mode is off
-    if config.get_mode() != "on":
+    # Pass through when mode is off or hook is disabled
+    if config.get_mode() != "on" or config.disable_stop_hook:
         return {}
 
     # Check Telegram config
@@ -76,40 +76,43 @@ async def handle_stop(
         from pyafk.daemon import is_daemon_running
 
         poller = Poller(storage, notifier, pyafk_dir)
-        daemon_running = is_daemon_running(pyafk_dir)
 
         timeout = 3600  # 1 hour
         start = time.monotonic()
 
-        while True:
-            elapsed = time.monotonic() - start
-            if elapsed >= timeout:
-                # Timeout - let Claude stop
-                return {}
-
-            # Poll for updates (only if daemon not running)
-            if not daemon_running:
-                try:
-                    await poller.process_updates_once()
-                except Exception:
-                    pass
-
-            # Check status
-            entry = await storage.get_pending_stop(session_id)
-            if entry and entry["status"] != "pending":
-                if entry["status"] == "comment" and entry["response"]:
-                    # User sent a comment - block and deliver
-                    reason = (
-                        "📨 The user sent you a message via remote approval:\n"
-                        f"- {entry['response']}\n\n"
-                        "Please address this before stopping."
-                    )
-                    return {"decision": "block", "reason": reason}
-                else:
-                    # OK - let Claude stop
+        try:
+            while True:
+                elapsed = time.monotonic() - start
+                if elapsed >= timeout:
+                    # Timeout - let Claude stop
                     return {}
 
-            await asyncio.sleep(0.5)
+                # Poll for updates (only if daemon not running)
+                # Re-check each iteration in case daemon crashes
+                if not is_daemon_running(pyafk_dir):
+                    try:
+                        await poller.process_updates_once()
+                    except Exception:
+                        pass
+
+                # Check status
+                entry = await storage.get_pending_stop(session_id)
+                if entry and entry["status"] != "pending":
+                    if entry["status"] == "comment" and entry["response"]:
+                        # User sent a comment - block and deliver
+                        reason = (
+                            "📨 The user sent you a message via remote approval:\n"
+                            f"- {entry['response']}\n\n"
+                            "Please address this before stopping."
+                        )
+                        return {"decision": "block", "reason": reason}
+                    else:
+                        # OK - let Claude stop
+                        return {}
+
+                await asyncio.sleep(0.5)
+        finally:
+            await notifier.close()
 
     finally:
         await storage.close()
@@ -117,4 +120,5 @@ async def handle_stop(
 
 if __name__ == "__main__":
     from pyafk.hooks.runner import run_hook
+
     run_hook(handle_stop)
