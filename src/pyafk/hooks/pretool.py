@@ -48,6 +48,8 @@ async def handle_pretool_use(
         return _make_response("allow", "pyafk fast path: approve all")
     elif fast_result == FastPathResult.DENY:
         return _make_response("deny", "pyafk fast path: deny all")
+    elif fast_result == FastPathResult.FALLBACK:
+        return {}  # Fall back to Claude's CLI approval
 
     tool_name = hook_input.get("tool_name", "Unknown")
     tool_input = hook_input.get("tool_input")
@@ -94,7 +96,9 @@ async def handle_pretool_use(
         if denial_reason:
             reason = f"pyafk: denied - {denial_reason}"
         else:
-            reason = f"pyafk: {'allowed' if decision == 'allow' else 'denied'} via Telegram"
+            reason = (
+                f"pyafk: {'allowed' if decision == 'allow' else 'denied'} via Telegram"
+            )
 
         return _make_response(decision, reason)
     finally:
@@ -103,4 +107,5 @@ async def handle_pretool_use(
 
 if __name__ == "__main__":
     from pyafk.hooks.runner import run_hook
+
     run_hook(handle_pretool_use)
