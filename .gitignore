@@ -20,3 +20,22 @@ build/
 .idea/
 .vscode/
 *.swp
+
+# Secrets and credentials
+.env
+.env.*
+*.pem
+*.key
+credentials.json
+secrets.json
+config.local.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Ruff cache
+.ruff_cache/
+
+# gitleaks report (if generated)
+gitleaks-report.json

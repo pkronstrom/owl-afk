@@ -106,7 +106,7 @@ def _truncate_pattern_label(pattern: str, max_len: int = 40) -> str:
         return pattern
 
     # For patterns with paths, show command + ... + ending
-    # e.g., "rm /Users/bembu/.pyafk/test_file.txt" -> "rm .../test_file.txt"
+    # e.g., "rm /home/user/.pyafk/test_file.txt" -> "rm .../test_file.txt"
     parts = pattern.split(" ", 1)
     if len(parts) == 2:
         cmd, path = parts

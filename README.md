@@ -20,7 +20,7 @@ pip install pyafk
 Or install from source:
 
 ```bash
-git clone https://github.com/bembu/pyafk
+git clone https://github.com/pkronstrom/pyafk
 cd pyafk
 pip install -e .
 ```
