@@ -1,6 +1,8 @@
 """pyafk - Remote approval system for Claude Code."""
 
-__version__ = "0.1.0"
+from importlib.metadata import version
+
+__version__ = version("pyafk")
 
 from pyafk.core.manager import ApprovalManager
 from pyafk.notifiers import ConsoleNotifier, Notifier, TelegramNotifier
