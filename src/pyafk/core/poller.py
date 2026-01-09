@@ -597,11 +597,17 @@ class Poller:
         debug_callback("Parsed callback", action=action, target_id=target_id)
 
         # Use dispatcher for handlers that have been extracted
-        if action in ("approve", "deny"):
+        if action in (
+            "approve",
+            "deny",
+            "deny_msg",
+            "subagent_ok",
+            "subagent_continue",
+            "stop_ok",
+            "stop_comment",
+        ):
             original_text = callback.get("message", {}).get("text", "")
             await self._dispatcher.dispatch(data, callback_id, message_id, original_text)
-        elif action == "deny_msg":
-            await self._handle_deny_msg(target_id, callback_id, message_id)
         elif action == "approve_all":
             # Format: approve_all:session_id:tool_name
             parts = target_id.split(":", 1)
@@ -634,14 +640,6 @@ class Poller:
                 await self._handle_chain_rule_pattern(
                     request_id, command_idx, pattern_idx, callback_id, message_id
                 )
-        elif action == "subagent_ok":
-            await self._handle_subagent_ok(target_id, callback_id, message_id)
-        elif action == "subagent_continue":
-            await self._handle_subagent_continue(target_id, callback_id, message_id)
-        elif action == "stop_ok":
-            await self._handle_stop_ok(target_id, callback_id, message_id)
-        elif action == "stop_comment":
-            await self._handle_stop_comment(target_id, callback_id, message_id)
         elif action == "msg_select":
             await self._handle_msg_select(target_id, callback_id, message_id)
         elif action == "chain_approve":

@@ -36,11 +36,23 @@ class HandlerDispatcher:
         self.storage = storage
         self.notifier = notifier
 
-        # Register default handlers
+        # Import handlers here to avoid import issues
+        from pyafk.core.handlers.feedback import DenyWithMessageHandler
+        from pyafk.core.handlers.stop import StopCommentHandler, StopOkHandler
+        from pyafk.core.handlers.subagent import (
+            SubagentContinueHandler,
+            SubagentOkHandler,
+        )
+
+        # Register handlers
         self._handlers: dict[str, CallbackHandler] = {
             "approve": ApproveHandler(),
             "deny": DenyHandler(),
-            # More handlers will be registered as they are extracted
+            "deny_msg": DenyWithMessageHandler(),
+            "subagent_ok": SubagentOkHandler(),
+            "subagent_continue": SubagentContinueHandler(),
+            "stop_ok": StopOkHandler(),
+            "stop_comment": StopCommentHandler(),
         }
 
     async def dispatch(
