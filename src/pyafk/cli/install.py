@@ -55,7 +55,7 @@ def get_pyafk_hooks() -> dict:
     return {
         "PreToolUse": [
             {
-                "matcher": "Bash|Edit|Write|MultiEdit|WebFetch|Skill|mcp__.*",
+                "matcher": "Bash|Edit|Write|MultiEdit|WebFetch|WebSearch|Skill|mcp__.*",
                 "hooks": [
                     {
                         "type": "command",
@@ -67,7 +67,7 @@ def get_pyafk_hooks() -> dict:
         ],
         "PostToolUse": [
             {
-                "matcher": "Bash|Edit|Write|MultiEdit|WebFetch|Skill|mcp__.*",
+                "matcher": "Bash|Edit|Write|MultiEdit|WebFetch|WebSearch|Skill|mcp__.*",
                 "hooks": [
                     {
                         "type": "command",
@@ -78,7 +78,7 @@ def get_pyafk_hooks() -> dict:
         ],
         "PermissionRequest": [
             {
-                "matcher": "Bash|Edit|Write|MultiEdit|WebFetch|Skill|mcp__.*",
+                "matcher": "Bash|Edit|Write|MultiEdit|WebFetch|WebSearch|Skill|mcp__.*",
                 "hooks": [
                     {
                         "type": "command",
