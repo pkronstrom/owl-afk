@@ -1,8 +1,7 @@
 """Tests for Telegram poller with locking."""
 
-import asyncio
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from pyafk.core.poller import Poller, PollLock
 
@@ -47,7 +46,9 @@ async def test_poller_processes_callback(mock_pyafk_dir):
 
     async with Storage(db_path) as storage:
         # Create session first
-        await storage.upsert_session(session_id="session-123", project_path="/test/project")
+        await storage.upsert_session(
+            session_id="session-123", project_path="/test/project"
+        )
 
         request_id = await storage.create_request(
             session_id="session-123",
@@ -57,16 +58,18 @@ async def test_poller_processes_callback(mock_pyafk_dir):
 
         notifier = MagicMock(spec=TelegramNotifier)
         # Return the callback on get_updates
-        notifier.get_updates = AsyncMock(return_value=[
-            {
-                "update_id": 1,
-                "callback_query": {
-                    "id": "cb-1",
-                    "data": f"approve:{request_id}",
-                    "message": {"message_id": 123},
-                },
-            }
-        ])
+        notifier.get_updates = AsyncMock(
+            return_value=[
+                {
+                    "update_id": 1,
+                    "callback_query": {
+                        "id": "cb-1",
+                        "data": f"approve:{request_id}",
+                        "message": {"message_id": 123},
+                    },
+                }
+            ]
+        )
         notifier.answer_callback = AsyncMock()
         notifier.edit_message = AsyncMock()
 
@@ -85,7 +88,7 @@ async def test_chain_rules_all_allow(mock_pyafk_dir):
     """Chain should auto-approve if all commands match allow rules."""
     from pyafk.core.storage import Storage
     from pyafk.core.rules import RulesEngine
-    from pyafk.notifiers.telegram import TelegramNotifier
+    from pyafk.core.handlers.chain import check_chain_rules
 
     db_path = mock_pyafk_dir / "test.db"
 
@@ -96,11 +99,8 @@ async def test_chain_rules_all_allow(mock_pyafk_dir):
         await engine.add_rule("Bash(npm test)", "approve")
         await engine.add_rule("Bash(git log)", "approve")
 
-        notifier = MagicMock(spec=TelegramNotifier)
-        poller = Poller(storage, notifier, mock_pyafk_dir)
-
         # Test the chain rule check
-        result = await poller._check_chain_rules("cd ~/p && npm test && git log")
+        result = await check_chain_rules(storage, "cd ~/p && npm test && git log")
         assert result == "approve"
 
 
@@ -109,7 +109,7 @@ async def test_chain_rules_any_deny(mock_pyafk_dir):
     """Chain should auto-deny if any command matches deny rule."""
     from pyafk.core.storage import Storage
     from pyafk.core.rules import RulesEngine
-    from pyafk.notifiers.telegram import TelegramNotifier
+    from pyafk.core.handlers.chain import check_chain_rules
 
     db_path = mock_pyafk_dir / "test.db"
 
@@ -119,11 +119,8 @@ async def test_chain_rules_any_deny(mock_pyafk_dir):
         await engine.add_rule("Bash(cd *)", "approve")
         await engine.add_rule("Bash(rm *)", "deny")
 
-        notifier = MagicMock(spec=TelegramNotifier)
-        poller = Poller(storage, notifier, mock_pyafk_dir)
-
         # Test the chain rule check
-        result = await poller._check_chain_rules("cd ~/p && rm -rf /")
+        result = await check_chain_rules(storage, "cd ~/p && rm -rf /")
         assert result == "deny"
 
 
@@ -132,7 +129,7 @@ async def test_chain_rules_manual_approval_needed(mock_pyafk_dir):
     """Chain should return None if some commands don't match any rule."""
     from pyafk.core.storage import Storage
     from pyafk.core.rules import RulesEngine
-    from pyafk.notifiers.telegram import TelegramNotifier
+    from pyafk.core.handlers.chain import check_chain_rules
 
     db_path = mock_pyafk_dir / "test.db"
 
@@ -141,11 +138,8 @@ async def test_chain_rules_manual_approval_needed(mock_pyafk_dir):
         engine = RulesEngine(storage)
         await engine.add_rule("Bash(cd *)", "approve")
 
-        notifier = MagicMock(spec=TelegramNotifier)
-        poller = Poller(storage, notifier, mock_pyafk_dir)
-
         # Test the chain rule check - npm test has no rule
-        result = await poller._check_chain_rules("cd ~/p && npm test")
+        result = await check_chain_rules(storage, "cd ~/p && npm test")
         assert result is None
 
 
@@ -154,7 +148,7 @@ async def test_chain_rules_single_command(mock_pyafk_dir):
     """Single command should work with chain rule check."""
     from pyafk.core.storage import Storage
     from pyafk.core.rules import RulesEngine
-    from pyafk.notifiers.telegram import TelegramNotifier
+    from pyafk.core.handlers.chain import check_chain_rules
 
     db_path = mock_pyafk_dir / "test.db"
 
@@ -163,11 +157,8 @@ async def test_chain_rules_single_command(mock_pyafk_dir):
         engine = RulesEngine(storage)
         await engine.add_rule("Bash(git status)", "approve")
 
-        notifier = MagicMock(spec=TelegramNotifier)
-        poller = Poller(storage, notifier, mock_pyafk_dir)
-
         # Test single command
-        result = await poller._check_chain_rules("git status")
+        result = await check_chain_rules(storage, "git status")
         assert result == "approve"
 
 
@@ -176,19 +167,16 @@ async def test_chain_rules_with_quotes(mock_pyafk_dir):
     """Chain rules should handle commands with quotes correctly."""
     from pyafk.core.storage import Storage
     from pyafk.core.rules import RulesEngine
-    from pyafk.notifiers.telegram import TelegramNotifier
+    from pyafk.core.handlers.chain import check_chain_rules
 
     db_path = mock_pyafk_dir / "test.db"
 
     async with Storage(db_path) as storage:
         engine = RulesEngine(storage)
-        await engine.add_rule('Bash(git commit -m *)', "approve")
-
-        notifier = MagicMock(spec=TelegramNotifier)
-        poller = Poller(storage, notifier, mock_pyafk_dir)
+        await engine.add_rule("Bash(git commit -m *)", "approve")
 
         # Should match the wildcard pattern
-        result = await poller._check_chain_rules('git commit -m "fix bug"')
+        result = await check_chain_rules(storage, 'git commit -m "fix bug"')
         assert result == "approve"
 
 
@@ -223,6 +211,7 @@ async def test_chain_approval_integration(mock_pyafk_dir):
 
         # Set up the poller with the storage
         from pyafk.core.poller import Poller
+
         manager.poller = Poller(storage, notifier, mock_pyafk_dir)
 
         # Request approval for a chained command

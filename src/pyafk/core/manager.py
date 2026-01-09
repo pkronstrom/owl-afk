@@ -107,30 +107,30 @@ class ApprovalManager:
         if tool_name == "Bash" and tool_input:
             import json
 
+            from pyafk.core.command_parser import CommandParser
+            from pyafk.core.handlers.chain import check_chain_rules
+
             try:
                 data = json.loads(tool_input)
                 if "command" in data:
                     cmd = data["command"]
                     debug_chain("Bash command", cmd=cmd[:100])
-                    # Use chain rule checking if poller is available
-                    if self.poller:
-                        rule_result = await self.poller._check_chain_rules(cmd)
-                        debug_chain("Chain rule check result", rule_result=rule_result)
+                    # Use chain rule checking
+                    rule_result = await check_chain_rules(self.storage, cmd)
+                    debug_chain("Chain rule check result", rule_result=rule_result)
 
-                        # Check if this is actually a chain (multiple commands)
-                        from pyafk.core.command_parser import CommandParser
-
-                        parser = CommandParser()
-                        # Use split_chain to get the individual command strings
-                        chain_commands = parser.split_chain(cmd)
-                        debug_chain(
-                            "Split chain result",
-                            count=len(chain_commands),
-                            commands=chain_commands[:3],
-                        )
-                        if len(chain_commands) > 1:
-                            is_chain = True
-                            debug_chain("Detected as chain")
+                    # Check if this is actually a chain (multiple commands)
+                    parser = CommandParser()
+                    # Use split_chain to get the individual command strings
+                    chain_commands = parser.split_chain(cmd)
+                    debug_chain(
+                        "Split chain result",
+                        count=len(chain_commands),
+                        commands=chain_commands[:3],
+                    )
+                    if len(chain_commands) > 1:
+                        is_chain = True
+                        debug_chain("Detected as chain")
             except (json.JSONDecodeError, TypeError) as e:
                 debug_chain("Failed to parse tool_input", error=str(e))
                 pass
