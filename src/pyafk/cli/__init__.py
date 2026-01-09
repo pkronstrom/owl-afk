@@ -1,6 +1,12 @@
-"""CLI entry point."""
+"""CLI entry point for pyafk.
+
+This module provides the main CLI interface via the `main()` function,
+which is the entry point for the `pyafk` command.
+"""
 
 import argparse
+
+__all__ = ["main"]
 
 from pyafk.cli.commands import (
     cmd_captain_hook_install,
