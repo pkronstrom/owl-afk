@@ -8,7 +8,7 @@ from pyafk.utils.debug import debug_callback
 
 if TYPE_CHECKING:
     from pyafk.core.storage import Storage
-    from pyafk.notifiers.telegram import TelegramNotifier
+    from pyafk.notifiers.base import TelegramCallbackNotifier
 
 
 class HandlerDispatcher:
@@ -20,7 +20,7 @@ class HandlerDispatcher:
 
     Attributes:
         storage: Database storage instance
-        notifier: Telegram notifier for sending messages
+        notifier: Notifier implementing TelegramCallbackNotifier protocol
         _handlers: Registry mapping action strings to handler instances
 
     Example:
@@ -31,7 +31,7 @@ class HandlerDispatcher:
     def __init__(
         self,
         storage: "Storage",
-        notifier: "TelegramNotifier",
+        notifier: "TelegramCallbackNotifier",
     ) -> None:
         self.storage = storage
         self.notifier = notifier

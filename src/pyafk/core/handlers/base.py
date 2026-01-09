@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Optional, Protocol
 
 if TYPE_CHECKING:
     from pyafk.core.storage import Storage
-    from pyafk.notifiers.telegram import TelegramNotifier
+    from pyafk.notifiers.base import TelegramCallbackNotifier
 
 
 @dataclass
@@ -15,12 +15,16 @@ class CallbackContext:
     This dataclass carries all the information a handler needs to process
     a Telegram callback query.
 
+    The notifier field uses TelegramCallbackNotifier protocol, which defines
+    the Telegram-specific methods needed by handlers (answer_callback,
+    edit_message_with_rule_keyboard, update_chain_progress, etc.).
+
     Attributes:
         target_id: The target identifier from callback data (request_id, session_id, etc.)
         callback_id: Telegram callback query ID for answering
         message_id: Telegram message ID for editing (None if not available)
         storage: Database storage instance
-        notifier: Telegram notifier for sending messages
+        notifier: Notifier implementing TelegramCallbackNotifier protocol
         original_text: Original message text (for restoration if needed)
     """
 
@@ -28,7 +32,7 @@ class CallbackContext:
     callback_id: str
     message_id: Optional[int]
     storage: "Storage"
-    notifier: "TelegramNotifier"
+    notifier: "TelegramCallbackNotifier"
     original_text: str = field(default="")
 
 
