@@ -8,6 +8,7 @@ import httpx
 
 from pyafk.notifiers.base import Notifier
 from pyafk.utils.debug import debug_api, debug_chain
+from pyafk.utils.formatting import escape_html
 
 
 def format_approval_message(
@@ -53,23 +54,18 @@ def format_approval_message(
         project_id = session_id[:8]
 
     # Compact format: project, optional description, then tool call
-    lines = [f"<i>{_escape_html(project_id)}</i>"]
+    lines = [f"<i>{escape_html(project_id)}</i>"]
 
     if description:
         # Show description in italic before the tool
         desc = description[:100] + "..." if len(description) > 100 else description
-        lines.append(f"<i>{_escape_html(desc)}</i>")
+        lines.append(f"<i>{escape_html(desc)}</i>")
 
     lines.append(
-        f"<b>[{_escape_html(tool_name)}]</b> <code>{_escape_html(input_summary)}</code>"
+        f"<b>[{escape_html(tool_name)}]</b> <code>{escape_html(input_summary)}</code>"
     )
 
     return "\n".join(lines)
-
-
-def _escape_html(text: str) -> str:
-    """Escape HTML special characters."""
-    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def _escape_markdown(text: str) -> str:
@@ -405,7 +401,7 @@ class TelegramNotifier(Notifier):
         keyboard = {"inline_keyboard": buttons}
 
         # Escape HTML in original text to prevent parsing errors
-        escaped_text = _escape_html(original_text)
+        escaped_text = escape_html(original_text)
 
         await self._api_request(
             "editMessageText",
@@ -539,7 +535,7 @@ class TelegramNotifier(Notifier):
 
         if description:
             desc = description[:80] + "..." if len(description) > 80 else description
-            lines.append(f"📝 {_escape_html(desc)}")
+            lines.append(f"📝 {escape_html(desc)}")
 
         if files_modified:
             if len(files_modified) <= 3:
@@ -548,7 +544,7 @@ class TelegramNotifier(Notifier):
                 files_str = (
                     ", ".join(files_modified[:3]) + f" (+{len(files_modified) - 3})"
                 )
-            lines.append(f"📁 {_escape_html(files_str)}")
+            lines.append(f"📁 {escape_html(files_str)}")
 
         # Add brief summary (truncated)
         if output_summary:
@@ -557,7 +553,7 @@ class TelegramNotifier(Notifier):
                 if len(output_summary) > 200
                 else output_summary
             )
-            lines.append(f"\n{_escape_html(summary)}")
+            lines.append(f"\n{escape_html(summary)}")
 
         text = "\n".join(lines)
 
@@ -568,7 +564,7 @@ class TelegramNotifier(Notifier):
             else (description or "task")
         )
         compact_text = (
-            f"<i>{project_id}</i> ✅ Agent: {_escape_html(brief_desc)}{duration_str}"
+            f"<i>{project_id}</i> ✅ Agent: {escape_html(brief_desc)}{duration_str}"
         )
 
         keyboard = {
@@ -611,7 +607,7 @@ class TelegramNotifier(Notifier):
         else:
             project_id = session_id[:8]
 
-        text = f"<i>{_escape_html(project_id)}</i>\n⏸️ <b>Claude is about to stop</b>"
+        text = f"<i>{escape_html(project_id)}</i>\n⏸️ <b>Claude is about to stop</b>"
 
         keyboard = {
             "inline_keyboard": [
@@ -746,11 +742,11 @@ class TelegramNotifier(Notifier):
             project_id = session_id[:8]
 
         # Build the message with stacked command list
-        lines = [f"<i>{_escape_html(project_id)}</i>"]
+        lines = [f"<i>{escape_html(project_id)}</i>"]
 
         if description:
             desc = description[:100] + "..." if len(description) > 100 else description
-            lines.append(f"<i>{_escape_html(desc)}</i>")
+            lines.append(f"<i>{escape_html(desc)}</i>")
 
         lines.append("<b>Command chain approval:</b>\n")
 
@@ -771,7 +767,7 @@ class TelegramNotifier(Notifier):
 
             # Truncate long commands
             cmd_display = cmd if len(cmd) <= 60 else cmd[:60] + "..."
-            cmd_lines.append(f"{marker} <code>{_escape_html(cmd_display)}</code>")
+            cmd_lines.append(f"{marker} <code>{escape_html(cmd_display)}</code>")
 
         # Check if message would be too long
         temp_message = "\n".join(lines + cmd_lines)
@@ -784,7 +780,7 @@ class TelegramNotifier(Notifier):
                     marker = "→" if idx == 0 else " "
                     cmd_display = cmd if len(cmd) <= 60 else cmd[:60] + "..."
                     truncated_cmd_lines.append(
-                        f"{marker} <code>{_escape_html(cmd_display)}</code>"
+                        f"{marker} <code>{escape_html(cmd_display)}</code>"
                     )
 
                 truncated_cmd_lines.append(
@@ -796,7 +792,7 @@ class TelegramNotifier(Notifier):
                     marker = " "
                     cmd_display = cmd if len(cmd) <= 60 else cmd[:60] + "..."
                     truncated_cmd_lines.append(
-                        f"{marker} <code>{_escape_html(cmd_display)}</code>"
+                        f"{marker} <code>{escape_html(cmd_display)}</code>"
                     )
 
                 cmd_lines = truncated_cmd_lines
@@ -872,11 +868,11 @@ class TelegramNotifier(Notifier):
             project_id = session_id[:8]
 
         # Build the message with stacked command list
-        lines = [f"<i>{_escape_html(project_id)}</i>"]
+        lines = [f"<i>{escape_html(project_id)}</i>"]
 
         if description:
             desc = description[:100] + "..." if len(description) > 100 else description
-            lines.append(f"<i>{_escape_html(desc)}</i>")
+            lines.append(f"<i>{escape_html(desc)}</i>")
 
         lines.append("<b>Command chain approval:</b>\n")
 
@@ -896,7 +892,7 @@ class TelegramNotifier(Notifier):
 
             # Truncate long commands
             cmd_display = cmd if len(cmd) <= 60 else cmd[:60] + "..."
-            cmd_lines.append(f"{marker} <code>{_escape_html(cmd_display)}</code>")
+            cmd_lines.append(f"{marker} <code>{escape_html(cmd_display)}</code>")
 
         # Check if message would be too long
         temp_message = "\n".join(lines + cmd_lines)
@@ -915,7 +911,7 @@ class TelegramNotifier(Notifier):
                         marker = " "
                     cmd_display = cmd if len(cmd) <= 60 else cmd[:60] + "..."
                     truncated_cmd_lines.append(
-                        f"{marker} <code>{_escape_html(cmd_display)}</code>"
+                        f"{marker} <code>{escape_html(cmd_display)}</code>"
                     )
 
                 # Add ellipsis
@@ -934,7 +930,7 @@ class TelegramNotifier(Notifier):
                         marker = " "
                     cmd_display = cmd if len(cmd) <= 60 else cmd[:60] + "..."
                     truncated_cmd_lines.append(
-                        f"{marker} <code>{_escape_html(cmd_display)}</code>"
+                        f"{marker} <code>{escape_html(cmd_display)}</code>"
                     )
 
                 cmd_lines = truncated_cmd_lines
