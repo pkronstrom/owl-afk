@@ -63,5 +63,6 @@ module = [
     "pyafk.core.command_parser",
     "pyafk.core.manager",
     "pyafk.cli",
+    "pyafk.cli.*",
 ]
 ignore_errors = true
