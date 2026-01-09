@@ -39,3 +39,6 @@ Thumbs.db
 
 # gitleaks report (if generated)
 gitleaks-report.json
+
+# Git worktrees
+.worktrees/
