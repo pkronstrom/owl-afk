@@ -608,15 +608,10 @@ class Poller:
             "add_rule",
             "add_rule_pattern",
             "cancel_rule",
+            "approve_all",
         ):
             original_text = callback.get("message", {}).get("text", "")
             await self._dispatcher.dispatch(data, callback_id, message_id, original_text)
-        elif action == "approve_all":
-            # Format: approve_all:session_id:tool_name
-            parts = target_id.split(":", 1)
-            session_id = parts[0]
-            tool_name = parts[1] if len(parts) > 1 else None
-            await self._handle_approve_all(session_id, tool_name, callback_id)
         elif action == "chain_rule_pattern":
             # Format: chain_rule_pattern:request_id:command_idx:pattern_index
             parts = target_id.split(":")

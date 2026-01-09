@@ -37,6 +37,7 @@ class HandlerDispatcher:
         self.notifier = notifier
 
         # Import handlers here to avoid import issues
+        from pyafk.core.handlers.batch import ApproveAllHandler
         from pyafk.core.handlers.feedback import DenyWithMessageHandler
         from pyafk.core.handlers.rules import (
             AddRuleMenuHandler,
@@ -61,6 +62,7 @@ class HandlerDispatcher:
             "add_rule": AddRuleMenuHandler(),
             "add_rule_pattern": AddRulePatternHandler(),
             "cancel_rule": CancelRuleHandler(),
+            "approve_all": ApproveAllHandler(),
         }
 
     async def dispatch(
