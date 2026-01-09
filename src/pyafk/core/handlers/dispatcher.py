@@ -38,6 +38,7 @@ class HandlerDispatcher:
 
         # Import handlers here to avoid import issues
         from pyafk.core.handlers.feedback import DenyWithMessageHandler
+        from pyafk.core.handlers.rules import CancelRuleHandler
         from pyafk.core.handlers.stop import StopCommentHandler, StopOkHandler
         from pyafk.core.handlers.subagent import (
             SubagentContinueHandler,
@@ -53,6 +54,7 @@ class HandlerDispatcher:
             "subagent_continue": SubagentContinueHandler(),
             "stop_ok": StopOkHandler(),
             "stop_comment": StopCommentHandler(),
+            "cancel_rule": CancelRuleHandler(),
         }
 
     async def dispatch(

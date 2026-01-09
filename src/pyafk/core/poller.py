@@ -605,6 +605,7 @@ class Poller:
             "subagent_continue",
             "stop_ok",
             "stop_comment",
+            "cancel_rule",
         ):
             original_text = callback.get("message", {}).get("text", "")
             await self._dispatcher.dispatch(data, callback_id, message_id, original_text)
@@ -620,8 +621,6 @@ class Poller:
             await self._handle_add_rule_menu(
                 target_id, callback_id, message_id, original_text
             )
-        elif action == "cancel_rule":
-            await self._handle_cancel_rule(target_id, callback_id, message_id)
         elif action == "add_rule_pattern":
             # Format: add_rule_pattern:request_id:pattern_index
             parts = target_id.split(":", 1)
