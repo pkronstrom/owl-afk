@@ -38,6 +38,16 @@ class HandlerDispatcher:
 
         # Import handlers here to avoid import issues
         from pyafk.core.handlers.batch import ApproveAllHandler
+        from pyafk.core.handlers.chain import (
+            ChainApproveAllHandler,
+            ChainApproveEntireHandler,
+            ChainApproveHandler,
+            ChainCancelRuleHandler,
+            ChainDenyHandler,
+            ChainDenyMsgHandler,
+            ChainRuleHandler,
+            ChainRulePatternHandler,
+        )
         from pyafk.core.handlers.feedback import DenyWithMessageHandler
         from pyafk.core.handlers.rules import (
             AddRuleMenuHandler,
@@ -63,6 +73,15 @@ class HandlerDispatcher:
             "add_rule_pattern": AddRulePatternHandler(),
             "cancel_rule": CancelRuleHandler(),
             "approve_all": ApproveAllHandler(),
+            # Chain handlers
+            "chain_approve": ChainApproveHandler(),
+            "chain_deny": ChainDenyHandler(),
+            "chain_deny_msg": ChainDenyMsgHandler(),
+            "chain_approve_all": ChainApproveAllHandler(),
+            "chain_approve_entire": ChainApproveEntireHandler(),
+            "chain_cancel_rule": ChainCancelRuleHandler(),
+            "chain_rule": ChainRuleHandler(),
+            "chain_rule_pattern": ChainRulePatternHandler(),
         }
 
     async def dispatch(

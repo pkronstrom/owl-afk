@@ -596,7 +596,7 @@ class Poller:
         action, target_id = data.split(":", 1)
         debug_callback("Parsed callback", action=action, target_id=target_id)
 
-        # Use dispatcher for handlers that have been extracted
+        # Use dispatcher for all extracted handlers
         if action in (
             "approve",
             "deny",
@@ -609,53 +609,20 @@ class Poller:
             "add_rule_pattern",
             "cancel_rule",
             "approve_all",
+            # Chain handlers
+            "chain_approve",
+            "chain_deny",
+            "chain_deny_msg",
+            "chain_approve_all",
+            "chain_approve_entire",
+            "chain_cancel_rule",
+            "chain_rule",
+            "chain_rule_pattern",
         ):
             original_text = callback.get("message", {}).get("text", "")
             await self._dispatcher.dispatch(data, callback_id, message_id, original_text)
-        elif action == "chain_rule_pattern":
-            # Format: chain_rule_pattern:request_id:command_idx:pattern_index
-            parts = target_id.split(":")
-            if len(parts) >= 3:
-                request_id = parts[0]
-                command_idx = _safe_int(parts[1])
-                pattern_idx = _safe_int(parts[2])
-                await self._handle_chain_rule_pattern(
-                    request_id, command_idx, pattern_idx, callback_id, message_id
-                )
         elif action == "msg_select":
             await self._handle_msg_select(target_id, callback_id, message_id)
-        elif action == "chain_approve":
-            # Format: chain_approve:request_id:command_index
-            parts = target_id.split(":", 1)
-            request_id = parts[0]
-            command_idx = _safe_int(parts[1]) if len(parts) > 1 else 0
-            await self._handle_chain_approve(
-                request_id, command_idx, callback_id, message_id
-            )
-        elif action == "chain_deny":
-            await self._handle_chain_deny(target_id, callback_id, message_id)
-        elif action == "chain_deny_msg":
-            await self._handle_chain_deny_msg(target_id, callback_id, message_id)
-        elif action == "chain_rule":
-            # Format: chain_rule:request_id:command_index
-            parts = target_id.split(":", 1)
-            request_id = parts[0]
-            command_idx = _safe_int(parts[1]) if len(parts) > 1 else 0
-            await self._handle_chain_rule(
-                request_id, command_idx, callback_id, message_id
-            )
-        elif action == "chain_approve_all":
-            await self._handle_chain_approve_all(target_id, callback_id, message_id)
-        elif action == "chain_approve_entire":
-            await self._handle_chain_approve_entire(target_id, callback_id, message_id)
-        elif action == "chain_cancel_rule":
-            # Format: chain_cancel_rule:request_id:command_index
-            parts = target_id.split(":", 1)
-            request_id = parts[0]
-            command_idx = _safe_int(parts[1]) if len(parts) > 1 else 0
-            await self._handle_chain_cancel_rule(
-                request_id, command_idx, callback_id, message_id
-            )
 
     async def _handle_approval(
         self,
