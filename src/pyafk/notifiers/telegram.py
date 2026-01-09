@@ -8,7 +8,7 @@ import httpx
 
 from pyafk.notifiers.base import Notifier
 from pyafk.utils.debug import debug_api, debug_chain
-from pyafk.utils.formatting import escape_html
+from pyafk.utils.formatting import escape_html, format_project_id
 
 
 def format_approval_message(
@@ -46,12 +46,7 @@ def format_approval_message(
         input_summary = input_summary[:200] + "..."
 
     # Project identifier - use working directory or short session id
-    if project_path:
-        # Show last 2 path components for context
-        parts = project_path.rstrip("/").split("/")
-        project_id = "/".join(parts[-2:]) if len(parts) >= 2 else parts[-1]
-    else:
-        project_id = session_id[:8]
+    project_id = format_project_id(project_path, session_id)
 
     # Compact format: project, optional description, then tool call
     lines = [f"<i>{escape_html(project_id)}</i>"]
@@ -514,11 +509,7 @@ class TelegramNotifier(Notifier):
             Tuple of (message_id, compact_text for auto-dismiss)
         """
         # Format project path
-        if project_path:
-            parts = project_path.rstrip("/").split("/")
-            project_id = "/".join(parts[-2:]) if len(parts) >= 2 else parts[-1]
-        else:
-            project_id = subagent_id[:8]
+        project_id = format_project_id(project_path, subagent_id)
 
         # Format duration
         duration_str = ""
@@ -601,11 +592,7 @@ class TelegramNotifier(Notifier):
     ) -> Optional[int]:
         """Send stop notification with OK/Comment buttons."""
         # Format project path
-        if project_path:
-            parts = project_path.rstrip("/").split("/")
-            project_id = "/".join(parts[-2:]) if len(parts) >= 2 else parts[-1]
-        else:
-            project_id = session_id[:8]
+        project_id = format_project_id(project_path, session_id)
 
         text = f"<i>{escape_html(project_id)}</i>\n⏸️ <b>Claude is about to stop</b>"
 
@@ -735,11 +722,7 @@ class TelegramNotifier(Notifier):
         if not commands:
             raise ValueError("Cannot create chain approval with empty commands")
         # Format project identifier
-        if project_path:
-            parts = project_path.rstrip("/").split("/")
-            project_id = "/".join(parts[-2:]) if len(parts) >= 2 else parts[-1]
-        else:
-            project_id = session_id[:8]
+        project_id = format_project_id(project_path, session_id)
 
         # Build the message with stacked command list
         lines = [f"<i>{escape_html(project_id)}</i>"]
@@ -861,11 +844,7 @@ class TelegramNotifier(Notifier):
                 f"current_idx {current_idx} out of bounds for {len(commands)} commands"
             )
         # Format project identifier
-        if project_path:
-            parts = project_path.rstrip("/").split("/")
-            project_id = "/".join(parts[-2:]) if len(parts) >= 2 else parts[-1]
-        else:
-            project_id = session_id[:8]
+        project_id = format_project_id(project_path, session_id)
 
         # Build the message with stacked command list
         lines = [f"<i>{escape_html(project_id)}</i>"]
