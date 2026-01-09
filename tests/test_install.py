@@ -5,7 +5,6 @@ import subprocess
 import sys
 
 
-
 def run_cli(*args, env=None, input_text=None):
     """Run pyafk CLI command and return result."""
     cmd = [sys.executable, "-m", "pyafk.cli"] + list(args)
@@ -64,3 +63,54 @@ def test_uninstall_removes_hooks(mock_pyafk_dir, tmp_path):
     # Check that pyafk hooks are removed
     pyafk_hooks = [h for h in pretool_hooks if "pyafk" in h.get("command", "")]
     assert len(pyafk_hooks) == 0
+
+
+def test_hook_matchers_include_websearch():
+    """Verify WebSearch is included in hook matchers."""
+    from pyafk.cli.install import get_pyafk_hooks
+
+    hooks = get_pyafk_hooks()
+
+    # Check PreToolUse matcher includes WebSearch
+    pretool = hooks.get("PreToolUse", [])
+    assert len(pretool) > 0
+    matcher = pretool[0].get("matcher", "")
+    assert "WebSearch" in matcher, f"WebSearch not in PreToolUse matcher: {matcher}"
+
+    # Check PostToolUse matcher includes WebSearch
+    posttool = hooks.get("PostToolUse", [])
+    assert len(posttool) > 0
+    matcher = posttool[0].get("matcher", "")
+    assert "WebSearch" in matcher, f"WebSearch not in PostToolUse matcher: {matcher}"
+
+    # Check PermissionRequest matcher includes WebSearch
+    perm = hooks.get("PermissionRequest", [])
+    assert len(perm) > 0
+    matcher = perm[0].get("matcher", "")
+    assert "WebSearch" in matcher, (
+        f"WebSearch not in PermissionRequest matcher: {matcher}"
+    )
+
+
+def test_hook_matchers_include_all_expected_tools():
+    """Verify all expected tools are in hook matchers."""
+    from pyafk.cli.install import get_pyafk_hooks
+
+    hooks = get_pyafk_hooks()
+    pretool = hooks.get("PreToolUse", [])
+    matcher = pretool[0].get("matcher", "")
+
+    expected_tools = [
+        "Bash",
+        "Edit",
+        "Write",
+        "MultiEdit",
+        "WebFetch",
+        "WebSearch",
+        "Skill",
+    ]
+    for tool in expected_tools:
+        assert tool in matcher, f"{tool} not in hook matcher: {matcher}"
+
+    # MCP tools should be matched via pattern
+    assert "mcp__" in matcher, f"MCP pattern not in hook matcher: {matcher}"
