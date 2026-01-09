@@ -770,3 +770,45 @@ class ChainRulePatternHandler:
                 request_id=request_id,
             )
             await ctx.notifier.answer_callback(ctx.callback_id, "Error occurred")
+
+
+async def check_chain_rules(storage: "Storage", cmd: str) -> Optional[str]:
+    """Check if a bash command chain matches any rules.
+
+    Args:
+        storage: Storage instance for rule lookups
+        cmd: The bash command (may contain && || ; chains)
+
+    Returns:
+        "approve" if ALL commands match allow rules
+        "deny" if ANY command matches deny rule
+        None if manual approval needed
+    """
+    from pyafk.core.rules import RulesEngine
+
+    parser = CommandParser()
+    nodes = parser.parse(cmd)
+
+    engine = RulesEngine(storage)
+    has_unmatched = False
+
+    for node in nodes:
+        patterns = parser.generate_patterns(node)
+
+        matched = False
+        for pattern in patterns:
+            rule_result = await engine.check("Bash", json.dumps({"command": pattern}))
+
+            if rule_result == "deny":
+                return "deny"
+            elif rule_result == "approve":
+                matched = True
+                break
+
+        if not matched:
+            has_unmatched = True
+
+    if not has_unmatched:
+        return "approve"
+
+    return None
