@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from pyafk.core.command_parser import CommandParser
+from pyafk.core.handlers import HandlerDispatcher
 from pyafk.core.storage import Storage
 from pyafk.notifiers.telegram import TelegramNotifier
 from pyafk.utils.debug import debug_callback, debug_chain, debug_rule
@@ -102,6 +103,9 @@ class Poller:
         self._offset: Optional[int] = self._load_offset()
         self._running = False
         self._debug_log = pyafk_dir / "subagent_debug.log"
+
+        # Handler dispatcher for callback routing
+        self._dispatcher = HandlerDispatcher(storage, notifier)
 
     def _log_debug(self, msg: str) -> None:
         """Log debug message to file and stderr."""
@@ -592,8 +596,10 @@ class Poller:
         action, target_id = data.split(":", 1)
         debug_callback("Parsed callback", action=action, target_id=target_id)
 
+        # Use dispatcher for handlers that have been extracted
         if action in ("approve", "deny"):
-            await self._handle_approval(target_id, action, callback_id, message_id)
+            original_text = callback.get("message", {}).get("text", "")
+            await self._dispatcher.dispatch(data, callback_id, message_id, original_text)
         elif action == "deny_msg":
             await self._handle_deny_msg(target_id, callback_id, message_id)
         elif action == "approve_all":
