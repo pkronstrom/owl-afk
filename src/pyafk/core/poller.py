@@ -605,6 +605,8 @@ class Poller:
             "subagent_continue",
             "stop_ok",
             "stop_comment",
+            "add_rule",
+            "add_rule_pattern",
             "cancel_rule",
         ):
             original_text = callback.get("message", {}).get("text", "")
@@ -615,20 +617,6 @@ class Poller:
             session_id = parts[0]
             tool_name = parts[1] if len(parts) > 1 else None
             await self._handle_approve_all(session_id, tool_name, callback_id)
-        elif action == "add_rule":
-            # Get original message text for inline edit
-            original_text = callback.get("message", {}).get("text", "")
-            await self._handle_add_rule_menu(
-                target_id, callback_id, message_id, original_text
-            )
-        elif action == "add_rule_pattern":
-            # Format: add_rule_pattern:request_id:pattern_index
-            parts = target_id.split(":", 1)
-            request_id = parts[0]
-            pattern_idx = _safe_int(parts[1]) if len(parts) > 1 else 0
-            await self._handle_add_rule(
-                request_id, callback_id, message_id, pattern_idx
-            )
         elif action == "chain_rule_pattern":
             # Format: chain_rule_pattern:request_id:command_idx:pattern_index
             parts = target_id.split(":")
