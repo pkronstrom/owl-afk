@@ -669,59 +669,38 @@ def _config_exists():
 
 def _get_rules(pyafk_dir):
     """Get all rules from database."""
+    from pyafk.core.rules import RulesEngine
+    from pyafk.utils.storage_helpers import with_storage
 
-    async def _list():
-        from pyafk.core.rules import RulesEngine
-        from pyafk.core.storage import Storage
+    async def operation(storage):
+        engine = RulesEngine(storage)
+        return await engine.list_rules()
 
-        config = Config(pyafk_dir)
-        storage = Storage(config.db_path)
-        await storage.connect()
-        try:
-            engine = RulesEngine(storage)
-            return await engine.list_rules()
-        finally:
-            await storage.close()
-
-    return asyncio.run(_list())
+    return asyncio.run(with_storage(pyafk_dir, operation))
 
 
 def _add_rule(pyafk_dir, pattern, action):
     """Add a rule to database."""
+    from pyafk.core.rules import RulesEngine
+    from pyafk.utils.storage_helpers import with_storage
 
-    async def _add():
-        from pyafk.core.rules import RulesEngine
-        from pyafk.core.storage import Storage
+    async def operation(storage):
+        engine = RulesEngine(storage)
+        return await engine.add_rule(pattern, action, 0, created_via="cli")
 
-        config = Config(pyafk_dir)
-        storage = Storage(config.db_path)
-        await storage.connect()
-        try:
-            engine = RulesEngine(storage)
-            return await engine.add_rule(pattern, action, 0, created_via="cli")
-        finally:
-            await storage.close()
-
-    return asyncio.run(_add())
+    return asyncio.run(with_storage(pyafk_dir, operation))
 
 
 def _remove_rule(pyafk_dir, rule_id):
     """Remove a rule from database."""
+    from pyafk.core.rules import RulesEngine
+    from pyafk.utils.storage_helpers import with_storage
 
-    async def _remove():
-        from pyafk.core.rules import RulesEngine
-        from pyafk.core.storage import Storage
+    async def operation(storage):
+        engine = RulesEngine(storage)
+        return await engine.remove_rule(rule_id)
 
-        config = Config(pyafk_dir)
-        storage = Storage(config.db_path)
-        await storage.connect()
-        try:
-            engine = RulesEngine(storage)
-            return await engine.remove_rule(rule_id)
-        finally:
-            await storage.close()
-
-    return asyncio.run(_remove())
+    return asyncio.run(with_storage(pyafk_dir, operation))
 
 
 def _do_telegram_test(config):
