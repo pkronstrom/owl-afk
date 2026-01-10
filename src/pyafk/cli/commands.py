@@ -109,7 +109,7 @@ def cmd_off(args):
                     try:
                         await notifier.edit_message(
                             request.telegram_msg_id,
-                            "⏸️ pyafk off - retry when enabled",
+                            "⏸️ pyafk off - please retry command",
                         )
                     except Exception:
                         pass
@@ -117,7 +117,7 @@ def cmd_off(args):
                     request_id=request.id,
                     status="denied",
                     resolved_by="pyafk_off",
-                    denial_reason="pyafk disabled - retry when enabled",
+                    denial_reason="pyafk disabled - please retry your command",
                 )
 
             pending_stops = await storage.get_all_pending_stops()
