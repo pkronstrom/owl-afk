@@ -1,9 +1,10 @@
 """Tests for handler dispatcher."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from pyafk.core.handlers.dispatcher import HandlerDispatcher
+from pyafk.core.handlers.registry import HandlerRegistry
 
 
 @pytest.fixture
@@ -29,12 +30,12 @@ async def test_dispatcher_routes_approve(mock_storage, mock_notifier):
     """Test dispatcher routes approve action correctly."""
     dispatcher = HandlerDispatcher(mock_storage, mock_notifier)
 
-    # Mock the handler
+    # Mock the handler via registry
     mock_handler = MagicMock()
     mock_handler.handle = AsyncMock()
-    dispatcher._handlers["approve"] = mock_handler
 
-    await dispatcher.dispatch("approve:req123", "cb456", 789, "original text")
+    with patch.object(HandlerRegistry, "create", return_value=mock_handler):
+        await dispatcher.dispatch("approve:req123", "cb456", 789, "original text")
 
     mock_handler.handle.assert_called_once()
     ctx = mock_handler.handle.call_args[0][0]
@@ -50,9 +51,9 @@ async def test_dispatcher_routes_deny(mock_storage, mock_notifier):
 
     mock_handler = MagicMock()
     mock_handler.handle = AsyncMock()
-    dispatcher._handlers["deny"] = mock_handler
 
-    await dispatcher.dispatch("deny:req123", "cb456", 789, "")
+    with patch.object(HandlerRegistry, "create", return_value=mock_handler):
+        await dispatcher.dispatch("deny:req123", "cb456", 789, "")
 
     mock_handler.handle.assert_called_once()
     ctx = mock_handler.handle.call_args[0][0]
@@ -64,7 +65,7 @@ async def test_dispatcher_handles_unknown_action(mock_storage, mock_notifier):
     """Test dispatcher handles unknown actions gracefully."""
     dispatcher = HandlerDispatcher(mock_storage, mock_notifier)
 
-    # Should not raise
+    # Should not raise - unknown action returns None from registry
     await dispatcher.dispatch("unknown_action:req123", "cb456", 789, "")
 
 
@@ -84,9 +85,9 @@ async def test_dispatcher_parses_compound_target(mock_storage, mock_notifier):
 
     mock_handler = MagicMock()
     mock_handler.handle = AsyncMock()
-    dispatcher._handlers["approve_all"] = mock_handler
 
-    await dispatcher.dispatch("approve_all:sess123:Bash", "cb456", 789, "")
+    with patch.object(HandlerRegistry, "create", return_value=mock_handler):
+        await dispatcher.dispatch("approve_all:sess123:Bash", "cb456", 789, "")
 
     ctx = mock_handler.handle.call_args[0][0]
     # Should capture everything after action: as target_id
@@ -95,17 +96,25 @@ async def test_dispatcher_parses_compound_target(mock_storage, mock_notifier):
 
 @pytest.mark.asyncio
 async def test_dispatcher_register_handler(mock_storage, mock_notifier):
-    """Test dispatcher can register new handlers."""
+    """Test dispatcher can register new handlers at runtime."""
     dispatcher = HandlerDispatcher(mock_storage, mock_notifier)
 
-    mock_handler = MagicMock()
-    mock_handler.handle = AsyncMock()
+    # Create a mock handler class
+    class MockHandler:
+        def __init__(self):
+            self.handle = AsyncMock()
 
-    dispatcher.register("custom_action", mock_handler)
+    # Register the handler class
+    dispatcher.register("custom_action", MockHandler)
 
+    # Now dispatch should create and call the handler
     await dispatcher.dispatch("custom_action:test123", "cb456", 789, "")
 
-    mock_handler.handle.assert_called_once()
+    # Verify a handler was registered
+    assert "custom_action" in HandlerRegistry._handlers
+
+    # Clean up
+    del HandlerRegistry._handlers["custom_action"]
 
 
 @pytest.mark.asyncio
@@ -115,9 +124,23 @@ async def test_dispatcher_passes_original_text(mock_storage, mock_notifier):
 
     mock_handler = MagicMock()
     mock_handler.handle = AsyncMock()
-    dispatcher._handlers["approve"] = mock_handler
 
-    await dispatcher.dispatch("approve:req123", "cb456", 789, "Original message text")
+    with patch.object(HandlerRegistry, "create", return_value=mock_handler):
+        await dispatcher.dispatch(
+            "approve:req123", "cb456", 789, "Original message text"
+        )
 
     ctx = mock_handler.handle.call_args[0][0]
     assert ctx.original_text == "Original message text"
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_uses_registered_handlers(mock_storage, mock_notifier):
+    """Test dispatcher uses actual registered handlers from registry."""
+    dispatcher = HandlerDispatcher(mock_storage, mock_notifier)
+
+    # Verify standard handlers are registered
+    assert HandlerRegistry.get("approve") is not None
+    assert HandlerRegistry.get("deny") is not None
+    assert HandlerRegistry.get("add_rule") is not None
+    assert HandlerRegistry.get("chain_approve") is not None

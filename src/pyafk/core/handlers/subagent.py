@@ -1,9 +1,11 @@
 """Subagent completion handlers."""
 
 from pyafk.core.handlers.base import CallbackContext
+from pyafk.core.handlers.registry import HandlerRegistry
 from pyafk.utils.debug import debug_callback
 
 
+@HandlerRegistry.register("subagent_ok")
 class SubagentOkHandler:
     """Handle subagent OK button - let subagent stop normally."""
 
@@ -30,6 +32,7 @@ class SubagentOkHandler:
             debug_callback("Message edited")
 
 
+@HandlerRegistry.register("subagent_continue")
 class SubagentContinueHandler:
     """Handle subagent Continue button - prompt for instructions."""
 

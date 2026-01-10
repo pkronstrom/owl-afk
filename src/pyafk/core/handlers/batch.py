@@ -1,10 +1,12 @@
 """Batch approval handlers for multiple requests."""
 
 from pyafk.core.handlers.base import CallbackContext
+from pyafk.core.handlers.registry import HandlerRegistry
 from pyafk.utils.debug import debug_callback
 from pyafk.utils.formatting import format_project_id, format_tool_summary
 
 
+@HandlerRegistry.register("approve_all")
 class ApproveAllHandler:
     """Approve all pending requests for a session and tool type."""
 

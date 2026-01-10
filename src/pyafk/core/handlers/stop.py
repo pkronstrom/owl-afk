@@ -1,9 +1,11 @@
 """Stop/session end handlers."""
 
 from pyafk.core.handlers.base import CallbackContext
+from pyafk.core.handlers.registry import HandlerRegistry
 from pyafk.utils.debug import debug_callback
 
 
+@HandlerRegistry.register("stop_ok")
 class StopOkHandler:
     """Handle stop OK button - let Claude stop normally."""
 
@@ -22,6 +24,7 @@ class StopOkHandler:
             )
 
 
+@HandlerRegistry.register("stop_comment")
 class StopCommentHandler:
     """Handle stop Comment button - prompt for message to Claude."""
 

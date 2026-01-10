@@ -2,8 +2,8 @@
 
 from typing import TYPE_CHECKING, Optional
 
-from pyafk.core.handlers.approval import ApproveHandler, DenyHandler
-from pyafk.core.handlers.base import CallbackContext, CallbackHandler
+from pyafk.core.handlers.base import CallbackContext
+from pyafk.core.handlers.registry import HandlerRegistry
 from pyafk.utils.debug import debug_callback
 
 if TYPE_CHECKING:
@@ -11,17 +11,36 @@ if TYPE_CHECKING:
     from pyafk.notifiers.base import TelegramCallbackNotifier
 
 
+def _register_handlers() -> None:
+    """Import handler modules to trigger registration.
+
+    This function ensures all handler modules are imported, which causes
+    the @HandlerRegistry.register() decorators to execute and register
+    each handler with the registry.
+    """
+    # Import all handler modules to trigger registration
+    # The imports are not used directly - they just run the decorators
+    from pyafk.core.handlers import (  # noqa: F401
+        approval,
+        batch,
+        chain,
+        feedback,
+        rules,
+        stop,
+        subagent,
+    )
+
+
 class HandlerDispatcher:
     """Routes callback data to appropriate handlers.
 
-    This class replaces the large if-elif chain in poller.py's _handle_callback
-    method with a dispatch table pattern. Each action type maps to a handler
-    class that implements the CallbackHandler protocol.
+    This class dispatches Telegram callback queries to the appropriate
+    handler based on the action type. Handlers are discovered via the
+    HandlerRegistry, which uses decorator-based self-registration.
 
     Attributes:
         storage: Database storage instance
         notifier: Notifier implementing TelegramCallbackNotifier protocol
-        _handlers: Registry mapping action strings to handler instances
 
     Example:
         dispatcher = HandlerDispatcher(storage, notifier)
@@ -36,53 +55,8 @@ class HandlerDispatcher:
         self.storage = storage
         self.notifier = notifier
 
-        # Import handlers here to avoid import issues
-        from pyafk.core.handlers.batch import ApproveAllHandler
-        from pyafk.core.handlers.chain import (
-            ChainApproveAllHandler,
-            ChainApproveEntireHandler,
-            ChainApproveHandler,
-            ChainCancelRuleHandler,
-            ChainDenyHandler,
-            ChainDenyMsgHandler,
-            ChainRuleHandler,
-            ChainRulePatternHandler,
-        )
-        from pyafk.core.handlers.feedback import DenyWithMessageHandler
-        from pyafk.core.handlers.rules import (
-            AddRuleMenuHandler,
-            AddRulePatternHandler,
-            CancelRuleHandler,
-        )
-        from pyafk.core.handlers.stop import StopCommentHandler, StopOkHandler
-        from pyafk.core.handlers.subagent import (
-            SubagentContinueHandler,
-            SubagentOkHandler,
-        )
-
-        # Register handlers
-        self._handlers: dict[str, CallbackHandler] = {
-            "approve": ApproveHandler(),
-            "deny": DenyHandler(),
-            "deny_msg": DenyWithMessageHandler(),
-            "subagent_ok": SubagentOkHandler(),
-            "subagent_continue": SubagentContinueHandler(),
-            "stop_ok": StopOkHandler(),
-            "stop_comment": StopCommentHandler(),
-            "add_rule": AddRuleMenuHandler(),
-            "add_rule_pattern": AddRulePatternHandler(),
-            "cancel_rule": CancelRuleHandler(),
-            "approve_all": ApproveAllHandler(),
-            # Chain handlers
-            "chain_approve": ChainApproveHandler(),
-            "chain_deny": ChainDenyHandler(),
-            "chain_deny_msg": ChainDenyMsgHandler(),
-            "chain_approve_all": ChainApproveAllHandler(),
-            "chain_approve_entire": ChainApproveEntireHandler(),
-            "chain_cancel_rule": ChainCancelRuleHandler(),
-            "chain_rule": ChainRuleHandler(),
-            "chain_rule_pattern": ChainRulePatternHandler(),
-        }
+        # Ensure all handlers are registered
+        _register_handlers()
 
     async def dispatch(
         self,
@@ -110,7 +84,7 @@ class HandlerDispatcher:
         action, target_id = callback_data.split(":", 1)
         debug_callback("Dispatching callback", action=action, target_id=target_id[:20])
 
-        handler = self._handlers.get(action)
+        handler = HandlerRegistry.create(action)
         if handler is None:
             debug_callback("No handler for action", action=action)
             return
@@ -126,13 +100,14 @@ class HandlerDispatcher:
 
         await handler.handle(ctx)
 
-    def register(self, action: str, handler: CallbackHandler) -> None:
-        """Register a handler for an action.
+    def register(self, action: str, handler_cls: type) -> None:
+        """Register a handler class for an action.
 
-        Use this to add custom handlers or override default handlers.
+        Use this to add custom handlers or override default handlers at runtime.
+        For most cases, use the @HandlerRegistry.register() decorator instead.
 
         Args:
             action: The action string (e.g., "approve", "deny", "add_rule")
-            handler: Handler instance implementing CallbackHandler protocol
+            handler_cls: Handler class implementing CallbackHandler protocol
         """
-        self._handlers[action] = handler
+        HandlerRegistry._handlers[action] = handler_cls

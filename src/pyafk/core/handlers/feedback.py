@@ -1,9 +1,11 @@
 """Feedback/message handlers for deny with message."""
 
 from pyafk.core.handlers.base import CallbackContext
+from pyafk.core.handlers.registry import HandlerRegistry
 from pyafk.utils.debug import debug_callback
 
 
+@HandlerRegistry.register("deny_msg")
 class DenyWithMessageHandler:
     """Handle deny with message button - prompt for feedback."""
 

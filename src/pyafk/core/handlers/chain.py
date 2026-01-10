@@ -114,6 +114,11 @@ def format_chain_approved_message(commands: list[str], project_id: str) -> str:
     )
 
 
+# Import registry here to avoid circular import issues
+from pyafk.core.handlers.registry import HandlerRegistry
+
+
+@HandlerRegistry.register("chain_approve")
 class ChainApproveHandler:
     """Handle approval of a single command in a chain."""
 
@@ -263,6 +268,7 @@ class ChainApproveHandler:
             await ctx.notifier.answer_callback(ctx.callback_id, "Error occurred")
 
 
+@HandlerRegistry.register("chain_deny")
 class ChainDenyHandler:
     """Handle denial of entire chain."""
 
@@ -324,6 +330,7 @@ class ChainDenyHandler:
         )
 
 
+@HandlerRegistry.register("chain_deny_msg")
 class ChainDenyMsgHandler:
     """Handle chain deny with message - prompt for feedback."""
 
@@ -358,6 +365,7 @@ class ChainDenyMsgHandler:
         await ctx.notifier.answer_callback(ctx.callback_id, "Reply with feedback")
 
 
+@HandlerRegistry.register("chain_approve_all")
 class ChainApproveAllHandler:
     """Approve all remaining commands in chain."""
 
@@ -436,6 +444,7 @@ class ChainApproveAllHandler:
             await ctx.notifier.answer_callback(ctx.callback_id, "Error occurred")
 
 
+@HandlerRegistry.register("chain_approve_entire")
 class ChainApproveEntireHandler:
     """Approve entire chain without individual command review."""
 
@@ -532,6 +541,7 @@ class ChainApproveEntireHandler:
             await ctx.notifier.answer_callback(ctx.callback_id, "Error occurred")
 
 
+@HandlerRegistry.register("chain_cancel_rule")
 class ChainCancelRuleHandler:
     """Cancel rule selection for chain command."""
 
@@ -583,6 +593,7 @@ class ChainCancelRuleHandler:
                 )
 
 
+@HandlerRegistry.register("chain_rule")
 class ChainRuleHandler:
     """Show rule pattern options for a chain command."""
 
@@ -650,6 +661,7 @@ class ChainRuleHandler:
             )
 
 
+@HandlerRegistry.register("chain_rule_pattern")
 class ChainRulePatternHandler:
     """Handle rule pattern selection for a chain command."""
 

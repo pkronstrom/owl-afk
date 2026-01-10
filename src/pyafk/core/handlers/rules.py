@@ -1,11 +1,13 @@
 """Rule management handlers."""
 
 from pyafk.core.handlers.base import CallbackContext
+from pyafk.core.handlers.registry import HandlerRegistry
 from pyafk.utils.debug import debug_callback
 from pyafk.utils.formatting import format_project_id, format_tool_summary
 from pyafk.utils.pattern_generator import generate_rule_patterns
 
 
+@HandlerRegistry.register("add_rule")
 class AddRuleMenuHandler:
     """Show rule pattern options menu."""
 
@@ -48,6 +50,7 @@ class AddRuleMenuHandler:
             )
 
 
+@HandlerRegistry.register("add_rule_pattern")
 class AddRulePatternHandler:
     """Handle rule pattern selection and create the rule."""
 
@@ -171,6 +174,7 @@ class AddRulePatternHandler:
             await ctx.notifier.answer_callback(ctx.callback_id, "Error occurred")
 
 
+@HandlerRegistry.register("cancel_rule")
 class CancelRuleHandler:
     """Cancel rule selection and restore original keyboard."""
 

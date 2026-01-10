@@ -1,10 +1,12 @@
 """Approval and denial handlers."""
 
 from pyafk.core.handlers.base import CallbackContext, check_request_pending
+from pyafk.core.handlers.registry import HandlerRegistry
 from pyafk.utils.debug import debug_callback
 from pyafk.utils.formatting import format_project_id, format_tool_summary
 
 
+@HandlerRegistry.register("approve")
 class ApproveHandler:
     """Handle approve callback.
 
@@ -80,6 +82,7 @@ class ApproveHandler:
             await ctx.notifier.answer_callback(ctx.callback_id, "Error occurred")
 
 
+@HandlerRegistry.register("deny")
 class DenyHandler:
     """Handle deny callback.
 
