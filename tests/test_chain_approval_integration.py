@@ -46,6 +46,8 @@ async def test_full_chain_approval_flow(mock_pyafk_dir):
 
         async def approve_chain():
             """Simulate user approving each command in sequence."""
+            from pyafk.core.handlers.chain import ChainStateManager
+
             # Very short delay to ensure request is created
             await asyncio.sleep(0.05)
 
@@ -54,24 +56,27 @@ async def test_full_chain_approval_flow(mock_pyafk_dir):
             assert len(pending) == 1
             request_id = pending[0].id
 
-            # Simulate approving each command
+            # Simulate approving each command using ChainStateManager
             parser = CommandParser()
             commands = parser.split_chain(chain_cmd)
             assert len(commands) == 3
+
+            chain_mgr = ChainStateManager(manager.storage)
 
             # Initialize chain state
             chain_state = {
                 "commands": commands,
                 "approved_indices": [],
             }
-            version = 0
-            await manager.poller._save_chain_state(request_id, chain_state, version)
+            await chain_mgr.save_state(request_id, chain_state, version=0)
 
-            # Approve each command
+            # Approve each command - get version from state before updating
             for idx in range(len(commands)):
-                chain_state["approved_indices"].append(idx)
-                version += 1
-                await manager.poller._save_chain_state(request_id, chain_state, version)
+                result = await chain_mgr.get_state(request_id)
+                if result:
+                    chain_state, version = result
+                    chain_state["approved_indices"].append(idx)
+                    await chain_mgr.save_state(request_id, chain_state, version)
 
             # Final approval
             await manager.storage.resolve_request(
@@ -202,6 +207,8 @@ async def test_chain_rule_creation(mock_pyafk_dir):
 
         async def approve_with_rule():
             """Simulate user creating rule for first command and approving rest."""
+            from pyafk.core.handlers.chain import ChainStateManager
+
             await asyncio.sleep(0.05)
 
             # Get the request
@@ -209,15 +216,15 @@ async def test_chain_rule_creation(mock_pyafk_dir):
             assert len(pending) == 1
             request_id = pending[0].id
 
-            # Initialize chain state
+            # Initialize chain state using ChainStateManager
             parser = CommandParser()
             commands = parser.split_chain(chain_cmd)
             chain_state = {
                 "commands": commands,
                 "approved_indices": [],
             }
-            version = 0
-            await manager.poller._save_chain_state(request_id, chain_state, version)
+            chain_mgr = ChainStateManager(manager.storage)
+            await chain_mgr.save_state(request_id, chain_state, version=0)
 
             # Create rule for first command (git status)
             engine = RulesEngine(manager.storage)
@@ -226,15 +233,19 @@ async def test_chain_rule_creation(mock_pyafk_dir):
             )
 
             # Mark first command as approved
-            chain_state["approved_indices"].append(0)
-            version += 1
-            await manager.poller._save_chain_state(request_id, chain_state, version)
+            result = await chain_mgr.get_state(request_id)
+            if result:
+                chain_state, version = result
+                chain_state["approved_indices"].append(0)
+                await chain_mgr.save_state(request_id, chain_state, version)
 
             # Approve remaining commands
             for idx in range(1, len(commands)):
-                chain_state["approved_indices"].append(idx)
-                version += 1
-                await manager.poller._save_chain_state(request_id, chain_state, version)
+                result = await chain_mgr.get_state(request_id)
+                if result:
+                    chain_state, version = result
+                    chain_state["approved_indices"].append(idx)
+                    await chain_mgr.save_state(request_id, chain_state, version)
 
             # Final approval
             await manager.storage.resolve_request(
@@ -560,13 +571,15 @@ async def test_empty_chain_handling(mock_pyafk_dir):
 
 @pytest.mark.asyncio
 async def test_chain_state_persistence(mock_pyafk_dir):
-    """Test that chain approval state persists across poller interactions."""
-    # Setup storage and poller
+    """Test that chain approval state persists via ChainStateManager."""
+    from pyafk.core.handlers.chain import ChainStateManager
+
+    # Setup storage
     storage = Storage(mock_pyafk_dir / "test.db")
     await storage.connect()
 
-    notifier = TelegramNotifier(bot_token="test-token", chat_id="12345")
-    poller = Poller(storage, notifier, mock_pyafk_dir)
+    # Create ChainStateManager
+    chain_mgr = ChainStateManager(storage)
 
     # Create chain state
     request_id = "req-123"
@@ -575,19 +588,20 @@ async def test_chain_state_persistence(mock_pyafk_dir):
         "approved_indices": [0, 1],
     }
 
-    # Save state
-    await poller._save_chain_state(request_id, chain_state, version=0)
+    # Save state (version=0 for new state)
+    saved = await chain_mgr.save_state(request_id, chain_state, version=0)
+    assert saved is True
 
-    # Retrieve state - returns (state, version) tuple
-    result = await poller._get_chain_state(request_id)
+    # Retrieve state - returns (state_dict, version) tuple
+    result = await chain_mgr.get_state(request_id)
     assert result is not None
     retrieved_state, retrieved_version = result
     assert retrieved_state == chain_state
-    assert retrieved_version > 0  # Version is a timestamp
+    assert retrieved_version > 0  # Version is a timestamp in milliseconds
 
     # Clear state
-    await poller._clear_chain_state(request_id)
-    cleared_state = await poller._get_chain_state(request_id)
+    await chain_mgr.clear_state(request_id)
+    cleared_state = await chain_mgr.get_state(request_id)
     assert cleared_state is None
 
     await storage.close()

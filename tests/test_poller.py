@@ -184,48 +184,38 @@ async def test_chain_rules_with_quotes(mock_pyafk_dir):
 async def test_chain_approval_integration(mock_pyafk_dir):
     """Integration test: chain approval should work through ApprovalManager."""
     from pyafk.core.manager import ApprovalManager
-    from pyafk.core.rules import RulesEngine
-    from pyafk.core.storage import Storage
     from pyafk.notifiers.telegram import TelegramNotifier
     import json
 
-    # Set up with real storage
-    db_path = mock_pyafk_dir / "test.db"
+    # Create ApprovalManager first
+    manager = ApprovalManager(pyafk_dir=mock_pyafk_dir)
+    await manager.initialize()
 
-    async with Storage(db_path) as storage:
-        # Add rules for chain commands
-        engine = RulesEngine(storage)
-        await engine.add_rule("Bash(cd *)", "approve")
-        await engine.add_rule("Bash(git status)", "approve")
+    # Add rules using the manager's storage (not a separate one)
+    await manager.rules.add_rule("Bash(cd *)", "approve")
+    await manager.rules.add_rule("Bash(git status)", "approve")
 
-        # Create a mock TelegramNotifier
-        notifier = MagicMock(spec=TelegramNotifier)
-        notifier.send_approval_request = AsyncMock(return_value=None)
+    # Create a mock TelegramNotifier
+    notifier = MagicMock(spec=TelegramNotifier)
+    notifier.send_approval_request = AsyncMock(return_value=None)
+    notifier.send_chain_approval_request = AsyncMock(return_value=None)
 
-        # Create ApprovalManager with mocked notifier
-        manager = ApprovalManager(pyafk_dir=mock_pyafk_dir)
-        await manager.initialize()
+    # Replace the notifier with our mock
+    manager.notifier = notifier
 
-        # Replace the notifier with our mock
-        manager.notifier = notifier
+    # Request approval for a chained command
+    tool_input = json.dumps({"command": "cd ~/p && git status"})
+    result, denial_reason = await manager.request_approval(
+        session_id="test-session",
+        tool_name="Bash",
+        tool_input=tool_input,
+    )
 
-        # Set up the poller with the storage
-        from pyafk.core.poller import Poller
+    # Should auto-approve without sending to Telegram
+    assert result == "approve"
+    assert denial_reason is None
+    # Should not have sent approval request to Telegram (neither regular nor chain)
+    notifier.send_approval_request.assert_not_called()
+    notifier.send_chain_approval_request.assert_not_called()
 
-        manager.poller = Poller(storage, notifier, mock_pyafk_dir)
-
-        # Request approval for a chained command
-        tool_input = json.dumps({"command": "cd ~/p && git status"})
-        result, denial_reason = await manager.request_approval(
-            session_id="test-session",
-            tool_name="Bash",
-            tool_input=tool_input,
-        )
-
-        # Should auto-approve without sending to Telegram
-        assert result == "approve"
-        assert denial_reason is None
-        # Should not have sent approval request to Telegram
-        notifier.send_approval_request.assert_not_called()
-
-        await manager.close()
+    await manager.close()

@@ -3,7 +3,6 @@
 import json
 from pathlib import Path
 
-import pytest
 
 from pyafk.utils.config import Config
 
@@ -21,11 +20,15 @@ def test_config_default_values(mock_pyafk_dir):
 def test_config_loads_from_file(mock_pyafk_dir):
     """Config should load values from config.json."""
     config_file = mock_pyafk_dir / "config.json"
-    config_file.write_text(json.dumps({
-        "telegram_bot_token": "test-token",
-        "telegram_chat_id": "12345",
-        "timeout_seconds": 1800,
-    }))
+    config_file.write_text(
+        json.dumps(
+            {
+                "telegram_bot_token": "test-token",
+                "telegram_chat_id": "12345",
+                "timeout_seconds": 1800,
+            }
+        )
+    )
 
     config = Config(mock_pyafk_dir)
 
@@ -52,12 +55,14 @@ def test_config_get_pyafk_dir_from_env(temp_dir, monkeypatch):
     monkeypatch.setenv("PYAFK_DIR", str(custom_dir))
 
     from pyafk.utils.config import get_pyafk_dir
+
     assert get_pyafk_dir() == custom_dir
 
 
 def test_config_default_pyafk_dir(monkeypatch):
-    """Config should default to ~/.pyafk."""
+    """Config should default to ~/.config/pyafk (XDG-compliant)."""
     monkeypatch.delenv("PYAFK_DIR", raising=False)
 
     from pyafk.utils.config import get_pyafk_dir
-    assert get_pyafk_dir() == Path.home() / ".pyafk"
+
+    assert get_pyafk_dir() == Path.home() / ".config" / "pyafk"

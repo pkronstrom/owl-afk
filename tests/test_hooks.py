@@ -1,6 +1,5 @@
 """Tests for Claude Code hook handlers."""
 
-import json
 import pytest
 
 from pyafk.hooks.pretool import handle_pretool_use
@@ -18,6 +17,7 @@ async def test_pretool_approve_by_rule(mock_pyafk_dir):
     }
 
     from pyafk.core.manager import ApprovalManager
+
     manager = ApprovalManager(pyafk_dir=mock_pyafk_dir)
     await manager.initialize()
     await manager.rules.add_rule("Bash(git *)", "approve")
@@ -29,8 +29,8 @@ async def test_pretool_approve_by_rule(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_pretool_off_mode_approves(mock_pyafk_dir):
-    """PreToolUse should approve when mode is off."""
+async def test_pretool_off_mode_fallback(mock_pyafk_dir):
+    """PreToolUse should return empty dict (fallback to CLI) when mode is off."""
     (mock_pyafk_dir / "mode").write_text("off")
 
     hook_input = {
@@ -41,7 +41,8 @@ async def test_pretool_off_mode_approves(mock_pyafk_dir):
 
     result = await handle_pretool_use(hook_input, mock_pyafk_dir)
 
-    assert result["hookSpecificOutput"]["permissionDecision"] == "allow"
+    # When mode is off, hook returns empty dict to fall back to Claude's CLI approval
+    assert result == {}
 
 
 @pytest.mark.asyncio
@@ -57,6 +58,7 @@ async def test_pretool_extracts_context(mock_pyafk_dir):
     }
 
     from pyafk.core.manager import ApprovalManager
+
     manager = ApprovalManager(pyafk_dir=mock_pyafk_dir)
     await manager.initialize()
     await manager.rules.add_rule("Bash(*)", "approve")
