@@ -466,26 +466,42 @@ class ChainApproveEntireHandler:
                 await ctx.notifier.answer_callback(ctx.callback_id, "Already processed")
                 return
 
+            debug_chain("Getting chain state", request_id=request_id)
             chain_mgr = ChainStateManager(ctx.storage)
             result = await chain_mgr.get_or_init_state(request_id, request.tool_input)
             if not result:
+                debug_chain("Failed to get chain state", request_id=request_id)
                 await ctx.notifier.answer_callback(
                     ctx.callback_id, "Failed to parse chain"
                 )
                 return
 
             chain_state, _version = result
+            debug_chain(
+                "Got chain state",
+                request_id=request_id,
+                command_count=len(chain_state.get("commands", [])),
+            )
 
             # Approve entire chain
+            debug_chain("Resolving chain request", request_id=request_id)
             await ctx.storage.resolve_request(
                 request_id=request_id,
                 status="approved",
                 resolved_by="user:chain_entire",
             )
+            debug_chain("Chain request resolved", request_id=request_id)
             await chain_mgr.clear_state(request_id)
 
+            debug_chain("Answering callback", request_id=request_id)
             await ctx.notifier.answer_callback(ctx.callback_id, "Chain approved")
+            debug_chain("Callback answered", request_id=request_id)
 
+            debug_chain(
+                "Editing chain message",
+                request_id=request_id,
+                msg_id=ctx.message_id,
+            )
             if ctx.message_id:
                 session = await ctx.storage.get_session(request.session_id)
                 project_id = format_project_id(
@@ -493,6 +509,9 @@ class ChainApproveEntireHandler:
                 )
                 msg = format_chain_approved_message(chain_state["commands"], project_id)
                 await ctx.notifier.edit_message(ctx.message_id, msg)
+                debug_chain("Chain message edited", request_id=request_id)
+            else:
+                debug_chain("No message_id for chain!", request_id=request_id)
 
             await ctx.storage.log_audit(
                 event_type="response",
