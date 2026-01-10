@@ -111,8 +111,11 @@ def cmd_off(args):
                             request.telegram_msg_id,
                             "⏸️ pyafk off - please retry command",
                         )
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        # Message edit may fail if message was deleted or too old
+                        from pyafk.utils.debug import debug
+
+                        debug("cmd", f"Failed to edit message: {e}")
                 await storage.resolve_request(
                     request_id=request.id,
                     status="denied",
@@ -128,8 +131,11 @@ def cmd_off(args):
                             stop["telegram_msg_id"],
                             "⏸️ pyafk off - session ended",
                         )
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        # Message edit may fail if message was deleted or too old
+                        from pyafk.utils.debug import debug
+
+                        debug("cmd", f"Failed to edit stop message: {e}")
                 await storage.resolve_stop(stop["session_id"], "ok")
 
             return len(pending) + len(pending_stops)

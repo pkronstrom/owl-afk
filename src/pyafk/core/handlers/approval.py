@@ -1,52 +1,8 @@
 """Approval and denial handlers."""
 
-import json
-from typing import Optional
-
 from pyafk.core.handlers.base import CallbackContext
 from pyafk.utils.debug import debug_callback
-from pyafk.utils.formatting import escape_html, format_project_id
-
-
-def _format_tool_summary(tool_name: str, tool_input: Optional[str]) -> str:
-    """Format tool input for display.
-
-    Extracts the most relevant field from tool input and formats it
-    for display in Telegram messages.
-
-    Args:
-        tool_name: Name of the tool
-        tool_input: JSON string of tool input
-
-    Returns:
-        Formatted summary string (HTML escaped)
-    """
-    if not tool_input:
-        return ""
-
-    try:
-        data = json.loads(tool_input)
-    except (json.JSONDecodeError, TypeError):
-        return escape_html(str(tool_input)[:100])
-
-    # Extract the most relevant field
-    summary: str
-    if "command" in data:
-        summary = str(data["command"])
-    elif "file_path" in data:
-        summary = str(data["file_path"])
-    elif "path" in data:
-        summary = str(data["path"])
-    elif "url" in data:
-        summary = str(data["url"])
-    else:
-        summary = json.dumps(data)
-
-    # Truncate if too long
-    if len(summary) > 100:
-        summary = summary[:100] + "..."
-
-    return escape_html(summary)
+from pyafk.utils.formatting import format_project_id, format_tool_summary
 
 
 class ApproveHandler:
@@ -103,7 +59,7 @@ class ApproveHandler:
                 project_id = format_project_id(
                     session.project_path if session else None, request.session_id
                 )
-                tool_summary = _format_tool_summary(
+                tool_summary = format_tool_summary(
                     request.tool_name, request.tool_input
                 )
                 await ctx.notifier.edit_message(
@@ -175,7 +131,7 @@ class DenyHandler:
                 project_id = format_project_id(
                     session.project_path if session else None, request.session_id
                 )
-                tool_summary = _format_tool_summary(
+                tool_summary = format_tool_summary(
                     request.tool_name, request.tool_input
                 )
                 await ctx.notifier.edit_message(

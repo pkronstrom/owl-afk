@@ -53,8 +53,11 @@ class PollLock:
                 return True
             except (BlockingIOError, OSError):
                 pass  # Lock held by another process, retry
-            except Exception:
-                pass  # Unexpected error, retry
+            except Exception as e:
+                # Log unexpected errors but continue retrying
+                from pyafk.utils.debug import debug
+
+                debug("lock", f"Unexpected error acquiring lock: {e}")
             finally:
                 # Clean up fd if we didn't successfully acquire the lock
                 if fd is not None and self._fd != fd:
@@ -666,8 +669,13 @@ class Poller:
         # Ignore errors (callback may already be expired or answered)
         try:
             await self.notifier.answer_callback(callback_id, "")
-        except Exception:
-            pass  # Callback expired or already answered - continue processing anyway
+        except Exception as e:
+            # Callback expired or already answered - continue processing anyway
+            debug_callback(
+                "Failed to answer callback (may be expired)",
+                callback_id=callback_id,
+                error=str(e)[:50],
+            )
 
         if ":" not in data:
             return

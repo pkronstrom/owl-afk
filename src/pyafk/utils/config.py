@@ -33,11 +33,16 @@ class Config:
 
     def _load(self):
         """Load config from file."""
+        from pyafk.utils.constants import (
+            DEFAULT_REQUEST_TIMEOUT,
+            DEFAULT_TIMEOUT_ACTION,
+        )
+
         # Set defaults
         self.telegram_bot_token = None
         self.telegram_chat_id = None
-        self.timeout_seconds = 3600
-        self.timeout_action = "deny"
+        self.timeout_seconds = DEFAULT_REQUEST_TIMEOUT
+        self.timeout_action = DEFAULT_TIMEOUT_ACTION
         self.debug = False
         # WARNING: experimental - daemon_enabled=False means hooks poll inline
         self.daemon_enabled = False
@@ -55,8 +60,10 @@ class Config:
                 data = json.loads(self._config_file.read_text())
                 self.telegram_bot_token = data.get("telegram_bot_token")
                 self.telegram_chat_id = data.get("telegram_chat_id")
-                self.timeout_seconds = data.get("timeout_seconds", 3600)
-                self.timeout_action = data.get("timeout_action", "deny")
+                self.timeout_seconds = data.get(
+                    "timeout_seconds", DEFAULT_REQUEST_TIMEOUT
+                )
+                self.timeout_action = data.get("timeout_action", DEFAULT_TIMEOUT_ACTION)
                 self.debug = data.get("debug", False)
                 self.daemon_enabled = data.get("daemon_enabled", False)
                 self.subagent_auto_dismiss_seconds = data.get(
