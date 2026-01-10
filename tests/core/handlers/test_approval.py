@@ -123,7 +123,9 @@ async def test_approve_handler_answers_callback(
     handler = ApproveHandler()
     await handler.handle(ctx)
 
-    mock_notifier.answer_callback.assert_called_with("cb456", "Approved")
+    # Handler no longer calls answer_callback (poller answers immediately)
+    # Just verify it edited the message
+    mock_notifier.edit_message.assert_called()
 
 
 @pytest.mark.asyncio
@@ -143,7 +145,9 @@ async def test_deny_handler_answers_callback(mock_storage, mock_notifier, mock_r
     handler = DenyHandler()
     await handler.handle(ctx)
 
-    mock_notifier.answer_callback.assert_called_with("cb456", "Denied")
+    # Handler no longer calls answer_callback (poller answers immediately)
+    # Just verify it edited the message
+    mock_notifier.edit_message.assert_called()
 
 
 @pytest.mark.asyncio

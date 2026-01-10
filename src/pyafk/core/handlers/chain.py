@@ -195,7 +195,7 @@ class ChainApproveHandler:
                 total=len(chain_state["commands"]),
             )
 
-            await ctx.notifier.answer_callback(ctx.callback_id, "Approved")
+            # Note: callback already answered by poller
 
             # Check if all commands are approved
             if len(chain_state["approved_indices"]) >= len(chain_state["commands"]):
@@ -291,7 +291,7 @@ class ChainDenyHandler:
         chain_mgr = ChainStateManager(ctx.storage)
         await chain_mgr.clear_state(request_id)
 
-        await ctx.notifier.answer_callback(ctx.callback_id, "Denied")
+        # Note: callback already answered by poller
 
         # Update message
         if ctx.message_id:
@@ -406,7 +406,7 @@ class ChainApproveAllHandler:
             )
             await chain_mgr.clear_state(request_id)
 
-            await ctx.notifier.answer_callback(ctx.callback_id, "All approved")
+            # Note: callback already answered by poller
 
             if ctx.message_id:
                 session = await ctx.storage.get_session(request.session_id)
@@ -493,9 +493,8 @@ class ChainApproveEntireHandler:
             debug_chain("Chain request resolved", request_id=request_id)
             await chain_mgr.clear_state(request_id)
 
-            debug_chain("Answering callback", request_id=request_id)
-            await ctx.notifier.answer_callback(ctx.callback_id, "Chain approved")
-            debug_chain("Callback answered", request_id=request_id)
+            # Note: callback already answered by poller with "" to prevent Telegram spinner
+            # We just update the message content
 
             debug_chain(
                 "Editing chain message",
@@ -564,7 +563,7 @@ class ChainCancelRuleHandler:
                 await ctx.notifier.edit_message(ctx.message_id, "⚠️ Request expired")
             return
 
-        await ctx.notifier.answer_callback(ctx.callback_id, "Cancelled")
+        # Note: callback already answered by poller
 
         # Restore chain progress view
         if ctx.message_id:
@@ -637,7 +636,7 @@ class ChainRuleHandler:
         tool_input = json.dumps({"command": cmd})
         patterns = generate_rule_patterns("Bash", tool_input)
 
-        await ctx.notifier.answer_callback(ctx.callback_id, "Choose pattern")
+        # Note: callback already answered by poller
 
         # Show rule pattern keyboard
         if ctx.message_id:
@@ -758,13 +757,8 @@ class ChainRulePatternHandler:
                             auto_approved.append(idx)
                     await chain_mgr.save_state(request_id, chain_state, version)
 
-            if auto_approved:
-                await ctx.notifier.answer_callback(
-                    ctx.callback_id,
-                    f"Always rule added (+{len(auto_approved)} auto-approved)",
-                )
-            else:
-                await ctx.notifier.answer_callback(ctx.callback_id, "Always rule added")
+            # Note: callback already answered by poller
+            # auto_approved count: {len(auto_approved)} if auto_approved else 0
 
             # Update UI
             if ctx.message_id:

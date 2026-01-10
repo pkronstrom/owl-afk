@@ -87,9 +87,8 @@ class ApproveHandler:
             )
             debug_callback("Request resolved", request_id=ctx.target_id)
 
-            debug_callback("Answering callback", callback_id=ctx.callback_id)
-            await ctx.notifier.answer_callback(ctx.callback_id, "Approved")
-            debug_callback("Callback answered", callback_id=ctx.callback_id)
+            # Note: callback already answered by poller with "" to prevent Telegram spinner
+            # We just update the message content
 
             # Update message with approval status
             msg_id = ctx.message_id or request.telegram_msg_id
@@ -166,7 +165,8 @@ class DenyHandler:
                 resolved_by="user",
             )
 
-            await ctx.notifier.answer_callback(ctx.callback_id, "Denied")
+            # Note: callback already answered by poller with "" to prevent Telegram spinner
+            # We just update the message content
 
             # Update message with denial status
             msg_id = ctx.message_id or request.telegram_msg_id
