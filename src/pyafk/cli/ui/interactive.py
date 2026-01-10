@@ -231,15 +231,11 @@ def interactive_rules() -> None:
             width=min(80, console.width),
         )
 
-    # Initial clear
-    clear_screen()
-
     while True:
         # Fetch and sort rules once per iteration
         rules = sort_rules(get_rules(pyafk_dir))
 
-        # Move cursor to top-left and redraw (avoids full clear flicker)
-        console.print("\033[H\033[J", end="")
+        clear_screen()
         console.print(build_panel(rules))
         console.print()
         console.print(
