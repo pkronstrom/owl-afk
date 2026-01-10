@@ -476,6 +476,104 @@ def interactive_config() -> None:
 
 
 def run_wizard() -> None:
-    """First-time setup wizard - placeholder."""
-    console.print("[yellow]Wizard not yet implemented[/yellow]")
+    """First-time setup wizard."""
+    from pyafk.cli.helpers import do_telegram_test
+    from pyafk.cli.install import (
+        CAPTAIN_HOOK_DIR,
+        do_captain_hook_install,
+        do_standalone_install,
+    )
+
+    menu = RichTerminalMenu()
+    pyafk_dir = get_pyafk_dir()
+    pyafk_dir.mkdir(parents=True, exist_ok=True)
+
+    # Step 1: Welcome
+    clear_screen()
+    console.print(
+        Panel(
+            "[bold cyan]pyafk Setup[/bold cyan]\n\n"
+            "[dim]Remote approval for Claude Code[/dim]\n\n"
+            "[bold]How it works:[/bold]\n"
+            "1. Intercepts Claude tool calls\n"
+            "2. Sends requests to Telegram\n"
+            "3. You approve/deny from phone",
+            border_style="cyan",
+        )
+    )
+    console.print()
+    console.print("[dim]Enter select • q exit[/dim]\n")
+
+    choice = menu.select(["Continue", "Exit"])
+    if choice is None or choice == 1:
+        return
+
+    # Step 2: Install hooks
+    clear_screen()
+    console.print("[bold]Install Hooks[/bold]\n")
+
+    captain_available = CAPTAIN_HOOK_DIR.exists()
+
+    options = ["Standalone         Write to ~/.claude/settings.json"]
+    if captain_available:
+        options.append("Captain-hook       Use hook manager")
+    else:
+        options.append("[dim]Captain-hook       (not installed)[/dim]")
+
+    console.print("[dim]Enter select • q cancel[/dim]\n")
+    choice = menu.select(options)
+
+    if choice is None:
+        return
+
+    if choice == 0:
+        do_standalone_install(pyafk_dir)
+    elif choice == 1 and captain_available:
+        do_captain_hook_install()
+
+    console.print()
+
+    # Step 3: Telegram setup
+    clear_screen()
+    console.print("[bold]Telegram Setup[/bold]\n")
+    console.print("1. Create a bot: [cyan]https://telegram.me/BotFather[/cyan]")
+    console.print("2. Get chat ID:  [cyan]https://t.me/getmyid_bot[/cyan]\n")
+
+    config = Config(pyafk_dir)
+
+    bot_token = menu.input("Bot token:", default=config.telegram_bot_token or "")
+    if bot_token:
+        config.telegram_bot_token = bot_token
+
+    chat_id = menu.input("Chat ID:", default=config.telegram_chat_id or "")
+    if chat_id:
+        config.telegram_chat_id = chat_id
+
+    if bot_token or chat_id:
+        config.save()
+        console.print("\n[green]Telegram configured![/green]")
+
+        # Step 4: Test connection
+        if menu.confirm("Send test message?", default=True):
+            do_telegram_test(config)
+
+    # Step 5: Enable pyafk
+    console.print()
+    if menu.confirm("Enable pyafk now?", default=True):
+        config.set_mode("on")
+        console.print("[green]pyafk enabled![/green]")
+
+    # Ensure config is saved
+    config.save()
+
+    # Step 6: Done
+    console.print()
+    console.print(
+        Panel(
+            "[bold green]Setup complete![/bold green]\n\n"
+            f"[dim]Config:[/dim] {pyafk_dir}\n\n"
+            "[dim]Run[/dim] [cyan]pyafk[/cyan] [dim]to manage[/dim]",
+            border_style="green",
+        )
+    )
     input("\nPress Enter to continue...")
