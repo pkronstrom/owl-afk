@@ -307,8 +307,11 @@ class TelegramNotifier(Notifier):
         new_text: str,
         remove_keyboard: bool = True,
         parse_mode: Optional[str] = "HTML",
-    ) -> None:
-        """Edit a sent message and optionally remove keyboard."""
+    ) -> bool:
+        """Edit a sent message and optionally remove keyboard.
+
+        Returns True if edit was successful, False otherwise.
+        """
         data: dict[str, Any] = {
             "chat_id": self.chat_id,
             "message_id": message_id,
@@ -318,7 +321,15 @@ class TelegramNotifier(Notifier):
             data["parse_mode"] = parse_mode
         if remove_keyboard:
             data["reply_markup"] = json.dumps({"inline_keyboard": []})
-        await self._api_request("editMessageText", data=data)
+        result = await self._api_request("editMessageText", data=data)
+        if not result.get("ok"):
+            debug_api(
+                "edit_message failed",
+                message_id=message_id,
+                error=result.get("description", "unknown"),
+            )
+            return False
+        return True
 
     async def delete_message(self, message_id: int) -> None:
         """Delete a message."""

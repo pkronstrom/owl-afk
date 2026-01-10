@@ -89,6 +89,12 @@ class ApproveHandler:
 
             # Update message with approval status
             msg_id = ctx.message_id or request.telegram_msg_id
+            debug_callback(
+                "Editing message for approval",
+                msg_id=msg_id,
+                ctx_msg_id=ctx.message_id,
+                request_msg_id=request.telegram_msg_id,
+            )
             if msg_id:
                 session = await ctx.storage.get_session(request.session_id)
                 project_id = format_project_id(
@@ -101,6 +107,8 @@ class ApproveHandler:
                     msg_id,
                     f"<i>{project_id}</i>\n✅ <b>[{request.tool_name}]</b> <code>{tool_summary}</code>",
                 )
+            else:
+                debug_callback("No message_id to edit!", request_id=ctx.target_id)
 
             await ctx.storage.log_audit(
                 event_type="response",
