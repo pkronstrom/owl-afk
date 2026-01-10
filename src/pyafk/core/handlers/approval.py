@@ -1,6 +1,6 @@
 """Approval and denial handlers."""
 
-from pyafk.core.handlers.base import CallbackContext
+from pyafk.core.handlers.base import CallbackContext, check_request_pending
 from pyafk.utils.debug import debug_callback
 from pyafk.utils.formatting import format_project_id, format_tool_summary
 
@@ -25,14 +25,9 @@ class ApproveHandler:
                 return
 
             # Skip if already resolved (handles duplicate callbacks from multiple pollers)
-            if request.status != "pending":
-                debug_callback(
-                    "Request already resolved, skipping",
-                    request_id=ctx.target_id,
-                    status=request.status,
-                )
-                # Still answer the callback to dismiss Telegram loading state
-                await ctx.notifier.answer_callback(ctx.callback_id, "Already processed")
+            if not await check_request_pending(
+                request, ctx, debug_callback, ctx.target_id
+            ):
                 return
 
             debug_callback("Resolving request", request_id=ctx.target_id)
@@ -105,14 +100,9 @@ class DenyHandler:
                 return
 
             # Skip if already resolved (handles duplicate callbacks from multiple pollers)
-            if request.status != "pending":
-                debug_callback(
-                    "Request already resolved, skipping",
-                    request_id=ctx.target_id,
-                    status=request.status,
-                )
-                # Still answer the callback to dismiss Telegram loading state
-                await ctx.notifier.answer_callback(ctx.callback_id, "Already processed")
+            if not await check_request_pending(
+                request, ctx, debug_callback, ctx.target_id
+            ):
                 return
 
             await ctx.storage.resolve_request(

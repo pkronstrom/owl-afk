@@ -1,7 +1,9 @@
 """Approval Manager - the core API."""
 
 import asyncio
+import json
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -13,6 +15,15 @@ from pyafk.notifiers.console import ConsoleNotifier
 from pyafk.notifiers.telegram import TelegramNotifier
 from pyafk.utils.config import Config, get_pyafk_dir
 from pyafk.utils.debug import debug_chain
+
+
+@dataclass
+class RuleCheckResult:
+    """Result of checking rules for a tool call."""
+
+    rule_result: Optional[str]  # "approve", "deny", or None
+    is_chain: bool
+    chain_commands: list[str]
 
 
 class ApprovalManager:
@@ -76,6 +87,108 @@ class ApprovalManager:
             self.storage = None
         self._initialized = False
 
+    async def _check_rules(
+        self, tool_name: str, tool_input: Optional[str]
+    ) -> RuleCheckResult:
+        """Check rules for a tool call.
+
+        For Bash commands, uses chain rule checking which validates
+        each command in a chain individually.
+
+        Returns:
+            RuleCheckResult with rule_result, is_chain flag, and chain_commands
+        """
+        rule_result = None
+        is_chain = False
+        chain_commands: list[str] = []
+
+        debug_chain("Processing approval request", tool_name=tool_name)
+
+        if tool_name == "Bash" and tool_input:
+            from pyafk.core.command_parser import CommandParser
+            from pyafk.core.handlers.chain import check_chain_rules
+
+            try:
+                data = json.loads(tool_input)
+                if "command" in data:
+                    cmd = data["command"]
+                    debug_chain("Bash command", cmd=cmd[:100])
+
+                    # Use chain rule checking
+                    rule_result = await check_chain_rules(self.storage, cmd)
+                    debug_chain("Chain rule check result", rule_result=rule_result)
+
+                    # Check if this is actually a chain (multiple commands)
+                    parser = CommandParser()
+                    chain_commands = parser.split_chain(cmd)
+                    debug_chain(
+                        "Split chain result",
+                        count=len(chain_commands),
+                        commands=chain_commands[:3],
+                    )
+                    if len(chain_commands) > 1:
+                        is_chain = True
+                        debug_chain("Detected as chain")
+            except (json.JSONDecodeError, TypeError) as e:
+                debug_chain("Failed to parse tool_input", error=str(e))
+
+        # If no chain result, use regular rule checking
+        # But NOT for chains - chain rules must match all commands individually
+        if rule_result is None and not is_chain:
+            rule_result = await self.rules.check(tool_name, tool_input)
+
+        return RuleCheckResult(
+            rule_result=rule_result,
+            is_chain=is_chain,
+            chain_commands=chain_commands,
+        )
+
+    async def _send_notification(
+        self,
+        request_id: str,
+        session_id: str,
+        tool_name: str,
+        tool_input: Optional[str],
+        context: Optional[str],
+        description: Optional[str],
+        project_path: Optional[str],
+        is_chain: bool,
+        chain_commands: list[str],
+    ) -> Optional[int]:
+        """Send approval notification via the configured notifier.
+
+        Uses chain approval UI for multi-command Bash chains when using
+        Telegram, otherwise uses the regular approval UI.
+
+        Returns:
+            Message ID from notifier, or None
+        """
+        if is_chain and chain_commands and isinstance(self.notifier, TelegramNotifier):
+            debug_chain("Using chain approval UI", command_count=len(chain_commands))
+            return await self.notifier.send_chain_approval_request(
+                request_id=request_id,
+                session_id=session_id,
+                commands=chain_commands,
+                project_path=project_path,
+                description=description,
+            )
+        else:
+            debug_chain(
+                "Using regular approval UI",
+                is_chain=is_chain,
+                has_commands=bool(chain_commands),
+                is_telegram=isinstance(self.notifier, TelegramNotifier),
+            )
+            return await self.notifier.send_approval_request(
+                request_id=request_id,
+                session_id=session_id,
+                tool_name=tool_name,
+                tool_input=tool_input,
+                context=context,
+                description=description,
+                project_path=project_path,
+            )
+
     async def request_approval(
         self,
         session_id: str,
@@ -98,59 +211,20 @@ class ApprovalManager:
             project_path=project_path,
         )
 
-        # For Bash commands with chains, use chain rule checking
-        rule_result = None
-        is_chain = False
-        chain_commands = []
+        # Check rules (handles both chain and regular commands)
+        check_result = await self._check_rules(tool_name, tool_input)
 
-        debug_chain("Processing approval request", tool_name=tool_name)
-        if tool_name == "Bash" and tool_input:
-            import json
-
-            from pyafk.core.command_parser import CommandParser
-            from pyafk.core.handlers.chain import check_chain_rules
-
-            try:
-                data = json.loads(tool_input)
-                if "command" in data:
-                    cmd = data["command"]
-                    debug_chain("Bash command", cmd=cmd[:100])
-                    # Use chain rule checking
-                    rule_result = await check_chain_rules(self.storage, cmd)
-                    debug_chain("Chain rule check result", rule_result=rule_result)
-
-                    # Check if this is actually a chain (multiple commands)
-                    parser = CommandParser()
-                    # Use split_chain to get the individual command strings
-                    chain_commands = parser.split_chain(cmd)
-                    debug_chain(
-                        "Split chain result",
-                        count=len(chain_commands),
-                        commands=chain_commands[:3],
-                    )
-                    if len(chain_commands) > 1:
-                        is_chain = True
-                        debug_chain("Detected as chain")
-            except (json.JSONDecodeError, TypeError) as e:
-                debug_chain("Failed to parse tool_input", error=str(e))
-                pass
-
-        # If no chain result, use regular rule checking
-        # But NOT for chains - chain rules must match all commands individually
-        if rule_result is None and not is_chain:
-            rule_result = await self.rules.check(tool_name, tool_input)
-
-        if rule_result:
+        if check_result.rule_result:
             await self.storage.log_audit(
                 event_type="auto_response",
                 session_id=session_id,
                 details={
                     "tool_name": tool_name,
-                    "action": rule_result,
+                    "action": check_result.rule_result,
                     "reason": "rule_match",
                 },
             )
-            return (rule_result, None)
+            return (check_result.rule_result, None)
 
         # Check for duplicate pending request (handles multiple hooks calling pyafk)
         existing = await self.storage.find_duplicate_pending_request(
@@ -165,6 +239,7 @@ class ApprovalManager:
             )
             return await self._wait_for_response(existing.id)
 
+        # Create request and send notification
         request_id = await self.storage.create_request(
             session_id=session_id,
             tool_name=tool_name,
@@ -173,33 +248,17 @@ class ApprovalManager:
             description=description,
         )
 
-        # Use chain approval UI for multi-command chains
-        if is_chain and chain_commands and isinstance(self.notifier, TelegramNotifier):
-            debug_chain("Using chain approval UI", command_count=len(chain_commands))
-            msg_id = await self.notifier.send_chain_approval_request(
-                request_id=request_id,
-                session_id=session_id,
-                commands=chain_commands,
-                project_path=project_path,
-                description=description,
-            )
-        else:
-            debug_chain(
-                "Using regular approval UI",
-                is_chain=is_chain,
-                has_commands=bool(chain_commands),
-                is_telegram=isinstance(self.notifier, TelegramNotifier),
-            )
-            # Use regular approval UI
-            msg_id = await self.notifier.send_approval_request(
-                request_id=request_id,
-                session_id=session_id,
-                tool_name=tool_name,
-                tool_input=tool_input,
-                context=context,
-                description=description,
-                project_path=project_path,
-            )
+        msg_id = await self._send_notification(
+            request_id=request_id,
+            session_id=session_id,
+            tool_name=tool_name,
+            tool_input=tool_input,
+            context=context,
+            description=description,
+            project_path=project_path,
+            is_chain=check_result.is_chain,
+            chain_commands=check_result.chain_commands,
+        )
 
         if msg_id:
             await self.storage.set_telegram_msg_id(request_id, msg_id)
@@ -210,8 +269,7 @@ class ApprovalManager:
             details={"request_id": request_id, "tool_name": tool_name},
         )
 
-        result = await self._wait_for_response(request_id)
-        return result
+        return await self._wait_for_response(request_id)
 
     async def _wait_for_response(self, request_id: str) -> tuple[str, Optional[str]]:
         """Wait for approval response with polling.

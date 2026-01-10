@@ -34,7 +34,16 @@ class StorageError(PyafkError):
     pass
 
 
-class TelegramAPIError(PyafkError):
+class NotifierError(PyafkError):
+    """Base exception for notifier-related errors.
+
+    Raised when notification operations fail.
+    """
+
+    pass
+
+
+class TelegramAPIError(NotifierError):
     """Telegram Bot API errors.
 
     Attributes:

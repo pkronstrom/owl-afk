@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional, Protocol
 
 if TYPE_CHECKING:
-    from pyafk.core.storage import Storage
+    from pyafk.core.storage import ApprovalRequest, Storage
     from pyafk.notifiers.base import TelegramCallbackNotifier
 
 
@@ -34,6 +34,40 @@ class CallbackContext:
     storage: "Storage"
     notifier: "TelegramCallbackNotifier"
     original_text: str = field(default="")
+
+
+async def check_request_pending(
+    request: "ApprovalRequest",
+    ctx: "CallbackContext",
+    debug_fn: callable,
+    request_id: str,
+) -> bool:
+    """Check if request is still pending, handle if already resolved.
+
+    This helper implements the idempotency check pattern used across handlers.
+    It checks if a request has already been resolved and handles the case
+    gracefully by answering the callback and returning False.
+
+    Args:
+        request: The approval request to check
+        ctx: Callback context
+        debug_fn: Debug logging function (debug_callback or debug_chain)
+        request_id: Request ID for logging
+
+    Returns:
+        True if request is pending and handler should continue
+        False if request was already resolved (handler should return early)
+    """
+    if request.status != "pending":
+        debug_fn(
+            "Request already resolved, skipping",
+            request_id=request_id,
+            status=request.status,
+        )
+        # Still answer the callback to dismiss Telegram loading state
+        await ctx.notifier.answer_callback(ctx.callback_id, "Already processed")
+        return False
+    return True
 
 
 class CallbackHandler(Protocol):
