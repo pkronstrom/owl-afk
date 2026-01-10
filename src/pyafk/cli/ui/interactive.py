@@ -36,11 +36,9 @@ def _print_header() -> None:
 
     console.print(
         Panel(
-            "[bold cyan]pyafk[/bold cyan]\n"
-            "[dim]Remote approval for Claude Code[/dim]\n\n"
-            f"Status: {status_line}",
+            f"[bold cyan]pyafk[/bold cyan] {status_line}",
             border_style="cyan",
-            width=min(80, console.width),
+            width=min(45, console.width),
         )
     )
 
@@ -134,6 +132,9 @@ def interactive_menu() -> None:
             cmd_uninstall(None)
             break
 
+    # Clear screen on exit
+    clear_screen()
+
 
 def interactive_rules() -> None:
     """Interactive rules management with live panel."""
@@ -143,7 +144,6 @@ def interactive_rules() -> None:
     from pyafk.cli.ui.panels import (
         calculate_visible_range,
         format_scroll_indicator,
-        get_terminal_size,
     )
 
     def sort_rules(rules_list):
@@ -169,66 +169,84 @@ def interactive_rules() -> None:
     status_msg = ""
     pending_delete = False  # For inline delete confirmation
 
+    # Fixed panel dimensions
+    PANEL_WIDTH = 60
+    PANEL_HEIGHT = 15  # Fixed number of content lines
+
     def build_panel(rules) -> Panel:
         nonlocal cursor, scroll_offset, pending_delete
 
-        if not rules:
-            return Panel(
-                "[dim]No rules defined.[/dim]\n\n[dim]Press 'a' to add a rule[/dim]",
-                title="Rules",
-                border_style="cyan",
-                width=min(80, console.width),
-            )
-
-        # Calculate visible range
-        _, height = get_terminal_size()
-        max_visible = max(5, height - 10)
-
-        start, end, scroll_offset = calculate_visible_range(
-            cursor, len(rules), max_visible, scroll_offset
-        )
-
-        # Build content
         lines = []
 
-        # Top scroll indicator
-        top_ind, _ = format_scroll_indicator(start, len(rules) - end)
-        if top_ind:
-            lines.append(f"[dim]{top_ind}[/dim]")
+        if not rules:
+            lines.append("[dim]No rules defined.[/dim]")
             lines.append("")
+            lines.append("[dim]Press 'a' to add a rule[/dim]")
+        else:
+            # Calculate visible range for rules area (leave room for status + legend)
+            max_visible = PANEL_HEIGHT - 4  # Reserve lines for status and legend
 
-        # Visible rules
-        for i in range(start, end):
-            rule = rules[i]
-            prefix = "> " if i == cursor else "  "
-            icon = "[green]✓[/green]" if rule["action"] == "approve" else "[red]✗[/red]"
-            pattern = rule["pattern"]
+            start, end, scroll_offset = calculate_visible_range(
+                cursor, len(rules), max_visible, scroll_offset
+            )
 
-            if i == cursor:
-                lines.append(f"[cyan]{prefix}{icon} {pattern}[/cyan]")
+            # Top scroll indicator
+            top_ind, _ = format_scroll_indicator(start, len(rules) - end)
+            if top_ind:
+                lines.append(f"[dim]{top_ind}[/dim]")
             else:
-                lines.append(f"{prefix}{icon} {pattern}")
+                lines.append("")  # Keep consistent height
 
-        # Bottom scroll indicator
-        _, bottom_ind = format_scroll_indicator(start, len(rules) - end)
-        if bottom_ind:
+            # Visible rules
+            for i in range(start, end):
+                rule = rules[i]
+                prefix = "> " if i == cursor else "  "
+                icon = (
+                    "[green]✓[/green]"
+                    if rule["action"] == "approve"
+                    else "[red]✗[/red]"
+                )
+                pattern = rule["pattern"]
+
+                if i == cursor:
+                    lines.append(f"[cyan]{prefix}{icon} {pattern}[/cyan]")
+                else:
+                    lines.append(f"{prefix}{icon} {pattern}")
+
+            # Bottom scroll indicator
+            _, bottom_ind = format_scroll_indicator(start, len(rules) - end)
+            if bottom_ind:
+                lines.append(f"[dim]{bottom_ind}[/dim]")
+            else:
+                lines.append("")  # Keep consistent height
+
+        # Pad to fixed height (before status and legend)
+        while len(lines) < PANEL_HEIGHT - 3:
             lines.append("")
-            lines.append(f"[dim]{bottom_ind}[/dim]")
 
-        # Status message or delete confirmation
+        # Separator
+        lines.append("")
+
+        # Status line (always present, may be empty)
         if pending_delete and rules and cursor < len(rules):
             rule = rules[cursor]
-            lines.append("")
             lines.append(f"[yellow]Delete '{rule['pattern']}'? (y/n)[/yellow]")
         elif status_msg:
-            lines.append("")
             lines.append(f"[green]✓ {status_msg}[/green]")
+        else:
+            lines.append("")  # Empty status line
+
+        # Legend inside panel
+        lines.append("")
+        lines.append(
+            "[dim]↑↓/jk nav • Space toggle • e edit • a add • d del • q back[/dim]"
+        )
 
         return Panel(
             "\n".join(lines),
             title="Rules",
             border_style="cyan",
-            width=min(80, console.width),
+            width=PANEL_WIDTH,
         )
 
     while True:
@@ -237,10 +255,6 @@ def interactive_rules() -> None:
 
         clear_screen()
         console.print(build_panel(rules))
-        console.print()
-        console.print(
-            "[dim]↑↓/jk navigate • Space toggle • Enter/e edit • a add • d delete • q back[/dim]"
-        )
 
         key = readchar.readkey()
         status_msg = ""
