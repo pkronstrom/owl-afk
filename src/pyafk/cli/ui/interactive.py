@@ -449,8 +449,7 @@ def interactive_config() -> None:
                 prefix = "> " if i == cursor else "  "
 
                 if item_type == "bool":
-                    # Escape brackets for Rich markup
-                    checkbox = "\\[x]" if value else "\\[ ]"
+                    checkbox = "[green]✓[/green]" if value else "[dim]·[/dim]"
                     console.print(f"{prefix}{checkbox} {label}")
                 else:
                     console.print(f"{prefix}    {label}")
