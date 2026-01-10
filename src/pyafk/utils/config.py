@@ -52,6 +52,9 @@ class Config:
         # Hook disable flags
         self.disable_subagent_hook = False
         self.disable_stop_hook = False
+        # Polling grace period - how long to keep polling after request resolves (seconds)
+        # Longer = more responsive buttons on old messages, but hooks stay alive longer
+        self.polling_grace_period = 900  # 15 minutes default
         # Env var overrides (like captain-hook)
         self.env: dict[str, str] = {}
 
@@ -71,6 +74,7 @@ class Config:
                 )
                 self.disable_subagent_hook = data.get("disable_subagent_hook", False)
                 self.disable_stop_hook = data.get("disable_stop_hook", False)
+                self.polling_grace_period = data.get("polling_grace_period", 900)
                 self.env = data.get("env", {})
             except (json.JSONDecodeError, IOError):
                 pass
@@ -121,6 +125,7 @@ class Config:
             "debug": self.debug,
             "daemon_enabled": self.daemon_enabled,
             "subagent_auto_dismiss_seconds": self.subagent_auto_dismiss_seconds,
+            "polling_grace_period": self.polling_grace_period,
             "env": self.env,
         }
         self._config_file.write_text(json.dumps(data, indent=2))

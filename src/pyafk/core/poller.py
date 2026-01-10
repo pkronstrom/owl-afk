@@ -156,19 +156,21 @@ class Poller:
     async def poll_as_leader(
         self,
         own_request_id: str,
-        grace_period: float = 30.0,
+        grace_period: float = 60.0,
         poll_interval: float = 0.5,
     ) -> bool:
         """Become polling leader and poll until done.
 
         The leader polls Telegram continuously, processing ALL callbacks.
         Keeps polling until:
-        - Own request is resolved AND (no other pending requests OR grace period expired)
+        - Own request is resolved AND grace period expired
+        - If other pending requests exist, continues polling indefinitely
         - Returns True if we were leader, False if another process is leader.
 
         Args:
             own_request_id: The request ID we're waiting for
             grace_period: How long to keep polling after own request resolves
+                          (continues indefinitely if other requests are pending)
             poll_interval: Time between poll cycles
         """
         # Try to acquire lock without waiting
@@ -195,17 +197,21 @@ class Poller:
 
                 # If our request is resolved, check if we should stop
                 if own_resolved_at is not None:
-                    # Check grace period
-                    elapsed = time.monotonic() - own_resolved_at
-                    if elapsed >= grace_period:
-                        debug_callback("Leader: grace period expired, stopping")
-                        break
-
-                    # Check if there are other pending requests
+                    # Check if there are other pending requests - keep polling for them
                     pending = await self.storage.get_pending_requests()
-                    if not pending:
-                        debug_callback("Leader: no pending requests, stopping")
-                        break
+                    if pending:
+                        # Reset grace period timer while other requests are pending
+                        own_resolved_at = time.monotonic()
+                        debug_callback(
+                            "Leader: other requests pending, continuing",
+                            pending_count=len(pending),
+                        )
+                    else:
+                        # No other pending requests - check grace period
+                        elapsed = time.monotonic() - own_resolved_at
+                        if elapsed >= grace_period:
+                            debug_callback("Leader: grace period expired, stopping")
+                            break
 
                 await asyncio.sleep(poll_interval)
 

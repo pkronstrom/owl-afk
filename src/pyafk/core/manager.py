@@ -287,9 +287,10 @@ class ApprovalManager:
         poll_task: Optional[asyncio.Task[bool]] = None
 
         # Start leader polling in background if no daemon running
+        grace_period = self._config.polling_grace_period if self._config else 900.0
         if self.poller and not is_daemon_running(self.pyafk_dir):
             poll_task = asyncio.create_task(
-                self.poller.poll_as_leader(request_id, grace_period=30.0)
+                self.poller.poll_as_leader(request_id, grace_period=grace_period)
             )
 
         try:
@@ -317,7 +318,9 @@ class ApprovalManager:
                 # become leader), try to become leader again
                 if poll_task is not None and poll_task.done():
                     poll_task = asyncio.create_task(
-                        self.poller.poll_as_leader(request_id, grace_period=30.0)
+                        self.poller.poll_as_leader(
+                            request_id, grace_period=grace_period
+                        )
                     )
 
                 # Check our request status in database
