@@ -141,9 +141,106 @@ def interactive_rules() -> None:
 
 
 def interactive_config() -> None:
-    """Interactive config editor - placeholder."""
-    console.print("[yellow]Config menu not yet implemented[/yellow]")
-    input("\nPress Enter to continue...")
+    """Interactive config editor with toggles and text fields."""
+    import readchar
+
+    pyafk_dir = get_pyafk_dir()
+
+    while True:
+        config = Config(pyafk_dir)
+
+        clear_screen()
+        console.print("[bold]Config[/bold]\n")
+
+        # Build items list: (label, type, key, value)
+        items: list[tuple[str, str, str, any]] = []
+
+        # Add toggles
+        for attr, desc in Config.TOGGLES.items():
+            value = getattr(config, attr, False)
+            items.append((f"{attr:<24} {desc}", "bool", attr, value))
+
+        # Add text fields
+        token_display = (
+            "**********" + config.telegram_bot_token[-4:]
+            if config.telegram_bot_token and len(config.telegram_bot_token) > 4
+            else config.telegram_bot_token or "(not set)"
+        )
+        items.append(
+            (
+                f"{'telegram_bot_token':<24} {token_display}",
+                "text",
+                "telegram_bot_token",
+                config.telegram_bot_token or "",
+            )
+        )
+
+        chat_display = config.telegram_chat_id or "(not set)"
+        items.append(
+            (
+                f"{'telegram_chat_id':<24} {chat_display}",
+                "text",
+                "telegram_chat_id",
+                config.telegram_chat_id or "",
+            )
+        )
+
+        editor_display = config.editor or "$EDITOR"
+        items.append(
+            (f"{'editor':<24} {editor_display}", "text", "editor", config.editor or "")
+        )
+
+        cursor = 0
+        status_msg = ""
+
+        while True:
+            # Render
+            clear_screen()
+            console.print("[bold]Config[/bold]\n")
+
+            for i, (label, item_type, key, value) in enumerate(items):
+                prefix = "> " if i == cursor else "  "
+
+                if item_type == "bool":
+                    checkbox = "[x]" if value else "[ ]"
+                    console.print(f"{prefix}{checkbox} {label}")
+                else:
+                    console.print(f"{prefix}    {label}")
+
+            console.print()
+            if status_msg:
+                console.print(f"[green]✓ {status_msg}[/green]")
+            console.print()
+            console.print("[dim]↑↓ navigate • Space/Enter toggle/edit • q back[/dim]")
+
+            # Handle input
+            key = readchar.readkey()
+            status_msg = ""
+
+            if key in (readchar.key.UP, "k"):
+                cursor = max(0, cursor - 1)
+            elif key in (readchar.key.DOWN, "j"):
+                cursor = min(len(items) - 1, cursor + 1)
+            elif key in ("q", readchar.key.CTRL_C):
+                return
+            elif key in (" ", readchar.key.ENTER, "e"):
+                label, item_type, attr, value = items[cursor]
+
+                if item_type == "bool":
+                    # Toggle boolean
+                    new_value = not value
+                    config.set_toggle(attr, new_value)
+                    items[cursor] = (label, item_type, attr, new_value)
+                    status_msg = f"{attr} = {new_value}"
+                else:
+                    # Edit text field
+                    menu = RichTerminalMenu()
+                    new_value = menu.input(f"Enter {attr}:", default=value)
+                    if new_value is not None:
+                        setattr(config, attr, new_value)
+                        config.save()
+                        status_msg = f"{attr} updated"
+                        break  # Refresh outer loop to update display
 
 
 def run_wizard() -> None:

@@ -54,6 +54,8 @@ class Config:
         self.disable_stop_hook = False
         # Env var overrides (like captain-hook)
         self.env: dict[str, str] = {}
+        # Editor for text input
+        self.editor = os.environ.get("EDITOR", "vim")
 
         if self._config_file.exists():
             try:
@@ -72,6 +74,7 @@ class Config:
                 self.disable_subagent_hook = data.get("disable_subagent_hook", False)
                 self.disable_stop_hook = data.get("disable_stop_hook", False)
                 self.env = data.get("env", {})
+                self.editor = data.get("editor", os.environ.get("EDITOR", "vim"))
             except (json.JSONDecodeError, IOError):
                 pass
 
@@ -122,6 +125,7 @@ class Config:
             "daemon_enabled": self.daemon_enabled,
             "subagent_auto_dismiss_seconds": self.subagent_auto_dismiss_seconds,
             "env": self.env,
+            "editor": self.editor,
         }
         self._config_file.write_text(json.dumps(data, indent=2))
 
