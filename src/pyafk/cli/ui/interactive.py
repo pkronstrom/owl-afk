@@ -135,9 +135,241 @@ def interactive_menu() -> None:
 
 
 def interactive_rules() -> None:
-    """Interactive rules management - placeholder."""
-    console.print("[yellow]Rules menu not yet implemented[/yellow]")
-    input("\nPress Enter to continue...")
+    """Interactive rules management with live panel."""
+    import readchar
+
+    from pyafk.cli.helpers import add_rule, get_rules, remove_rule
+    from pyafk.cli.ui.panels import (
+        calculate_visible_range,
+        format_scroll_indicator,
+        get_terminal_size,
+    )
+
+    pyafk_dir = get_pyafk_dir()
+    menu = RichTerminalMenu()
+
+    cursor = 0
+    scroll_offset = 0
+    status_msg = ""
+
+    def build_panel() -> Panel:
+        nonlocal cursor, scroll_offset
+
+        rules = get_rules(pyafk_dir)
+
+        # Sort rules by tool name, then pattern
+        def sort_key(rule):
+            pattern = rule["pattern"]
+            if "(" in pattern:
+                tool = pattern.split("(")[0]
+                rest = pattern.split("(", 1)[1]
+            else:
+                tool = pattern
+                rest = ""
+            return (tool.lower(), rest.lower())
+
+        rules = sorted(rules, key=sort_key)
+
+        if not rules:
+            return Panel(
+                "[dim]No rules defined.[/dim]\n\n[dim]Press 'a' to add a rule[/dim]",
+                title="Rules",
+                border_style="cyan",
+            )
+
+        # Calculate visible range
+        _, height = get_terminal_size()
+        max_visible = max(5, height - 10)
+
+        start, end, scroll_offset = calculate_visible_range(
+            cursor, len(rules), max_visible, scroll_offset
+        )
+
+        # Build content
+        lines = []
+
+        # Top scroll indicator
+        top_ind, _ = format_scroll_indicator(start, len(rules) - end)
+        if top_ind:
+            lines.append(f"[dim]{top_ind}[/dim]")
+            lines.append("")
+
+        # Visible rules
+        for i in range(start, end):
+            rule = rules[i]
+            prefix = "> " if i == cursor else "  "
+            icon = "[green]✓[/green]" if rule["action"] == "approve" else "[red]✗[/red]"
+            pattern = rule["pattern"]
+
+            if i == cursor:
+                lines.append(f"[cyan]{prefix}{icon} {pattern}[/cyan]")
+            else:
+                lines.append(f"{prefix}{icon} {pattern}")
+
+        # Bottom scroll indicator
+        _, bottom_ind = format_scroll_indicator(start, len(rules) - end)
+        if bottom_ind:
+            lines.append("")
+            lines.append(f"[dim]{bottom_ind}[/dim]")
+
+        # Status message
+        if status_msg:
+            lines.append("")
+            lines.append(f"[green]✓ {status_msg}[/green]")
+
+        return Panel(
+            "\n".join(lines),
+            title="Rules",
+            border_style="cyan",
+        )
+
+    while True:
+        rules = get_rules(pyafk_dir)
+
+        clear_screen()
+        console.print(build_panel())
+        console.print()
+        console.print(
+            "[dim]↑↓/jk navigate • Space toggle • Enter/e edit • a add • d delete • q back[/dim]"
+        )
+
+        key = readchar.readkey()
+        status_msg = ""
+
+        if key in (readchar.key.UP, "k"):
+            cursor = max(0, cursor - 1)
+        elif key in (readchar.key.DOWN, "j"):
+            cursor = min(max(0, len(rules) - 1), cursor + 1)
+        elif key in ("q", readchar.key.CTRL_C):
+            return
+        elif key == " " and rules:
+            # Toggle action
+            rule = rules[cursor]
+            new_action = "deny" if rule["action"] == "approve" else "approve"
+            remove_rule(pyafk_dir, rule["id"])
+            add_rule(pyafk_dir, rule["pattern"], new_action)
+            status_msg = f"Toggled to {new_action}"
+        elif key in (readchar.key.ENTER, "e") and rules:
+            # Edit pattern
+            rule = rules[cursor]
+            # Parse existing pattern
+            if "(" in rule["pattern"]:
+                old_tool = rule["pattern"].split("(")[0]
+                old_arg = rule["pattern"].split("(", 1)[1].rstrip(")")
+            else:
+                old_tool = rule["pattern"]
+                old_arg = ""
+
+            new_pattern = menu.input(f"Pattern for {old_tool}:", default=old_arg)
+            if new_pattern is not None:
+                full_pattern = (
+                    f"{old_tool}({new_pattern})" if new_pattern else f"{old_tool}(*)"
+                )
+                remove_rule(pyafk_dir, rule["id"])
+                add_rule(pyafk_dir, full_pattern, rule["action"])
+                status_msg = f"Updated: {full_pattern}"
+        elif key == "a":
+            # Add new rule
+            if _add_rule_form(pyafk_dir):
+                status_msg = "Rule added"
+        elif key == "d" and rules:
+            # Delete with confirmation
+            rule = rules[cursor]
+            if menu.confirm(f"Delete '{rule['pattern']}'?"):
+                remove_rule(pyafk_dir, rule["id"])
+                cursor = max(0, min(cursor, len(rules) - 2))
+                status_msg = "Rule deleted"
+
+
+def _add_rule_form(pyafk_dir) -> bool:
+    """Add rule form. Returns True if rule was added."""
+    import readchar
+
+    from pyafk.cli.helpers import add_rule
+
+    menu = RichTerminalMenu()
+
+    tool_options = [
+        "Bash",
+        "Edit",
+        "Write",
+        "Read",
+        "Skill",
+        "WebFetch",
+        "WebSearch",
+        "Task",
+        "mcp__*",
+        "(custom)",
+    ]
+
+    # Form state
+    tool_idx = 0
+    pattern = "*"
+    action_approve = True
+    cursor = 0  # 0=tool, 1=pattern, 2=action
+
+    while True:
+        clear_screen()
+        console.print("[bold]Add Rule[/bold]\n")
+
+        # Tool row
+        tool_prefix = "> " if cursor == 0 else "  "
+        console.print(f"{tool_prefix}Tool:     {tool_options[tool_idx]}")
+
+        # Pattern row
+        pattern_prefix = "> " if cursor == 1 else "  "
+        console.print(f"{pattern_prefix}Pattern:  {pattern}")
+
+        # Action row
+        action_prefix = "> " if cursor == 2 else "  "
+        action_icon = "[green]✓[/green]" if action_approve else "[red]✗[/red]"
+        action_text = "approve" if action_approve else "deny"
+        console.print(f"{action_prefix}Action:   {action_icon} {action_text}")
+
+        console.print()
+        console.print(
+            "[dim]↑↓ navigate • Space cycle/toggle • Enter edit pattern • s save • q cancel[/dim]"
+        )
+
+        key = readchar.readkey()
+
+        if key in (readchar.key.UP, "k"):
+            cursor = max(0, cursor - 1)
+        elif key in (readchar.key.DOWN, "j"):
+            cursor = min(2, cursor + 1)
+        elif key in ("q", readchar.key.CTRL_C):
+            return False
+        elif key == "s":
+            # Save
+            tool = tool_options[tool_idx]
+            if tool == "(custom)":
+                tool = menu.input("Enter tool name:")
+                if not tool:
+                    continue
+
+            full_pattern = f"{tool}({pattern})"
+            action = "approve" if action_approve else "deny"
+            add_rule(pyafk_dir, full_pattern, action)
+            return True
+        elif key == " ":
+            if cursor == 0:
+                # Cycle tool
+                tool_idx = (tool_idx + 1) % len(tool_options)
+            elif cursor == 2:
+                # Toggle action
+                action_approve = not action_approve
+        elif key in (readchar.key.ENTER, "e"):
+            if cursor == 0:
+                # Cycle tool (same as space)
+                tool_idx = (tool_idx + 1) % len(tool_options)
+            elif cursor == 1:
+                # Edit pattern
+                new_pattern = menu.input("Pattern:", default=pattern)
+                if new_pattern is not None:
+                    pattern = new_pattern
+            elif cursor == 2:
+                # Toggle action
+                action_approve = not action_approve
 
 
 def interactive_config() -> None:
