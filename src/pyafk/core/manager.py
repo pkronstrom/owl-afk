@@ -204,7 +204,8 @@ class ApprovalManager:
         """Wait for approval response with polling.
 
         When daemon is running, we just poll storage for status changes.
-        When daemon is not running, we poll Telegram directly.
+        When daemon is not running, one hook becomes the "polling leader" and
+        polls Telegram for ALL pending requests. Other hooks just check the database.
 
         Returns:
             Tuple of (decision, denial_reason)
@@ -212,37 +213,60 @@ class ApprovalManager:
         from pyafk.daemon import is_daemon_running
 
         start = time.monotonic()
+        poll_task: Optional[asyncio.Task[bool]] = None
 
-        while True:
-            elapsed = time.monotonic() - start
-            if elapsed >= self.timeout:
-                status = "approved" if self.timeout_action == "approve" else "denied"
-                await self.storage.resolve_request(
-                    request_id=request_id,
-                    status=status,
-                    resolved_by="timeout",
-                )
-                await self.storage.log_audit(
-                    event_type="timeout",
-                    details={"request_id": request_id, "action": self.timeout_action},
-                )
-                return (self.timeout_action, None)
+        # Start leader polling in background if no daemon running
+        if self.poller and not is_daemon_running(self.pyafk_dir):
+            poll_task = asyncio.create_task(
+                self.poller.poll_as_leader(request_id, grace_period=30.0)
+            )
 
-            # Only poll Telegram directly if daemon is not running
-            # Re-check each iteration in case daemon crashes
-            if self.poller and not is_daemon_running(self.pyafk_dir):
+        try:
+            while True:
+                elapsed = time.monotonic() - start
+                if elapsed >= self.timeout:
+                    status = (
+                        "approved" if self.timeout_action == "approve" else "denied"
+                    )
+                    await self.storage.resolve_request(
+                        request_id=request_id,
+                        status=status,
+                        resolved_by="timeout",
+                    )
+                    await self.storage.log_audit(
+                        event_type="timeout",
+                        details={
+                            "request_id": request_id,
+                            "action": self.timeout_action,
+                        },
+                    )
+                    return (self.timeout_action, None)
+
+                # If poll task finished (either we were leader and done, or couldn't
+                # become leader), try to become leader again
+                if poll_task is not None and poll_task.done():
+                    poll_task = asyncio.create_task(
+                        self.poller.poll_as_leader(request_id, grace_period=30.0)
+                    )
+
+                # Check our request status in database
+                # (The leader poll task updates DB for ALL requests)
+                request = await self.storage.get_request(request_id)
+                if request and request.status != "pending":
+                    if request.status == "approved":
+                        return ("approve", None)
+                    elif request.status == "fallback":
+                        return ("fallback", None)
+                    else:
+                        return ("deny", request.denial_reason)
+
+                await asyncio.sleep(0.5)
+        finally:
+            # Cancel poll task if still running
+            # Another waiting hook will become the new leader
+            if poll_task and not poll_task.done():
+                poll_task.cancel()
                 try:
-                    await self.poller.process_updates_once()
-                except Exception:
-                    pass  # Continue polling even if one iteration fails
-
-            request = await self.storage.get_request(request_id)
-            if request and request.status != "pending":
-                if request.status == "approved":
-                    return ("approve", None)
-                elif request.status == "fallback":
-                    return ("fallback", None)
-                else:
-                    return ("deny", request.denial_reason)
-
-            await asyncio.sleep(0.5)
+                    await poll_task
+                except asyncio.CancelledError:
+                    pass

@@ -92,8 +92,9 @@ def generate_rule_patterns(
         if "/" in path:
             dir_path = path.rsplit("/", 1)[0]
             short_dir = dir_path.split("/")[-1] or dir_path
+            # Use wildcard prefix so pattern works across worktrees/machines
             patterns.append(
-                (f"{tool_name}({dir_path}/*)", f"📁 Any in .../{short_dir}/")
+                (f"{tool_name}(*/{short_dir}/*)", f"📁 Any in .../{short_dir}/")
             )
 
         # Add project-scoped pattern if project_path is available
@@ -103,12 +104,13 @@ def generate_rule_patterns(
                 ext = path.rsplit(".", 1)[-1]
                 patterns.append(
                     (
-                        f"{tool_name}({project_path}/*.{ext})",
+                        f"{tool_name}(*/{project_name}/*.{ext})",
                         f"📂 Any *.{ext} in {project_name}/",
                     )
                 )
+            # Use wildcard prefix so pattern works across worktrees/machines
             patterns.append(
-                (f"{tool_name}({project_path}/*)", f"📂 Any in {project_name}/")
+                (f"{tool_name}(*/{project_name}/*)", f"📂 Any in {project_name}/")
             )
 
         patterns.append((f"{tool_name}(*)", f"⚡ Any {tool_name}"))
@@ -123,12 +125,14 @@ def generate_rule_patterns(
         if "/" in path:
             dir_path = path.rsplit("/", 1)[0]
             short_dir = dir_path.split("/")[-1] or dir_path
-            patterns.append((f"Read({dir_path}/*)", f"📁 Any in .../{short_dir}/"))
+            # Use wildcard prefix so pattern works across worktrees/machines
+            patterns.append((f"Read(*/{short_dir}/*)", f"📁 Any in .../{short_dir}/"))
 
         # Add project-scoped pattern if project_path is available
         if project_path and path.startswith(project_path):
             project_name = project_path.rstrip("/").split("/")[-1]
-            patterns.append((f"Read({project_path}/*)", f"📂 Any in {project_name}/"))
+            # Use wildcard prefix so pattern works across worktrees/machines
+            patterns.append((f"Read(*/{project_name}/*)", f"📂 Any in {project_name}/"))
 
         patterns.append(("Read(*)", "⚡ Any Read"))
 

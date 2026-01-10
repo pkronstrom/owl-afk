@@ -130,6 +130,86 @@ class Poller:
         except OSError as e:
             debug_callback("Ignored error saving offset", error=str(e)[:50])
 
+    async def try_poll_once(self) -> bool:
+        """Try to poll Telegram with cooperative locking.
+
+        Only one process can poll at a time. If another process holds the lock,
+        this returns immediately without polling.
+
+        Returns True if polling was performed, False if skipped (lock held by another).
+        """
+        # Try to acquire lock without waiting (timeout=0)
+        acquired = await self.lock.acquire(timeout=0)
+        if not acquired:
+            # Another process is polling, just skip
+            return False
+
+        try:
+            await self.process_updates_once()
+            return True
+        finally:
+            await self.lock.release()
+
+    async def poll_as_leader(
+        self,
+        own_request_id: str,
+        grace_period: float = 30.0,
+        poll_interval: float = 0.5,
+    ) -> bool:
+        """Become polling leader and poll until done.
+
+        The leader polls Telegram continuously, processing ALL callbacks.
+        Keeps polling until:
+        - Own request is resolved AND (no other pending requests OR grace period expired)
+        - Returns True if we were leader, False if another process is leader.
+
+        Args:
+            own_request_id: The request ID we're waiting for
+            grace_period: How long to keep polling after own request resolves
+            poll_interval: Time between poll cycles
+        """
+        # Try to acquire lock without waiting
+        acquired = await self.lock.acquire(timeout=0)
+        if not acquired:
+            return False  # Another hook is leader
+
+        try:
+            own_resolved_at: Optional[float] = None
+
+            while True:
+                # Poll Telegram for updates
+                await self.process_updates_once()
+
+                # Check if our own request is resolved
+                if own_resolved_at is None:
+                    request = await self.storage.get_request(own_request_id)
+                    if request and request.status != "pending":
+                        own_resolved_at = time.monotonic()
+                        debug_callback(
+                            "Leader: own request resolved, entering grace period",
+                            request_id=own_request_id[:8],
+                        )
+
+                # If our request is resolved, check if we should stop
+                if own_resolved_at is not None:
+                    # Check grace period
+                    elapsed = time.monotonic() - own_resolved_at
+                    if elapsed >= grace_period:
+                        debug_callback("Leader: grace period expired, stopping")
+                        break
+
+                    # Check if there are other pending requests
+                    pending = await self.storage.get_pending_requests()
+                    if not pending:
+                        debug_callback("Leader: no pending requests, stopping")
+                        break
+
+                await asyncio.sleep(poll_interval)
+
+            return True
+        finally:
+            await self.lock.release()
+
     async def process_updates_once(self) -> int:
         """Process one batch of updates.
 
@@ -687,7 +767,7 @@ class Poller:
     ) -> None:
         """Handle chain denial with user feedback."""
         from pyafk.core.handlers.chain import ChainStateManager
-        from pyafk.utils.formatting import format_project_id, format_tool_summary
+        from pyafk.utils.formatting import format_tool_summary
 
         debug_callback(
             "_handle_chain_deny_with_feedback called",

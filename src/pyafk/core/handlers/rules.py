@@ -107,14 +107,40 @@ class AddRulePatternHandler:
                 pattern, "approve", priority=0, created_via="telegram"
             )
 
-            # Also approve this request
-            await ctx.storage.resolve_request(
-                request_id=request_id,
-                status="approved",
-                resolved_by="user:add_rule",
-            )
+            # Auto-approve ALL pending requests that match the new rule
+            pending = await ctx.storage.get_pending_requests()
+            auto_approved_count = 0
+            for pending_req in pending:
+                # Check if this pending request matches the new rule
+                rule_result = await engine.check(
+                    pending_req.tool_name, pending_req.tool_input
+                )
+                if rule_result == "approve":
+                    await ctx.storage.resolve_request(
+                        request_id=pending_req.id,
+                        status="approved",
+                        resolved_by="user:add_rule:auto",
+                    )
+                    # Update the Telegram message for auto-approved requests
+                    if pending_req.telegram_msg_id:
+                        pending_session = await ctx.storage.get_session(
+                            pending_req.session_id
+                        )
+                        pending_project_id = format_project_id(
+                            pending_session.project_path if pending_session else None,
+                            pending_req.session_id,
+                        )
+                        pending_tool_summary = format_tool_summary(
+                            pending_req.tool_name, pending_req.tool_input
+                        )
+                        await ctx.notifier.edit_message(
+                            pending_req.telegram_msg_id,
+                            f"<i>{pending_project_id}</i>\n✅ <b>[{pending_req.tool_name}]</b> "
+                            f"<code>{pending_tool_summary}</code>\n📝 Auto: {label}",
+                        )
+                    auto_approved_count += 1
 
-            # Update the message
+            # Update the original message
             if ctx.message_id:
                 project_id = format_project_id(
                     session.project_path if session else None, request.session_id
@@ -128,7 +154,14 @@ class AddRulePatternHandler:
                     f"<code>{tool_summary}</code>\n📝 Always: {label}",
                 )
 
-            await ctx.notifier.answer_callback(ctx.callback_id, "Always rule added")
+            # Show count if we auto-approved others
+            if auto_approved_count > 1:
+                await ctx.notifier.answer_callback(
+                    ctx.callback_id,
+                    f"Always rule added (+{auto_approved_count - 1} auto-approved)",
+                )
+            else:
+                await ctx.notifier.answer_callback(ctx.callback_id, "Always rule added")
         except Exception as e:
             debug_callback(
                 "Error in AddRulePatternHandler",
