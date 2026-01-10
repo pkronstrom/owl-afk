@@ -146,6 +146,15 @@ class ChainApproveHandler:
                     await ctx.notifier.edit_message(ctx.message_id, "⚠️ Request expired")
                 return
 
+            # Skip if already resolved (handles duplicate callbacks from multiple pollers)
+            if request.status != "pending":
+                debug_chain(
+                    "Request already resolved, skipping",
+                    request_id=request_id,
+                    status=request.status,
+                )
+                return
+
             # Get or initialize chain state
             chain_mgr = ChainStateManager(ctx.storage)
             result = await chain_mgr.get_or_init_state(request_id, request.tool_input)
@@ -366,6 +375,15 @@ class ChainApproveAllHandler:
                     await ctx.notifier.edit_message(ctx.message_id, "⚠️ Request expired")
                 return
 
+            # Skip if already resolved (handles duplicate callbacks from multiple pollers)
+            if request.status != "pending":
+                debug_chain(
+                    "Request already resolved, skipping",
+                    request_id=request_id,
+                    status=request.status,
+                )
+                return
+
             chain_mgr = ChainStateManager(ctx.storage)
             result = await chain_mgr.get_or_init_state(request_id, request.tool_input)
             if not result:
@@ -431,6 +449,15 @@ class ChainApproveEntireHandler:
                 await ctx.notifier.answer_callback(ctx.callback_id, "Request not found")
                 if ctx.message_id:
                     await ctx.notifier.edit_message(ctx.message_id, "⚠️ Request expired")
+                return
+
+            # Skip if already resolved (handles duplicate callbacks from multiple pollers)
+            if request.status != "pending":
+                debug_chain(
+                    "Request already resolved, skipping",
+                    request_id=request_id,
+                    status=request.status,
+                )
                 return
 
             chain_mgr = ChainStateManager(ctx.storage)

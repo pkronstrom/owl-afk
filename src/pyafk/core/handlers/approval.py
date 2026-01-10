@@ -68,6 +68,15 @@ class ApproveHandler:
                     await ctx.notifier.edit_message(ctx.message_id, "Request expired")
                 return
 
+            # Skip if already resolved (handles duplicate callbacks from multiple pollers)
+            if request.status != "pending":
+                debug_callback(
+                    "Request already resolved, skipping",
+                    request_id=ctx.target_id,
+                    status=request.status,
+                )
+                return
+
             await ctx.storage.resolve_request(
                 request_id=ctx.target_id,
                 status="approved",
