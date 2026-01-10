@@ -40,6 +40,7 @@ def _print_header() -> None:
             "[dim]Remote approval for Claude Code[/dim]\n\n"
             f"Status: {status_line}",
             border_style="cyan",
+            width=min(80, console.width),
         )
     )
 
@@ -145,19 +146,9 @@ def interactive_rules() -> None:
         get_terminal_size,
     )
 
-    pyafk_dir = get_pyafk_dir()
-    menu = RichTerminalMenu()
+    def sort_rules(rules_list):
+        """Sort rules by tool name, then pattern."""
 
-    cursor = 0
-    scroll_offset = 0
-    status_msg = ""
-
-    def build_panel() -> Panel:
-        nonlocal cursor, scroll_offset
-
-        rules = get_rules(pyafk_dir)
-
-        # Sort rules by tool name, then pattern
         def sort_key(rule):
             pattern = rule["pattern"]
             if "(" in pattern:
@@ -168,13 +159,25 @@ def interactive_rules() -> None:
                 rest = ""
             return (tool.lower(), rest.lower())
 
-        rules = sorted(rules, key=sort_key)
+        return sorted(rules_list, key=sort_key)
+
+    pyafk_dir = get_pyafk_dir()
+    menu = RichTerminalMenu()
+
+    cursor = 0
+    scroll_offset = 0
+    status_msg = ""
+    pending_delete = False  # For inline delete confirmation
+
+    def build_panel(rules) -> Panel:
+        nonlocal cursor, scroll_offset, pending_delete
 
         if not rules:
             return Panel(
                 "[dim]No rules defined.[/dim]\n\n[dim]Press 'a' to add a rule[/dim]",
                 title="Rules",
                 border_style="cyan",
+                width=min(80, console.width),
             )
 
         # Calculate visible range
@@ -212,8 +215,12 @@ def interactive_rules() -> None:
             lines.append("")
             lines.append(f"[dim]{bottom_ind}[/dim]")
 
-        # Status message
-        if status_msg:
+        # Status message or delete confirmation
+        if pending_delete and rules and cursor < len(rules):
+            rule = rules[cursor]
+            lines.append("")
+            lines.append(f"[yellow]Delete '{rule['pattern']}'? (y/n)[/yellow]")
+        elif status_msg:
             lines.append("")
             lines.append(f"[green]✓ {status_msg}[/green]")
 
@@ -221,13 +228,19 @@ def interactive_rules() -> None:
             "\n".join(lines),
             title="Rules",
             border_style="cyan",
+            width=min(80, console.width),
         )
 
-    while True:
-        rules = get_rules(pyafk_dir)
+    # Initial clear
+    clear_screen()
 
-        clear_screen()
-        console.print(build_panel())
+    while True:
+        # Fetch and sort rules once per iteration
+        rules = sort_rules(get_rules(pyafk_dir))
+
+        # Move cursor to top-left and redraw (avoids full clear flicker)
+        console.print("\033[H\033[J", end="")
+        console.print(build_panel(rules))
         console.print()
         console.print(
             "[dim]↑↓/jk navigate • Space toggle • Enter/e edit • a add • d delete • q back[/dim]"
@@ -272,13 +285,19 @@ def interactive_rules() -> None:
             # Add new rule
             if _add_rule_form(pyafk_dir):
                 status_msg = "Rule added"
-        elif key == "d" and rules:
-            # Delete with confirmation
+        elif key == "d" and rules and not pending_delete:
+            # Start delete confirmation
+            pending_delete = True
+        elif key == "y" and pending_delete and rules:
+            # Confirm delete
             rule = rules[cursor]
-            if menu.confirm(f"Delete '{rule['pattern']}'?"):
-                remove_rule(pyafk_dir, rule["id"])
-                cursor = max(0, min(cursor, len(rules) - 2))
-                status_msg = "Rule deleted"
+            remove_rule(pyafk_dir, rule["id"])
+            cursor = max(0, min(cursor, len(rules) - 2))
+            status_msg = "Rule deleted"
+            pending_delete = False
+        elif pending_delete:
+            # Any other key cancels delete
+            pending_delete = False
 
 
 def _add_rule_form(pyafk_dir) -> bool:
@@ -434,7 +453,8 @@ def interactive_config() -> None:
                 prefix = "> " if i == cursor else "  "
 
                 if item_type == "bool":
-                    checkbox = "[x]" if value else "[ ]"
+                    # Escape brackets for Rich markup
+                    checkbox = "\\[x]" if value else "\\[ ]"
                     console.print(f"{prefix}{checkbox} {label}")
                 else:
                     console.print(f"{prefix}    {label}")
