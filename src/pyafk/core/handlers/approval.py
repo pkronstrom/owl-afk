@@ -79,13 +79,17 @@ class ApproveHandler:
                 await ctx.notifier.answer_callback(ctx.callback_id, "Already processed")
                 return
 
+            debug_callback("Resolving request", request_id=ctx.target_id)
             await ctx.storage.resolve_request(
                 request_id=ctx.target_id,
                 status="approved",
                 resolved_by="user",
             )
+            debug_callback("Request resolved", request_id=ctx.target_id)
 
+            debug_callback("Answering callback", callback_id=ctx.callback_id)
             await ctx.notifier.answer_callback(ctx.callback_id, "Approved")
+            debug_callback("Callback answered", callback_id=ctx.callback_id)
 
             # Update message with approval status
             msg_id = ctx.message_id or request.telegram_msg_id
