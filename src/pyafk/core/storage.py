@@ -222,6 +222,37 @@ class Storage:
             return None
         return Request(**dict(row))
 
+    async def find_duplicate_pending_request(
+        self,
+        session_id: str,
+        tool_name: str,
+        tool_input: Optional[str] = None,
+        max_age_seconds: float = 60.0,
+    ) -> Optional[Request]:
+        """Find an existing pending request with the same tool call.
+
+        Used to deduplicate when multiple hooks call pyafk for the same request.
+        Only matches requests created within max_age_seconds.
+        """
+        min_created_at = time.time() - max_age_seconds
+        cursor = await self.conn.execute(
+            """
+            SELECT * FROM requests
+            WHERE session_id = ?
+              AND tool_name = ?
+              AND tool_input IS ?
+              AND status = 'pending'
+              AND created_at >= ?
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (session_id, tool_name, tool_input, min_created_at),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        return Request(**dict(row))
+
     async def get_request_by_telegram_msg(
         self, telegram_msg_id: int
     ) -> Optional[Request]:

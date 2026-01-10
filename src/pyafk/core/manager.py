@@ -152,6 +152,19 @@ class ApprovalManager:
             )
             return (rule_result, None)
 
+        # Check for duplicate pending request (handles multiple hooks calling pyafk)
+        existing = await self.storage.find_duplicate_pending_request(
+            session_id=session_id,
+            tool_name=tool_name,
+            tool_input=tool_input,
+        )
+        if existing:
+            debug_chain(
+                "Found duplicate pending request, waiting for existing",
+                existing_id=existing.id[:8],
+            )
+            return await self._wait_for_response(existing.id)
+
         request_id = await self.storage.create_request(
             session_id=session_id,
             tool_name=tool_name,
