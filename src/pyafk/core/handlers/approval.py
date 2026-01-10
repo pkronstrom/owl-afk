@@ -75,6 +75,8 @@ class ApproveHandler:
                     request_id=ctx.target_id,
                     status=request.status,
                 )
+                # Still answer the callback to dismiss Telegram loading state
+                await ctx.notifier.answer_callback(ctx.callback_id, "Already processed")
                 return
 
             await ctx.storage.resolve_request(
@@ -133,6 +135,17 @@ class DenyHandler:
                 await ctx.notifier.answer_callback(ctx.callback_id, "Request not found")
                 if ctx.message_id:
                     await ctx.notifier.edit_message(ctx.message_id, "Request expired")
+                return
+
+            # Skip if already resolved (handles duplicate callbacks from multiple pollers)
+            if request.status != "pending":
+                debug_callback(
+                    "Request already resolved, skipping",
+                    request_id=ctx.target_id,
+                    status=request.status,
+                )
+                # Still answer the callback to dismiss Telegram loading state
+                await ctx.notifier.answer_callback(ctx.callback_id, "Already processed")
                 return
 
             await ctx.storage.resolve_request(

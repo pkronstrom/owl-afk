@@ -153,6 +153,8 @@ class ChainApproveHandler:
                     request_id=request_id,
                     status=request.status,
                 )
+                # Still answer the callback to dismiss Telegram loading state
+                await ctx.notifier.answer_callback(ctx.callback_id, "Already processed")
                 return
 
             # Get or initialize chain state
@@ -382,6 +384,8 @@ class ChainApproveAllHandler:
                     request_id=request_id,
                     status=request.status,
                 )
+                # Still answer the callback to dismiss Telegram loading state
+                await ctx.notifier.answer_callback(ctx.callback_id, "Already processed")
                 return
 
             chain_mgr = ChainStateManager(ctx.storage)
@@ -458,6 +462,8 @@ class ChainApproveEntireHandler:
                     request_id=request_id,
                     status=request.status,
                 )
+                # Still answer the callback to dismiss Telegram loading state
+                await ctx.notifier.answer_callback(ctx.callback_id, "Already processed")
                 return
 
             chain_mgr = ChainStateManager(ctx.storage)

@@ -148,6 +148,8 @@ async def test_add_rule_pattern_creates_rule(
 
     mock_storage.get_request.return_value = mock_request
     mock_storage.get_session.return_value = mock_session
+    # Return the original request in pending list so it gets auto-approved
+    mock_storage.get_pending_requests.return_value = [mock_request]
 
     ctx = CallbackContext(
         target_id="req123:0",  # request_id:pattern_index
@@ -160,17 +162,19 @@ async def test_add_rule_pattern_creates_rule(
     with patch("pyafk.core.rules.RulesEngine") as mock_engine_class:
         mock_engine = AsyncMock()
         mock_engine_class.return_value = mock_engine
+        # Make the engine say the request matches the new rule
+        mock_engine.check.return_value = "approve"
 
         handler = AddRulePatternHandler()
         await handler.handle(ctx)
 
         # Verify rule was added
         mock_engine.add_rule.assert_called_once()
-        # Verify request was approved
+        # Verify request was auto-approved through the pending request loop
         mock_storage.resolve_request.assert_called_with(
             request_id="req123",
             status="approved",
-            resolved_by="user:add_rule",
+            resolved_by="user:add_rule:auto",
         )
         mock_notifier.answer_callback.assert_called_with("cb456", "Always rule added")
 
