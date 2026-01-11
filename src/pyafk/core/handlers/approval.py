@@ -2,6 +2,7 @@
 
 from pyafk.core.handlers.base import CallbackContext, check_request_pending
 from pyafk.core.handlers.registry import HandlerRegistry
+from pyafk.core.handlers.utils import format_resolved_message
 from pyafk.utils.debug import debug_callback
 from pyafk.utils.formatting import format_project_id, format_tool_summary
 
@@ -59,10 +60,13 @@ class ApproveHandler:
                 tool_summary = format_tool_summary(
                     request.tool_name, request.tool_input
                 )
-                await ctx.notifier.edit_message(
-                    msg_id,
-                    f"<i>{project_id}</i>\n✅ <b>[{request.tool_name}]</b> <code>{tool_summary}</code>",
+                message = format_resolved_message(
+                    approved=True,
+                    project_id=project_id,
+                    tool_name=request.tool_name,
+                    tool_summary=tool_summary,
                 )
+                await ctx.notifier.edit_message(msg_id, message)
             else:
                 debug_callback("No message_id to edit!", request_id=ctx.target_id)
 
@@ -127,10 +131,13 @@ class DenyHandler:
                 tool_summary = format_tool_summary(
                     request.tool_name, request.tool_input
                 )
-                await ctx.notifier.edit_message(
-                    msg_id,
-                    f"<i>{project_id}</i>\n❌ <b>[{request.tool_name}]</b> <code>{tool_summary}</code>",
+                message = format_resolved_message(
+                    approved=False,
+                    project_id=project_id,
+                    tool_name=request.tool_name,
+                    tool_summary=tool_summary,
                 )
+                await ctx.notifier.edit_message(msg_id, message)
 
             await ctx.storage.log_audit(
                 event_type="response",
