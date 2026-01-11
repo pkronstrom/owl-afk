@@ -572,7 +572,7 @@ class Poller:
         pending = await self.storage.get_pending_requests()
         sessions = await self.storage.get_active_sessions()
 
-        status_emoji = "🟢" if mode == "on" else "🔴"
+        status_emoji = "🔵" if mode == "on" else "🟠"
         status_text = "ON" if mode == "on" else "OFF"
 
         await self.notifier.send_message(
@@ -605,7 +605,7 @@ class Poller:
             pending = await self.storage.get_pending_requests()
             pending_count = len(pending)
             status = (
-                "🟢 ON (remote approval)" if mode == "on" else "🔴 OFF (auto-approve)"
+                "🔵 ON (remote approval)" if mode == "on" else "🟠 OFF (auto-approve)"
             )
             await self.notifier.send_message(
                 f"<b>AFK Status:</b> {status}\n"
@@ -619,7 +619,7 @@ class Poller:
         if action == "on":
             config.set_mode("on")
             await self.notifier.send_message(
-                "🟢 AFK mode <b>enabled</b>\n\nRemote approval active via Telegram"
+                "🔵 AFK mode <b>enabled</b>\n\nRemote approval active via Telegram"
             )
         elif action == "off":
             # Get pending requests count before changing mode
@@ -646,12 +646,12 @@ class Poller:
 
             if pending_count > 0:
                 await self.notifier.send_message(
-                    f"🔴 AFK mode <b>disabled</b>\n\n"
+                    f"🟠 AFK mode <b>disabled</b>\n\n"
                     f"{pending_count} pending request(s) deferred to CLI prompt"
                 )
             else:
                 await self.notifier.send_message(
-                    "🔴 AFK mode <b>disabled</b>\n\nAll tools will auto-approve"
+                    "🟠 AFK mode <b>disabled</b>\n\nAll tools will auto-approve"
                 )
         else:
             await self.notifier.send_message(

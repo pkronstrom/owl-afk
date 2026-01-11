@@ -30,6 +30,14 @@ def clear_screen():
     os.system("cls" if os.name == "nt" else "clear")
 
 
+def section_header(title: str, width: int = 40):
+    """Print a dim section header like ── General ──"""
+    padding = (width - len(title) - 4) // 2
+    left = "─" * padding
+    right = "─" * (width - len(title) - 4 - padding)
+    console.print(f"[dim]{left} {title} {right}[/dim]")
+
+
 def print_header():
     """Print the application header."""
     console.print(

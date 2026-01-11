@@ -354,18 +354,31 @@ def interactive_config():
     console.print("─" * 50)
     console.print()
 
-    # Auto-discover toggleable settings from Config
-    toggles = cfg.get_toggles()
-    max_name_len = max(len(attr) for attr, _, _ in toggles)
+    # Group toggles by category
+    toggle_groups = {
+        "General": ["debug"],
+        "Polling": ["daemon_enabled"],
+        "Hooks": ["disable_stop_hook", "disable_subagent_hook"],
+    }
 
-    choices = [
-        questionary.Choice(
-            f"{attr:<{max_name_len}}  {desc}",
-            value=attr,
-            checked=enabled,
-        )
-        for attr, desc, enabled in toggles
-    ]
+    # Get current toggle states
+    toggles = {attr: (desc, enabled) for attr, desc, enabled in cfg.get_toggles()}
+    max_name_len = max(len(attr) for attr in toggles)
+
+    # Build choices with section headers
+    choices = []
+    for section, attrs in toggle_groups.items():
+        choices.append(questionary.Separator(f"── {section} ──"))
+        for attr in attrs:
+            if attr in toggles:
+                desc, enabled = toggles[attr]
+                choices.append(
+                    questionary.Choice(
+                        f"{attr:<{max_name_len}}  {desc}",
+                        value=attr,
+                        checked=enabled,
+                    )
+                )
 
     console.print()
     selected = questionary.checkbox(
@@ -379,7 +392,7 @@ def interactive_config():
         return
 
     # Apply changes for each toggle
-    for attr, _, was_enabled in toggles:
+    for attr, (_, was_enabled) in toggles.items():
         now_enabled = attr in selected
         if now_enabled != was_enabled:
             cfg.set_toggle(attr, now_enabled)
