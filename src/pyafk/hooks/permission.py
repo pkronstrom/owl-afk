@@ -4,16 +4,7 @@ import json
 from pathlib import Path
 from typing import Optional
 
-
-def _make_response(decision: str, reason: str = "") -> dict:
-    """Build hook response in Claude Code's expected format."""
-    return {
-        "hookSpecificOutput": {
-            "hookEventName": "PermissionRequest",
-            "permissionDecision": decision,
-            "permissionDecisionReason": reason,
-        }
-    }
+from pyafk.hooks.response import make_hook_response
 
 
 async def handle_permission_request(
@@ -39,9 +30,13 @@ async def handle_permission_request(
 
     fast_result = check_fast_path(pyafk_dir)
     if fast_result == FastPathResult.APPROVE:
-        return _make_response("allow", "pyafk fast path: approve all")
+        return make_hook_response(
+            "PermissionRequest", decision="allow", reason="pyafk fast path: approve all"
+        )
     elif fast_result == FastPathResult.DENY:
-        return _make_response("deny", "pyafk fast path: deny all")
+        return make_hook_response(
+            "PermissionRequest", decision="deny", reason="pyafk fast path: deny all"
+        )
     elif fast_result == FastPathResult.FALLBACK:
         return {}  # Fall back to Claude's CLI approval
 
@@ -76,6 +71,6 @@ async def handle_permission_request(
             reason = (
                 f"pyafk: {'allowed' if decision == 'allow' else 'denied'} via Telegram"
             )
-        return _make_response(decision, reason)
+        return make_hook_response("PermissionRequest", decision=decision, reason=reason)
     finally:
         await manager.close()
