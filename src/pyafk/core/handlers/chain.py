@@ -93,9 +93,21 @@ class ChainStateManager:
             cmd = data.get("command", "")
             parser = CommandParser()
             commands = parser.split_chain(cmd)
+
+            # Pre-fill approved_indices by checking each command against existing rules
+            approved_indices: list[int] = []
+            from pyafk.core.rules import RulesEngine
+
+            engine = RulesEngine(self.storage)
+            for idx, command in enumerate(commands):
+                cmd_input = json.dumps({"command": command})
+                rule_result = await engine.check("Bash", cmd_input)
+                if rule_result == "approve":
+                    approved_indices.append(idx)
+
             state = {
                 "commands": commands,
-                "approved_indices": [],
+                "approved_indices": approved_indices,
             }
             return (state, 0)
         except Exception:

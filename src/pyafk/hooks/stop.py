@@ -55,7 +55,16 @@ async def handle_stop(
                 + "\n".join(messages)
                 + "\n\nPlease address this before stopping."
             )
-            return {"decision": "block", "reason": reason}
+            # Include both formats for compatibility with Claude Code
+            return {
+                "decision": "block",
+                "reason": reason,
+                "hookSpecificOutput": {
+                    "hookEventName": "Stop",
+                    "decision": "block",
+                    "reason": reason,
+                },
+            }
 
         # No pending messages - send interactive notification
         notifier = TelegramNotifier(
@@ -105,7 +114,16 @@ async def handle_stop(
                             f"- {entry['response']}\n\n"
                             "Please address this before stopping."
                         )
-                        return {"decision": "block", "reason": reason}
+                        # Include both formats for compatibility with Claude Code
+                        return {
+                            "decision": "block",
+                            "reason": reason,
+                            "hookSpecificOutput": {
+                                "hookEventName": "Stop",
+                                "decision": "block",
+                                "reason": reason,
+                            },
+                        }
                     else:
                         # OK - let Claude stop
                         return {}

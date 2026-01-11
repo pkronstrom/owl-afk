@@ -96,6 +96,12 @@ def generate_rule_patterns(
             patterns.append(
                 (f"{tool_name}(*/{short_dir}/*)", f"📁 Any in .../{short_dir}/")
             )
+            # Also add pattern for relative paths (without leading */)
+            # This matches paths like "dodo/file.txt" where there's no / before the dir
+            if not path.startswith("/"):
+                patterns.append(
+                    (f"{tool_name}({short_dir}/*)", f"📁 Any in {short_dir}/")
+                )
 
         # Add project-scoped pattern if project_path is available
         if project_path and path.startswith(project_path):
