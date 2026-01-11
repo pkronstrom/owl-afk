@@ -126,32 +126,78 @@ class TelegramNotifier(Notifier):
         self,
         method: str,
         data: Optional[dict[str, Any]] = None,
+        timeout: Optional[float] = None,
+        max_retries: int = 3,
     ) -> dict[str, Any]:
-        """Make a Telegram API request."""
+        """Make a Telegram API request with retry/backoff.
+
+        Retries on transient errors (network issues, 5xx responses) with
+        exponential backoff. Does not retry on 4xx errors (permanent failures).
+        """
+        import asyncio
+
         url = f"{self._base_url}/{method}"
-        try:
-            client = await self._get_client()
-            response = await client.post(url, data=data)
-            result: dict[str, Any] = response.json()
+        last_error: Optional[str] = None
 
-            # Log API errors (when ok=False)
-            if not result.get("ok"):
-                error_code = result.get("error_code", "unknown")
-                description = result.get("description", "no description")
-                debug_api(
-                    "Telegram API error",
-                    method=method,
-                    error_code=error_code,
-                    description=description[:100],
-                )
+        for attempt in range(max_retries):
+            try:
+                client = await self._get_client()
+                response = await client.post(url, data=data, timeout=timeout)
+                result: dict[str, Any] = response.json()
 
-            return result
-        except httpx.HTTPError as e:
-            debug_api("HTTP error", method=method, error=str(e)[:100])
-            return {"ok": False, "error": str(e)}
-        except json.JSONDecodeError as e:
-            debug_api("JSON decode error", method=method, error=str(e)[:100])
-            return {"ok": False, "error": str(e)}
+                # Check for retryable server errors (5xx)
+                if not result.get("ok"):
+                    error_code = result.get("error_code", 0)
+                    description = result.get("description", "no description")
+
+                    # 5xx errors are retryable
+                    if isinstance(error_code, int) and 500 <= error_code < 600:
+                        last_error = f"{error_code}: {description}"
+                        if attempt < max_retries - 1:
+                            delay = 0.5 * (2**attempt)  # 0.5s, 1s, 2s
+                            debug_api(
+                                "Retrying after server error",
+                                method=method,
+                                error_code=error_code,
+                                attempt=attempt + 1,
+                                delay=delay,
+                            )
+                            await asyncio.sleep(delay)
+                            continue
+
+                    # Log non-retryable API errors
+                    debug_api(
+                        "Telegram API error",
+                        method=method,
+                        error_code=error_code,
+                        description=description[:100],
+                    )
+
+                return result
+
+            except httpx.HTTPError as e:
+                last_error = str(e)
+                if attempt < max_retries - 1:
+                    delay = 0.5 * (2**attempt)
+                    debug_api(
+                        "Retrying after HTTP error",
+                        method=method,
+                        error=str(e)[:50],
+                        attempt=attempt + 1,
+                        delay=delay,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                debug_api("HTTP error (final)", method=method, error=str(e)[:100])
+                return {"ok": False, "error": str(e)}
+
+            except json.JSONDecodeError as e:
+                # JSON errors are not retryable
+                debug_api("JSON decode error", method=method, error=str(e)[:100])
+                return {"ok": False, "error": str(e)}
+
+        # Should not reach here, but handle gracefully
+        return {"ok": False, "error": last_error or "max retries exceeded"}
 
     def _build_approval_keyboard(
         self,
@@ -392,13 +438,18 @@ class TelegramNotifier(Notifier):
         )
 
     async def answer_callback(self, callback_id: str, text: str = "") -> None:
-        """Answer a callback query."""
+        """Answer a callback query.
+
+        Uses a short timeout (8s) since Telegram requires callback responses
+        within 10 seconds or shows "query is too old" error to users.
+        """
         await self._api_request(
             "answerCallbackQuery",
             data={
                 "callback_query_id": callback_id,
                 "text": text,
             },
+            timeout=8.0,
         )
 
     async def restore_approval_keyboard(

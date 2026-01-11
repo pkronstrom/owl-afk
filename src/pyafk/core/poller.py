@@ -219,25 +219,73 @@ class Poller:
         finally:
             await self.lock.release()
 
+    def _get_update_timestamp(self, update: dict[str, Any]) -> int:
+        """Extract timestamp from update (message or callback_query)."""
+        if "message" in update:
+            return update["message"].get("date", 0)
+        if "callback_query" in update:
+            return update["callback_query"].get("message", {}).get("date", 0)
+        return 0
+
     async def process_updates_once(self) -> int:
         """Process one batch of updates.
 
         Returns number of updates processed.
         """
         try:
-            # If no saved offset, skip all old updates to avoid processing stale callbacks
+            # If no saved offset, get all updates and only skip truly stale ones
             if self._offset is None:
                 updates = await self.notifier.get_updates(offset=None, timeout=0)
-                if updates:
-                    # Set offset to skip all old updates
+                if not updates:
+                    return 0
+
+                # Find cutoff: skip updates older than 60 seconds
+                now = int(time.time())
+                stale_cutoff = now - 60
+
+                # Find first recent update
+                first_recent_idx = None
+                for idx, update in enumerate(updates):
+                    update_time = self._get_update_timestamp(update)
+                    if update_time >= stale_cutoff:
+                        first_recent_idx = idx
+                        break
+
+                if first_recent_idx is None:
+                    # All updates are stale, skip them all
                     self._offset = updates[-1]["update_id"] + 1
                     self._save_offset(self._offset)
-                return 0
+                    debug_callback(
+                        "Skipped all stale updates on init",
+                        count=len(updates),
+                        cutoff_age=60,
+                    )
+                    return 0
 
-            updates = await self.notifier.get_updates(
-                offset=self._offset,
-                timeout=1,
-            )
+                # Skip stale updates, keep recent ones for processing
+                if first_recent_idx > 0:
+                    stale_update = updates[first_recent_idx - 1]
+                    self._offset = stale_update["update_id"] + 1
+                    self._save_offset(self._offset)
+                    debug_callback(
+                        "Skipped stale updates, preserved recent",
+                        skipped=first_recent_idx,
+                        preserved=len(updates) - first_recent_idx,
+                    )
+                    updates = updates[first_recent_idx:]
+                else:
+                    # All updates are recent, process from the first one
+                    self._offset = updates[0]["update_id"]
+                    debug_callback(
+                        "All updates recent, processing all",
+                        count=len(updates),
+                    )
+
+            else:
+                updates = await self.notifier.get_updates(
+                    offset=self._offset,
+                    timeout=1,
+                )
 
             processed = 0
             for update in updates:
