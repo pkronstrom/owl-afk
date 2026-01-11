@@ -377,6 +377,10 @@ class TelegramNotifier(Notifier):
             return int(msg_id) if msg_id is not None else None
         return None
 
+    async def send_info_message(self, text: str) -> None:
+        """Send an informational message (no response expected)."""
+        await self.send_message(text)
+
     async def edit_message_with_rule_keyboard(
         self,
         message_id: int,

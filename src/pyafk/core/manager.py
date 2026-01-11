@@ -215,6 +215,25 @@ class ApprovalManager:
         check_result = await self._check_rules(tool_name, tool_input)
 
         if check_result.rule_result:
+            # Send auto-approval notification if enabled
+            if (
+                check_result.rule_result == "approve"
+                and self._config.auto_approve_notify
+            ):
+                from pyafk.utils.formatting import format_auto_approval_message
+
+                msg = format_auto_approval_message(
+                    tool_name=tool_name,
+                    tool_input=tool_input,
+                    project_path=project_path,
+                    session_id=session_id,
+                    is_chain=check_result.is_chain,
+                    chain_commands=check_result.chain_commands
+                    if check_result.is_chain
+                    else None,
+                )
+                await self.notifier.send_info_message(msg)
+
             await self.storage.log_audit(
                 event_type="auto_response",
                 session_id=session_id,

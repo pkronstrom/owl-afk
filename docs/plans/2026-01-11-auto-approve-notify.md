@@ -1,19 +1,19 @@
 # Auto-Approve Notification Feature
 
 **Date:** 2026-01-11
-**Status:** Planned
-**Source:** Codex analysis
+**Status:** Completed
+**Source:** Codex analysis, revised after code review
 
 ## Overview
 
 Add a config toggle that sends informational Telegram messages when auto-approve rules trigger, giving visibility into what's being auto-approved.
 
-## Current State
+## Design Principles
 
-- Auto-accept rules stored in SQLite (`auto_approve_rules`) managed by `RulesEngine`
-- When rules match, `ApprovalManager.request_approval` logs an `auto_response` audit event and returns immediately
-- No Telegram notification is sent for auto-approved requests
-- Config toggles managed in `src/pyafk/utils/config.py` with `PYAFK_*` env var overrides
+- **DRY**: Reuse existing `send_message()` instead of new notifier methods
+- **No code smell**: No `isinstance` checks in manager - use polymorphism
+- **Minimal overhead**: Single formatting helper, simple integration
+- **Clean abstraction**: Extend `Notifier` base class properly
 
 ## Implementation Plan
 
@@ -21,206 +21,150 @@ Add a config toggle that sends informational Telegram messages when auto-approve
 
 **File:** `src/pyafk/utils/config.py`
 
+Add to `TOGGLES` dict:
 ```python
-# Add to Config.TOGGLES dict
-TOGGLES = {
+TOGGLES: dict[str, str] = {
     ...
     "auto_approve_notify": "Notify on auto-approvals",
 }
-
-# Add attribute with default
-self.auto_approve_notify = False
-
-# Load from config.json
-self.auto_approve_notify = data.get("auto_approve_notify", False)
-
-# Save to config.json
-"auto_approve_notify": self.auto_approve_notify,
 ```
+
+Add attribute with default `False`:
+```python
+self.auto_approve_notify = False
+```
+
+Load/save in `_load()` and `save()` methods.
 
 Env override: `PYAFK_AUTO_APPROVE_NOTIFY=1`
 
-**File:** `src/pyafk/cli/ui/interactive.py`
+### 2. Notifier Base Class Extension
 
-Add to `HOOK_TOGGLES` or create a new toggle group:
+**File:** `src/pyafk/notifiers/base.py`
+
+Add method with no-op default:
 ```python
-GENERAL_TOGGLES = ["auto_approve_notify"]
-```
+async def send_info_message(self, text: str) -> None:
+    """Send an informational message (no response expected).
 
-### 2. Rule Match Pattern Details (Optional Enhancement)
-
-**File:** `src/pyafk/core/rules.py`
-
-Add method to return matched pattern:
-```python
-def check_with_pattern(self, tool_call: str) -> tuple[Optional[str], Optional[str]]:
-    """Check if tool_call matches any rule.
-
-    Returns:
-        (action, matched_pattern) or (None, None) if no match
+    Default implementation is no-op. Override in notifiers that
+    support one-way messages (e.g., Telegram).
     """
-    for pattern, action, priority in self._get_sorted_rules():
-        if matches_pattern(tool_call, pattern):
-            return action, pattern
-    return None, None
+    pass
 ```
 
-**File:** `src/pyafk/core/manager.py`
-
-Extend `RuleCheckResult`:
-```python
-@dataclass
-class RuleCheckResult:
-    rule_result: Optional[str]
-    is_chain: bool
-    chain_commands: Optional[list[str]] = None
-    matched_pattern: Optional[str] = None  # NEW
-```
-
-### 3. Telegram Info Message
+### 3. TelegramNotifier Override
 
 **File:** `src/pyafk/notifiers/telegram.py`
 
-Add method:
+Override to use existing `send_message()`:
 ```python
-async def send_auto_approval_notice(
-    self,
+async def send_info_message(self, text: str) -> None:
+    """Send an informational message."""
+    await self.send_message(text)
+```
+
+### 4. Formatting Helper
+
+**File:** `src/pyafk/utils/formatting.py`
+
+Add function:
+```python
+def format_auto_approval_message(
     tool_name: str,
     tool_input: Optional[str],
-    matched_pattern: Optional[str] = None,
-    project_path: Optional[str] = None,
-    session_id: Optional[str] = None,
-) -> Optional[int]:
-    """Send informational message about auto-approved request."""
-    project_id = format_project_id(project_path, session_id or "")
-    tool_summary = format_tool_summary(tool_name, tool_input)
+    project_path: Optional[str],
+    session_id: str,
+    is_chain: bool = False,
+    chain_commands: Optional[list[str]] = None,
+) -> str:
+    """Format auto-approval notification message.
 
-    parts = [
-        f"<b>[{escape_html(project_id)}]</b>",
-        f"Auto-approved: <code>{escape_html(tool_summary)}</code>",
-    ]
+    Args:
+        tool_name: Name of the tool (e.g., "Bash")
+        tool_input: JSON tool input
+        project_path: Project path for display
+        session_id: Session ID for display
+        is_chain: Whether this is a command chain
+        chain_commands: List of commands if chain
 
-    if matched_pattern:
-        parts.append(f"Rule: <code>{escape_html(matched_pattern)}</code>")
+    Returns:
+        HTML-formatted message string
+    """
+    project_id = format_project_id(project_path, session_id)
 
-    message = "\n".join(parts)
-    return await self.send_message(message)
+    if is_chain and chain_commands:
+        # Chain: show count and first few commands
+        preview = chain_commands[:3]
+        preview_text = ", ".join(cmd[:30] + "..." if len(cmd) > 30 else cmd for cmd in preview)
+        if len(chain_commands) > 3:
+            preview_text += f" (+{len(chain_commands) - 3} more)"
+        summary = f"{len(chain_commands)} commands: {preview_text}"
+    else:
+        # Single command: extract summary from tool_input
+        summary = format_tool_summary(tool_name, tool_input)
+
+    return (
+        f"<i>{escape_html(project_id)}</i>\n"
+        f"✓ Auto-approved: <code>{escape_html(summary)}</code>"
+    )
 ```
 
-For chain auto-approvals, include count + truncated list:
-```python
-async def send_chain_auto_approval_notice(
-    self,
-    commands: list[str],
-    matched_pattern: Optional[str] = None,
-    project_path: Optional[str] = None,
-    session_id: Optional[str] = None,
-) -> Optional[int]:
-    """Send informational message about auto-approved chain."""
-    project_id = format_project_id(project_path, session_id or "")
-
-    # Truncate to first 3 commands
-    preview = commands[:3]
-    preview_text = "\n".join(f"  <code>{escape_html(c[:60])}</code>" for c in preview)
-    if len(commands) > 3:
-        preview_text += f"\n  <i>... +{len(commands) - 3} more</i>"
-
-    parts = [
-        f"<b>[{escape_html(project_id)}]</b>",
-        f"Auto-approved chain ({len(commands)} commands):",
-        preview_text,
-    ]
-
-    if matched_pattern:
-        parts.append(f"Rule: <code>{escape_html(matched_pattern)}</code>")
-
-    message = "\n".join(parts)
-    return await self.send_message(message)
-```
-
-### 4. Manager Integration
+### 5. Manager Integration
 
 **File:** `src/pyafk/core/manager.py`
 
-In `request_approval()`, after rule check returns approve:
+In `request_approval()`, after rule check returns approve (around line 217):
 
 ```python
-# Around line 218-225, after "if check_result.rule_result:"
 if check_result.rule_result:
     # Send auto-approval notification if enabled
-    if (
-        check_result.rule_result == "approve"
-        and self.config.auto_approve_notify
-        and isinstance(self.notifier, TelegramNotifier)
-    ):
-        if check_result.is_chain and check_result.chain_commands:
-            await self.notifier.send_chain_auto_approval_notice(
-                commands=check_result.chain_commands,
-                matched_pattern=check_result.matched_pattern,
-                project_path=project_path,
-                session_id=session_id,
-            )
-        else:
-            await self.notifier.send_auto_approval_notice(
-                tool_name=tool_name,
-                tool_input=tool_input,
-                matched_pattern=check_result.matched_pattern,
-                project_path=project_path,
-                session_id=session_id,
-            )
+    if check_result.rule_result == "approve" and self.config.auto_approve_notify:
+        from pyafk.utils.formatting import format_auto_approval_message
+
+        msg = format_auto_approval_message(
+            tool_name=tool_name,
+            tool_input=tool_input,
+            project_path=project_path,
+            session_id=session_id,
+            is_chain=check_result.is_chain,
+            chain_commands=check_result.chain_commands if check_result.is_chain else None,
+        )
+        await self.notifier.send_info_message(msg)
 
     # Existing audit log code...
     await self.storage.log_audit(...)
-    return check_result.rule_result == "approve", None
+    return (check_result.rule_result, None)
 ```
 
-### 5. Tests
+### 6. Tests
 
 **File:** `tests/test_config.py`
-
-```python
-def test_auto_approve_notify_default(mock_pyafk_dir):
-    """auto_approve_notify should default to False."""
-    config = Config(mock_pyafk_dir)
-    assert config.auto_approve_notify is False
-
-def test_auto_approve_notify_load_save(mock_pyafk_dir):
-    """auto_approve_notify should persist."""
-    config = Config(mock_pyafk_dir)
-    config.auto_approve_notify = True
-    config.save()
-
-    config2 = Config(mock_pyafk_dir)
-    assert config2.auto_approve_notify is True
-```
+- Test default value is False
+- Test load/save persistence
+- Test env override
 
 **File:** `tests/test_manager.py`
-
-```python
-@pytest.mark.asyncio
-async def test_auto_approve_notify_sends_telegram(mock_pyafk_dir):
-    """Should send Telegram message when auto_approve_notify enabled."""
-    manager = ApprovalManager(pyafk_dir=mock_pyafk_dir)
-    manager.config.auto_approve_notify = True
-    # ... mock TelegramNotifier and verify send_auto_approval_notice called
-```
+- Test notification sent when enabled + rule matches
+- Test no notification when disabled
+- Test chain vs single command formatting
 
 ## File Summary
 
 | File | Changes |
 |------|---------|
 | `src/pyafk/utils/config.py` | Add `auto_approve_notify` toggle |
-| `src/pyafk/cli/ui/interactive.py` | Add toggle to UI |
-| `src/pyafk/core/rules.py` | Add `check_with_pattern()` (optional) |
-| `src/pyafk/core/manager.py` | Extend `RuleCheckResult`, add notification logic |
-| `src/pyafk/notifiers/telegram.py` | Add `send_auto_approval_notice()` methods |
+| `src/pyafk/notifiers/base.py` | Add `send_info_message()` no-op |
+| `src/pyafk/notifiers/telegram.py` | Override `send_info_message()` |
+| `src/pyafk/utils/formatting.py` | Add `format_auto_approval_message()` |
+| `src/pyafk/core/manager.py` | Call notification after auto-approve |
 | `tests/test_config.py` | Test new toggle |
 | `tests/test_manager.py` | Test notification integration |
 
 ## Notes
 
 - Default is off (`False`) to avoid noise for users with many rules
-- Uses existing `send_message()` for one-way info (no buttons)
-- Message format is compact to avoid Telegram spam
-- Chain notifications show preview of first 3 commands + count
-- Optional: add separate toggle for auto-deny notifications if needed
+- Uses existing `send_message()` infrastructure - no new Telegram API calls
+- Message format is compact: project ID + "Auto-approved: summary"
+- No matched pattern shown (can add later if needed)
+- ConsoleNotifier's `send_info_message()` is no-op (appropriate for CLI)

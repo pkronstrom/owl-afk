@@ -66,3 +66,33 @@ def test_config_default_pyafk_dir(monkeypatch):
     from pyafk.utils.config import get_pyafk_dir
 
     assert get_pyafk_dir() == Path.home() / ".config" / "pyafk"
+
+
+def test_auto_approve_notify_default(mock_pyafk_dir):
+    """auto_approve_notify should default to False."""
+    config = Config(mock_pyafk_dir)
+    assert config.auto_approve_notify is False
+
+
+def test_auto_approve_notify_load_save(mock_pyafk_dir):
+    """auto_approve_notify should persist through save/load."""
+    config = Config(mock_pyafk_dir)
+    config.auto_approve_notify = True
+    config.save()
+
+    config2 = Config(mock_pyafk_dir)
+    assert config2.auto_approve_notify is True
+
+
+def test_auto_approve_notify_env_override(mock_pyafk_dir, monkeypatch):
+    """auto_approve_notify should be overridable via env var."""
+    monkeypatch.setenv("PYAFK_AUTO_APPROVE_NOTIFY", "1")
+
+    config = Config(mock_pyafk_dir)
+    assert config.auto_approve_notify is True
+
+
+def test_auto_approve_notify_in_toggles():
+    """auto_approve_notify should be in TOGGLES dict."""
+    assert "auto_approve_notify" in Config.TOGGLES
+    assert Config.TOGGLES["auto_approve_notify"] == "Notify on auto-approvals"

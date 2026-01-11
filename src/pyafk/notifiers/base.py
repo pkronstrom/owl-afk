@@ -13,7 +13,7 @@ while handlers that need Telegram-specific features use the protocol.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Optional, Protocol, runtime_checkable
+from typing import Optional, Protocol, runtime_checkable
 
 
 class Notifier(ABC):
@@ -75,6 +75,14 @@ class Notifier(ABC):
 
     async def close(self) -> None:
         """Clean up resources (optional)."""
+        pass
+
+    async def send_info_message(self, text: str) -> None:
+        """Send an informational message (no response expected).
+
+        Default implementation is no-op. Override in notifiers that
+        support one-way messages (e.g., Telegram).
+        """
         pass
 
 
