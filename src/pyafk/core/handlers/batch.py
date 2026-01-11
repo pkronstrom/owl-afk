@@ -63,7 +63,7 @@ class ApproveAllHandler:
                     )
                     await ctx.notifier.edit_message(
                         request.telegram_msg_id,
-                        f"<i>{project_id}</i>\n✅ <b>[{request.tool_name}]</b> "
+                        f"<i>{project_id}</i>\n✓ <b>[{request.tool_name}]</b>: "
                         f"<code>{tool_summary}</code>",
                     )
                 debug_callback("Request approved", request_id=request.id)

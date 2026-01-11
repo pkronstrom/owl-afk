@@ -51,7 +51,7 @@ def format_auto_approval_message(
 
     return (
         f"<i>{escape_html(project_id)}</i>\n"
-        f"✓ Auto-approved <b>[{escape_html(tool_name)}]</b>: <code>{summary}</code>"
+        f"↻ <b>[{escape_html(tool_name)}]</b>: <code>{summary}</code>"
     )
 
 

@@ -22,9 +22,9 @@ def format_resolved_message(
     Returns:
         HTML-formatted message string
     """
-    icon = "✅" if approved else "❌"
+    icon = "✓" if approved else "✗"
     base = (
-        f"<i>{project_id}</i>\n{icon} <b>[{tool_name}]</b> <code>{tool_summary}</code>"
+        f"<i>{project_id}</i>\n{icon} <b>[{tool_name}]</b>: <code>{tool_summary}</code>"
     )
 
     if rule_label:

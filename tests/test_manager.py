@@ -116,7 +116,8 @@ async def test_auto_approve_notify_sends_message(mock_pyafk_dir):
 
     # Verify message content
     call_args = manager.notifier.send_info_message.call_args[0][0]
-    assert "Auto-approved" in call_args
+    assert "↻" in call_args  # Auto-approve icon
+    assert "[Bash]" in call_args
     assert "git status" in call_args
 
     await manager.close()

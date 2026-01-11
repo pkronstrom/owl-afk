@@ -138,7 +138,7 @@ class AddRulePatternHandler:
                         )
                         await ctx.notifier.edit_message(
                             pending_req.telegram_msg_id,
-                            f"<i>{pending_project_id}</i>\n✅ <b>[{pending_req.tool_name}]</b> "
+                            f"<i>{pending_project_id}</i>\n✓ <b>[{pending_req.tool_name}]</b>: "
                             f"<code>{pending_tool_summary}</code>\n📝 Auto: {label}",
                         )
                     auto_approved_count += 1
@@ -153,7 +153,7 @@ class AddRulePatternHandler:
                 )
                 await ctx.notifier.edit_message(
                     ctx.message_id,
-                    f"<i>{project_id}</i>\n✅ <b>[{request.tool_name}]</b> "
+                    f"<i>{project_id}</i>\n✓ <b>[{request.tool_name}]</b>: "
                     f"<code>{tool_summary}</code>\n📝 Always: {label}",
                 )
 

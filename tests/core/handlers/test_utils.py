@@ -14,7 +14,7 @@ class TestFormatResolvedMessage:
         assert "own/pyafk" in result
         assert "Bash" in result
         assert "git status" in result
-        assert "✅" in result
+        assert "✓" in result
 
     def test_denied_message(self):
         result = format_resolved_message(
@@ -23,7 +23,7 @@ class TestFormatResolvedMessage:
             tool_name="Edit",
             tool_summary="/path/to/file.py",
         )
-        assert "❌" in result
+        assert "✗" in result
         assert "Edit" in result
 
     def test_with_rule_label(self):

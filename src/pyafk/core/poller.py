@@ -793,7 +793,7 @@ class Poller:
         if request.telegram_msg_id:
             await self.notifier.edit_message(
                 request.telegram_msg_id,
-                f"❌ DENIED - {request.tool_name}\n💬 {feedback}",
+                f"✗ DENIED - {request.tool_name}\n💬 {feedback}",
             )
 
         await self.storage.log_audit(
@@ -872,7 +872,7 @@ class Poller:
             tool_summary = format_tool_summary(request.tool_name, request.tool_input)
             await self.notifier.edit_message(
                 request.telegram_msg_id,
-                f"<i>{project_id}</i>\n❌ <b>[{request.tool_name}]</b> <code>{tool_summary}</code>\n\n💬 {feedback}",
+                f"<i>{project_id}</i>\n✗ <b>[{request.tool_name}]</b>: <code>{tool_summary}</code>\n\n💬 {feedback}",
             )
             debug_callback("Message updated for chain denial")
 

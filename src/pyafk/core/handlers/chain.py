@@ -114,16 +114,10 @@ class ChainStateManager:
             return None
 
 
-def format_chain_approved_message(commands: list[str], project_id: str) -> str:
-    """Format chain approved message with list of commands."""
-    cmd_lines = []
-    for cmd in commands:
-        cmd_escaped = escape_html(truncate_command(cmd))
-        cmd_lines.append(f"  • <code>{cmd_escaped}</code>")
-
-    return f"<i>{escape_html(project_id)}</i>\n✅ <b>Chain approved</b>\n" + "\n".join(
-        cmd_lines
-    )
+def format_chain_approved_message(tool_input: Optional[str], project_id: str) -> str:
+    """Format chain approved message showing original command."""
+    summary = format_tool_summary("Bash", tool_input)
+    return f"<i>{escape_html(project_id)}</i>\n✓ <b>[Bash]</b>: <code>{summary}</code>"
 
 
 # Import registry here to avoid circular import issues
@@ -229,9 +223,7 @@ class ChainApproveHandler:
                     project_id = format_project_id(
                         session.project_path if session else None, request.session_id
                     )
-                    msg = format_chain_approved_message(
-                        chain_state["commands"], project_id
-                    )
+                    msg = format_chain_approved_message(request.tool_input, project_id)
                     await ctx.notifier.edit_message(ctx.message_id, msg)
 
                 await ctx.storage.log_audit(
@@ -328,7 +320,7 @@ class ChainDenyHandler:
                     denied=True,
                 )
             else:
-                await ctx.notifier.edit_message(ctx.message_id, "❌ Chain denied")
+                await ctx.notifier.edit_message(ctx.message_id, "✗ Chain denied")
 
         await ctx.storage.log_audit(
             event_type="response",
@@ -433,7 +425,7 @@ class ChainApproveAllHandler:
                 project_id = format_project_id(
                     session.project_path if session else None, request.session_id
                 )
-                msg = format_chain_approved_message(chain_state["commands"], project_id)
+                msg = format_chain_approved_message(request.tool_input, project_id)
                 await ctx.notifier.edit_message(ctx.message_id, msg)
 
             await ctx.storage.log_audit(
@@ -527,7 +519,7 @@ class ChainApproveEntireHandler:
                 project_id = format_project_id(
                     session.project_path if session else None, request.session_id
                 )
-                msg = format_chain_approved_message(chain_state["commands"], project_id)
+                msg = format_chain_approved_message(request.tool_input, project_id)
                 await ctx.notifier.edit_message(ctx.message_id, msg)
                 debug_chain("Chain message edited", request_id=request_id)
             else:
@@ -810,9 +802,7 @@ class ChainRulePatternHandler:
                     project_id = format_project_id(
                         session.project_path if session else None, request.session_id
                     )
-                    msg = format_chain_approved_message(
-                        chain_state["commands"], project_id
-                    )
+                    msg = format_chain_approved_message(request.tool_input, project_id)
                     await ctx.notifier.edit_message(ctx.message_id, msg)
                 else:
                     # Find first unapproved command

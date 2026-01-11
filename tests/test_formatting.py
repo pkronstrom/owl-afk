@@ -13,7 +13,8 @@ def test_format_auto_approval_message_single_command():
     )
 
     assert "user/project" in msg
-    assert "Auto-approved" in msg
+    assert "↻" in msg  # Auto-approve icon
+    assert "[Bash]" in msg
     assert "git status" in msg
 
 
@@ -27,7 +28,8 @@ def test_format_auto_approval_message_chain():
     )
 
     assert "user/project" in msg
-    assert "Auto-approved" in msg
+    assert "↻" in msg  # Auto-approve icon
+    assert "[Bash]" in msg
     # Shows the original chain command (truncated at 100 chars)
     assert "git add" in msg
     assert "git commit" in msg
@@ -43,7 +45,7 @@ def test_format_auto_approval_message_no_project_path():
     )
 
     assert "abc12345" in msg  # First 8 chars of session ID
-    assert "Auto-approved" in msg
+    assert "↻" in msg  # Auto-approve icon
 
 
 def test_format_auto_approval_message_escapes_html():
