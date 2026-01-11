@@ -84,6 +84,9 @@ def interactive_menu() -> None:
         options.append("Manage Rules")
         actions.append("rules")
 
+        options.append("Install Safe Defaults")
+        actions.append("safe_defaults")
+
         options.append("Config")
         actions.append("config")
 
@@ -123,6 +126,8 @@ def interactive_menu() -> None:
             interactive_rules()
         elif action == "config":
             interactive_config()
+        elif action == "safe_defaults":
+            _install_safe_defaults_menu()
         elif action == "install":
             clear_screen()
             cmd_install(None)
@@ -134,6 +139,40 @@ def interactive_menu() -> None:
 
     # Clear screen on exit
     clear_screen()
+
+
+def _install_safe_defaults_menu() -> None:
+    """Install safe defaults from menu."""
+    import asyncio
+
+    from pyafk.core.safe_defaults import install_safe_defaults
+    from pyafk.core.storage import Storage
+
+    clear_screen()
+    console.print("[bold]Install Safe Defaults[/bold]\n")
+    console.print(
+        "This will add rules to auto-approve read-only operations\n"
+        "like file reads, searches, git status, etc.\n"
+    )
+
+    menu = RichTerminalMenu()
+    if not menu.confirm("Install safe defaults?", default=True):
+        return
+
+    pyafk_dir = get_pyafk_dir()
+    db_path = pyafk_dir / "pyafk.db"
+
+    async def _install():
+        async with Storage(db_path) as storage:
+            return await install_safe_defaults(storage)
+
+    added, skipped = asyncio.run(_install())
+    console.print(f"\n[green]Added {added} rules[/green]", end="")
+    if skipped:
+        console.print(f" [dim]({skipped} already existed)[/dim]")
+    else:
+        console.print()
+    input("\nPress Enter to continue...")
 
 
 def interactive_rules() -> None:
@@ -679,7 +718,30 @@ def run_wizard() -> None:
     # Ensure config is saved
     config.save()
 
-    # Step 6: Done
+    # Step 6: Safe defaults
+    console.print()
+    console.print(
+        "[bold]Install Safe Defaults?[/bold]\n\n"
+        "These rules auto-approve read-only operations like\n"
+        "file reads, searches, git status, etc.\n\n"
+        "[dim]You can edit ~/.config/pyafk/safe_defaults.txt later.[/dim]\n"
+    )
+    if menu.confirm("Install safe defaults?", default=True):
+        import asyncio
+
+        from pyafk.core.safe_defaults import install_safe_defaults
+        from pyafk.core.storage import Storage
+
+        db_path = pyafk_dir / "pyafk.db"
+
+        async def _install():
+            async with Storage(db_path) as storage:
+                return await install_safe_defaults(storage)
+
+        added, _ = asyncio.run(_install())
+        console.print(f"[green]Added {added} rules[/green]")
+
+    # Step 7: Done
     console.print()
     console.print(
         Panel(
