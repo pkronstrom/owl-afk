@@ -6,22 +6,8 @@ from pathlib import Path
 from typing import Optional
 
 from pyafk.core.storage import Storage
+from pyafk.hooks.response import make_hook_response
 from pyafk.utils.config import Config, get_pyafk_dir
-
-
-def _make_response(additional_context: str = "") -> dict:
-    """Build PostToolUse hook response.
-
-    PostToolUse supports additionalContext to inject into conversation.
-    """
-    output: dict = {
-        "hookSpecificOutput": {
-            "hookEventName": "PostToolUse",
-        }
-    }
-    if additional_context:
-        output["hookSpecificOutput"]["additionalContext"] = additional_context
-    return output
 
 
 async def handle_posttool_use(
@@ -85,7 +71,9 @@ async def handle_posttool_use(
         print(f"[pyafk] Delivering {len(pending)} pending message(s)", file=sys.stderr)
         log(f"additionalContext: {additional_context[:100]}")
 
-        response = _make_response(additional_context)
+        response = make_hook_response(
+            "PostToolUse", additional_context=additional_context
+        )
         log(f"Response: {json.dumps(response)[:200]}")
         return response
 
@@ -95,4 +83,5 @@ async def handle_posttool_use(
 
 if __name__ == "__main__":
     from pyafk.hooks.runner import run_hook
+
     run_hook(handle_posttool_use)
