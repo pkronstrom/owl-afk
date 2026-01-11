@@ -56,8 +56,24 @@ def format_scroll_indicator(hidden_above: int, hidden_below: int) -> tuple[str, 
 
 
 def clear_screen() -> None:
-    """Clear terminal screen."""
+    """Clear terminal screen and hide cursor."""
+    print("\033[?25l", end="", flush=True)  # Hide cursor
     console.clear()
+
+
+def reset_cursor() -> None:
+    """Move cursor to home position without clearing.
+
+    This allows overwriting content in place, avoiding flicker.
+    Cursor should already be hidden by clear_screen().
+    """
+    # \033[H = move to home (row 1, col 1)
+    print("\033[H", end="", flush=True)
+
+
+def show_cursor() -> None:
+    """Show the cursor (call after rendering)."""
+    print("\033[?25h", end="", flush=True)
 
 
 def get_terminal_size() -> tuple[int, int]:

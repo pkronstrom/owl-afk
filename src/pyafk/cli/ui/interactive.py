@@ -3,7 +3,7 @@
 from rich.panel import Panel
 
 from pyafk.cli.ui.menu import RichTerminalMenu
-from pyafk.cli.ui.panels import clear_screen, console
+from pyafk.cli.ui.panels import clear_screen, console, reset_cursor, show_cursor
 from pyafk.utils.config import Config, get_pyafk_dir
 
 
@@ -38,7 +38,7 @@ def _print_header() -> None:
         Panel(
             f"[bold cyan]pyafk[/bold cyan] {status_line}",
             border_style="cyan",
-            width=min(45, console.width),
+            width=min(80, console.width),
         )
     )
 
@@ -170,7 +170,7 @@ def interactive_rules() -> None:
     pending_delete = False  # For inline delete confirmation
 
     # Fixed panel dimensions
-    PANEL_WIDTH = 60
+    PANEL_WIDTH = 80
     PANEL_HEIGHT = 15  # Fixed number of content lines
 
     def build_panel(rules) -> Panel:
@@ -201,17 +201,18 @@ def interactive_rules() -> None:
             for i in range(start, end):
                 rule = rules[i]
                 prefix = "> " if i == cursor else "  "
-                icon = (
-                    "[green]✓[/green]"
-                    if rule["action"] == "approve"
-                    else "[red]✗[/red]"
-                )
+                is_approve = rule["action"] == "approve"
+                icon = "✓" if is_approve else "✗"
                 pattern = rule["pattern"]
+                # Colorblind-friendly: blue for approve, orange for deny
+                color = "blue" if is_approve else "dark_orange"
 
                 if i == cursor:
-                    lines.append(f"[cyan]{prefix}{icon} {pattern}[/cyan]")
+                    lines.append(
+                        f"[bold {color}]{prefix}{icon} {pattern}[/bold {color}]"
+                    )
                 else:
-                    lines.append(f"{prefix}{icon} {pattern}")
+                    lines.append(f"[{color}]{prefix}{icon} {pattern}[/{color}]")
 
             # Bottom scroll indicator
             _, bottom_ind = format_scroll_indicator(start, len(rules) - end)
@@ -221,26 +222,20 @@ def interactive_rules() -> None:
                 lines.append("")  # Keep consistent height
 
         # Pad to fixed height (before status and legend)
-        while len(lines) < PANEL_HEIGHT - 3:
+        while len(lines) < PANEL_HEIGHT - 2:
             lines.append("")
-
-        # Separator
-        lines.append("")
 
         # Status line (always present, may be empty)
         if pending_delete and rules and cursor < len(rules):
             rule = rules[cursor]
             lines.append(f"[yellow]Delete '{rule['pattern']}'? (y/n)[/yellow]")
         elif status_msg:
-            lines.append(f"[green]✓ {status_msg}[/green]")
+            lines.append(f"[blue]✓ {status_msg}[/blue]")
         else:
             lines.append("")  # Empty status line
 
         # Legend inside panel
-        lines.append("")
-        lines.append(
-            "[dim]↑↓/jk nav • Space toggle • e edit • a add • d del • q back[/dim]"
-        )
+        lines.append("[dim]↑↓/jk nav • Space toggle • e edit • a add • d del • q[/dim]")
 
         return Panel(
             "\n".join(lines),
@@ -249,11 +244,16 @@ def interactive_rules() -> None:
             width=PANEL_WIDTH,
         )
 
+    first_render = True
     while True:
         # Fetch and sort rules once per iteration
         rules = sort_rules(get_rules(pyafk_dir))
 
-        clear_screen()
+        if first_render:
+            clear_screen()
+            first_render = False
+        else:
+            reset_cursor()
         console.print(build_panel(rules))
 
         key = readchar.readkey()
@@ -264,6 +264,7 @@ def interactive_rules() -> None:
         elif key in (readchar.key.DOWN, "j"):
             cursor = min(max(0, len(rules) - 1), cursor + 1)
         elif key in ("q", readchar.key.CTRL_C):
+            show_cursor()
             return
         elif key == " " and rules:
             # Toggle action
@@ -337,28 +338,40 @@ def _add_rule_form(pyafk_dir) -> bool:
     action_approve = True
     cursor = 0  # 0=tool, 1=pattern, 2=action
 
+    first_render = True
     while True:
-        clear_screen()
+        if first_render:
+            clear_screen()
+            first_render = False
+        else:
+            reset_cursor()
+
         console.print("[bold]Add Rule[/bold]\n")
 
         # Tool row
         tool_prefix = "> " if cursor == 0 else "  "
-        console.print(f"{tool_prefix}Tool:     {tool_options[tool_idx]}")
+        console.print(f"{tool_prefix}Tool:     {tool_options[tool_idx]:<15}")
 
         # Pattern row
         pattern_prefix = "> " if cursor == 1 else "  "
-        console.print(f"{pattern_prefix}Pattern:  {pattern}")
+        console.print(f"{pattern_prefix}Pattern:  {pattern:<15}")
 
         # Action row
         action_prefix = "> " if cursor == 2 else "  "
-        action_icon = "[green]✓[/green]" if action_approve else "[red]✗[/red]"
+        # Colorblind-friendly: blue for approve, orange for deny
+        action_icon = (
+            "[blue]✓[/blue]" if action_approve else "[dark_orange]✗[/dark_orange]"
+        )
         action_text = "approve" if action_approve else "deny"
-        console.print(f"{action_prefix}Action:   {action_icon} {action_text}")
+        console.print(f"{action_prefix}Action:   {action_icon} {action_text:<10}")
 
         console.print()
         console.print(
             "[dim]↑↓ navigate • Space cycle/toggle • Enter edit pattern • s save • q cancel[/dim]"
         )
+        # Pad to ensure consistent height
+        console.print()
+        console.print()
 
         key = readchar.readkey()
 
@@ -367,6 +380,7 @@ def _add_rule_form(pyafk_dir) -> bool:
         elif key in (readchar.key.DOWN, "j"):
             cursor = min(2, cursor + 1)
         elif key in ("q", readchar.key.CTRL_C):
+            show_cursor()
             return False
         elif key == "s":
             # Save
@@ -379,6 +393,7 @@ def _add_rule_form(pyafk_dir) -> bool:
             full_pattern = f"{tool}({pattern})"
             action = "approve" if action_approve else "deny"
             add_rule(pyafk_dir, full_pattern, action)
+            show_cursor()
             return True
         elif key == " ":
             if cursor == 0:
@@ -406,102 +421,171 @@ def interactive_config() -> None:
     import readchar
 
     pyafk_dir = get_pyafk_dir()
+    cursor = 1  # Start at first item after header
+    status_msg = ""
 
-    while True:
-        config = Config(pyafk_dir)
+    # Fixed panel dimensions
+    PANEL_WIDTH = 80
+    PANEL_HEIGHT = 19  # Room for 3 sections + spacers + items + status + legend
 
-        clear_screen()
-        console.print("[bold]Config[/bold]\n")
+    # Which toggles belong to which section
+    GENERAL_TOGGLES = ["debug", "daemon_enabled"]
+    HOOK_TOGGLES = ["stop_hook", "subagent_hook", "notification_hook"]
 
-        # Build items list: (label, type, key, value)
-        items: list[tuple[str, str, str, any]] = []
+    def build_items(config):
+        """Build items list from config."""
+        items = []
 
-        # Add toggles
-        for attr, desc in Config.TOGGLES.items():
-            value = getattr(config, attr, False)
-            items.append((f"{attr:<24} {desc}", "bool", attr, value))
+        # General settings
+        items.append(("General", "", "header", None))
+        for attr in GENERAL_TOGGLES:
+            if attr in Config.TOGGLES:
+                desc = Config.TOGGLES[attr]
+                value = getattr(config, attr, False)
+                items.append((attr, desc, "bool", value))
+        items.append(("", "", "spacer", None))
+
+        # Hook settings with note
+        items.append(("Hooks", "[dim]changes apply immediately[/dim]", "header", None))
+        for attr in HOOK_TOGGLES:
+            if attr in Config.TOGGLES:
+                desc = Config.TOGGLES[attr]
+                value = getattr(config, attr, False)
+                items.append((attr, desc, "bool", value))
+        items.append(("", "", "spacer", None))
+
+        # Telegram credentials
+        items.append(("Telegram", "", "header", None))
 
         # Add text fields
         token_display = (
             "**********" + config.telegram_bot_token[-4:]
             if config.telegram_bot_token and len(config.telegram_bot_token) > 4
-            else config.telegram_bot_token or "(not set)"
+            else "(not set)"
         )
         items.append(
             (
-                f"{'telegram_bot_token':<24} {token_display}",
-                "text",
                 "telegram_bot_token",
+                token_display,
+                "text",
                 config.telegram_bot_token or "",
             )
         )
 
         chat_display = config.telegram_chat_id or "(not set)"
         items.append(
-            (
-                f"{'telegram_chat_id':<24} {chat_display}",
-                "text",
-                "telegram_chat_id",
-                config.telegram_chat_id or "",
-            )
+            ("telegram_chat_id", chat_display, "text", config.telegram_chat_id or "")
         )
 
         editor_display = config.editor or "$EDITOR"
-        items.append(
-            (f"{'editor':<24} {editor_display}", "text", "editor", config.editor or "")
+        items.append(("editor", editor_display, "text", config.editor or ""))
+
+        return items
+
+    def build_panel(items):
+        """Build fixed-size config panel."""
+        lines = []
+
+        for i, (attr, desc, item_type, value) in enumerate(items):
+            if item_type == "header":
+                # Section header (not selectable), align desc with item descriptions
+                if desc:
+                    # 4 chars for prefix+icon, 24 for attr name = 28 total padding
+                    lines.append(f"[bold]{attr:<28}[/bold] {desc}")
+                else:
+                    lines.append(f"[bold]{attr}[/bold]")
+                continue
+            if item_type == "spacer":
+                lines.append("")
+                continue
+
+            prefix = "> " if i == cursor else "  "
+
+            if item_type == "bool":
+                # Colorblind-friendly: blue for on
+                icon = "[blue]✓[/blue]" if value else "[dim]·[/dim]"
+                lines.append(f"{prefix}{icon} {attr:<24} [dim]{desc}[/dim]")
+            else:
+                icon = "[cyan]✎[/cyan]"  # Pencil for editable text
+                lines.append(f"{prefix}{icon} {attr:<24} [yellow]{desc}[/yellow]")
+
+        # Pad to fixed height
+        while len(lines) < PANEL_HEIGHT - 2:
+            lines.append("")
+
+        # Status line (reserved space, or empty for spacing)
+        if status_msg:
+            lines.append(f"[blue]✓ {status_msg}[/blue]")
+        else:
+            lines.append("")
+
+        # Legend
+        lines.append("[dim]↑↓ nav • Space/Enter toggle/edit • q back[/dim]")
+
+        return Panel(
+            "\n".join(lines),
+            title="Config",
+            border_style="cyan",
+            width=PANEL_WIDTH,
         )
 
-        cursor = 0
+    first_render = True
+    while True:
+        config = Config(pyafk_dir)
+        items = build_items(config)
+
+        if first_render:
+            clear_screen()
+            first_render = False
+        else:
+            reset_cursor()
+        console.print(build_panel(items))
+
+        # Handle input
+        key = readchar.readkey()
+        old_status = status_msg
         status_msg = ""
 
-        while True:
-            # Render
-            clear_screen()
-            console.print("[bold]Config[/bold]\n")
+        if key in (readchar.key.UP, "k"):
+            # Skip headers and spacers when moving up
+            new_cursor = cursor - 1
+            while new_cursor >= 0 and items[new_cursor][2] in ("header", "spacer"):
+                new_cursor -= 1
+            if new_cursor >= 0:
+                cursor = new_cursor
+        elif key in (readchar.key.DOWN, "j"):
+            # Skip headers and spacers when moving down
+            new_cursor = cursor + 1
+            while new_cursor < len(items) and items[new_cursor][2] in (
+                "header",
+                "spacer",
+            ):
+                new_cursor += 1
+            if new_cursor < len(items):
+                cursor = new_cursor
+        elif key in ("q", readchar.key.CTRL_C):
+            show_cursor()
+            return
+        elif key in (" ", readchar.key.ENTER, "e"):
+            attr, desc, item_type, value = items[cursor]
+            if item_type in ("header", "spacer"):
+                continue  # Skip non-interactive items
 
-            for i, (label, item_type, key, value) in enumerate(items):
-                prefix = "> " if i == cursor else "  "
-
-                if item_type == "bool":
-                    checkbox = "[green]✓[/green]" if value else "[dim]·[/dim]"
-                    console.print(f"{prefix}{checkbox} {label}")
-                else:
-                    console.print(f"{prefix}    {label}")
-
-            console.print()
-            if status_msg:
-                console.print(f"[green]✓ {status_msg}[/green]")
-            console.print()
-            console.print("[dim]↑↓ navigate • Space/Enter toggle/edit • q back[/dim]")
-
-            # Handle input
-            key = readchar.readkey()
-            status_msg = ""
-
-            if key in (readchar.key.UP, "k"):
-                cursor = max(0, cursor - 1)
-            elif key in (readchar.key.DOWN, "j"):
-                cursor = min(len(items) - 1, cursor + 1)
-            elif key in ("q", readchar.key.CTRL_C):
-                return
-            elif key in (" ", readchar.key.ENTER, "e"):
-                label, item_type, attr, value = items[cursor]
-
-                if item_type == "bool":
-                    # Toggle boolean
-                    new_value = not value
-                    config.set_toggle(attr, new_value)
-                    items[cursor] = (label, item_type, attr, new_value)
-                    status_msg = f"{attr} = {new_value}"
-                else:
-                    # Edit text field
-                    menu = RichTerminalMenu()
-                    new_value = menu.input(f"Enter {attr}:", default=value)
-                    if new_value is not None:
-                        setattr(config, attr, new_value)
-                        config.save()
-                        status_msg = f"{attr} updated"
-                        break  # Refresh outer loop to update display
+            if item_type == "bool":
+                # Toggle boolean
+                new_value = not value
+                config.set_toggle(attr, new_value)
+                status_msg = f"{attr} = {new_value}"
+            else:
+                # Edit text field
+                menu = RichTerminalMenu()
+                new_value = menu.input(f"Enter {attr}:", default=value)
+                if new_value is not None:
+                    setattr(config, attr, new_value)
+                    config.save()
+                    status_msg = f"{attr} updated"
+                # Reset after returning from editor to fix cursor visibility
+                first_render = True
 
 
 def run_wizard() -> None:

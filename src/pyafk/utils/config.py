@@ -21,8 +21,9 @@ class Config:
     TOGGLES: dict[str, str] = {
         "debug": "Log to ~/.config/pyafk/debug.log",
         "daemon_enabled": "Background polling (vs inline)",
-        "disable_stop_hook": "Skip stop hook notifications",
-        "disable_subagent_hook": "Skip subagent finished notifications",
+        "stop_hook": "Notify when Claude session ends",
+        "subagent_hook": "Notify when subagent finishes",
+        "notification_hook": "Forward notifications to TG",
     }
 
     def __init__(self, pyafk_dir: Optional[Path] = None):
@@ -49,9 +50,10 @@ class Config:
         self.subagent_auto_dismiss_seconds = (
             60  # Auto-dismiss subagent messages after 1 min
         )
-        # Hook disable flags
-        self.disable_subagent_hook = False
-        self.disable_stop_hook = False
+        # Hook enable flags (default enabled)
+        self.stop_hook = True
+        self.subagent_hook = True
+        self.notification_hook = False  # New feature, default off
         # Env var overrides (like captain-hook)
         self.env: dict[str, str] = {}
         # Editor for text input
@@ -71,8 +73,18 @@ class Config:
                 self.subagent_auto_dismiss_seconds = data.get(
                     "subagent_auto_dismiss_seconds", 60
                 )
-                self.disable_subagent_hook = data.get("disable_subagent_hook", False)
-                self.disable_stop_hook = data.get("disable_stop_hook", False)
+                # New positive names (with backwards compat for old disable_* names)
+                if "stop_hook" in data:
+                    self.stop_hook = data.get("stop_hook", True)
+                else:
+                    # Old config: invert disable_stop_hook
+                    self.stop_hook = not data.get("disable_stop_hook", False)
+                if "subagent_hook" in data:
+                    self.subagent_hook = data.get("subagent_hook", True)
+                else:
+                    # Old config: invert disable_subagent_hook
+                    self.subagent_hook = not data.get("disable_subagent_hook", False)
+                self.notification_hook = data.get("notification_hook", False)
                 self.env = data.get("env", {})
                 self.editor = data.get("editor", os.environ.get("EDITOR", "vim"))
             except (json.JSONDecodeError, IOError):
@@ -124,6 +136,9 @@ class Config:
             "debug": self.debug,
             "daemon_enabled": self.daemon_enabled,
             "subagent_auto_dismiss_seconds": self.subagent_auto_dismiss_seconds,
+            "stop_hook": self.stop_hook,
+            "subagent_hook": self.subagent_hook,
+            "notification_hook": self.notification_hook,
             "env": self.env,
             "editor": self.editor,
         }
