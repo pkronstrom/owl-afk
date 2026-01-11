@@ -1,13 +1,12 @@
 """PostToolUse hook handler - delivers pending messages."""
 
-import json
-import time
 from pathlib import Path
 from typing import Optional
 
 from pyafk.core.storage import Storage
 from pyafk.hooks.response import make_hook_response
 from pyafk.utils.config import Config, get_pyafk_dir
+from pyafk.utils.debug import debug
 
 
 async def handle_posttool_use(
@@ -36,22 +35,15 @@ async def handle_posttool_use(
 
     storage = Storage(config.db_path)
 
-    # Debug log
-    debug_log = pyafk_dir / "posttool_debug.log"
-
-    def log(msg: str) -> None:
-        with open(debug_log, "a") as f:
-            f.write(f"{time.strftime('%H:%M:%S')} {msg}\n")
-
     try:
         await storage.connect()
 
         session_id = hook_input.get("session_id", "unknown")
-        log(f"session_id={session_id}")
+        debug("posttool", f"session_id={session_id}")
 
         # Check for pending messages from /msg command
         pending = await storage.get_pending_messages(session_id)
-        log(f"pending_messages={len(pending) if pending else 0}")
+        debug("posttool", f"pending_messages={len(pending) if pending else 0}")
 
         if not pending:
             return {}  # No messages, return empty response
@@ -61,7 +53,7 @@ async def handle_posttool_use(
         for msg_id, msg_text in pending:
             messages.append(f"- {msg_text}")
             await storage.mark_message_delivered(msg_id)
-            log(f"  Delivering: {msg_text[:50]}")
+            debug("posttool", f"Delivering: {msg_text[:50]}")
 
         additional_context = (
             "📨 The user sent you a message via remote approval:\n"
@@ -69,13 +61,8 @@ async def handle_posttool_use(
         )
 
         print(f"[pyafk] Delivering {len(pending)} pending message(s)", file=sys.stderr)
-        log(f"additionalContext: {additional_context[:100]}")
 
-        response = make_hook_response(
-            "PostToolUse", additional_context=additional_context
-        )
-        log(f"Response: {json.dumps(response)[:200]}")
-        return response
+        return make_hook_response("PostToolUse", additional_context=additional_context)
 
     finally:
         await storage.close()
