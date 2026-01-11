@@ -43,6 +43,7 @@ User requested critical review of an existing plan before implementation. The re
 | Test assertion failed for HTML escaping | `format_tool_summary()` already escapes HTML, was double-escaping | Added conditional: only escape chain summaries, single commands are pre-escaped |
 | `command not found: python` | Virtual environment not activated in test command | Used `source .venv/bin/activate && python -m pytest` |
 | Linter removed unused import | Added `from unittest.mock import AsyncMock` at file top but linter removed it | Moved import inside test functions where it's used |
+| Toggle not appearing in menu | `interactive.py` has hardcoded `GENERAL_TOGGLES` list separate from `Config.TOGGLES` | Must add to both `Config.TOGGLES` AND the appropriate menu list |
 
 ## User Steering
 
