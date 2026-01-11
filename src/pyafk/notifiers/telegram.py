@@ -63,34 +63,6 @@ def format_approval_message(
     return "\n".join(lines)
 
 
-def _escape_markdown(text: str) -> str:
-    """Escape Markdown special characters for Telegram."""
-    # Characters that need escaping in Telegram Markdown
-    special_chars = [
-        "_",
-        "*",
-        "[",
-        "]",
-        "(",
-        ")",
-        "~",
-        "`",
-        ">",
-        "#",
-        "+",
-        "-",
-        "=",
-        "|",
-        "{",
-        "}",
-        ".",
-        "!",
-    ]
-    for char in special_chars:
-        text = text.replace(char, f"\\{char}")
-    return text
-
-
 def _truncate_pattern_label(pattern: str, max_len: int = 40) -> str:
     """Truncate pattern for button label, preserving distinctive ending."""
     if len(pattern) <= max_len:
