@@ -6,25 +6,7 @@ from typing import Optional
 
 from pyafk.core.manager import ApprovalManager
 from pyafk.fast_path import FastPathResult, check_fast_path
-
-
-def _make_response(decision: str, reason: str = "") -> dict:
-    """Build hook response in Claude Code's expected format.
-
-    Args:
-        decision: "allow" or "deny"
-        reason: Optional reason for the decision
-
-    Note: PreToolUse does NOT support additionalContext.
-    Use PostToolUse hook for message delivery.
-    """
-    return {
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": decision,
-            "permissionDecisionReason": reason,
-        }
-    }
+from pyafk.hooks.response import make_hook_response
 
 
 async def handle_pretool_use(
@@ -45,9 +27,13 @@ async def handle_pretool_use(
 
     fast_result = check_fast_path(pyafk_dir)
     if fast_result == FastPathResult.APPROVE:
-        return _make_response("allow", "pyafk fast path: approve all")
+        return make_hook_response(
+            "PreToolUse", decision="allow", reason="pyafk fast path: approve all"
+        )
     elif fast_result == FastPathResult.DENY:
-        return _make_response("deny", "pyafk fast path: deny all")
+        return make_hook_response(
+            "PreToolUse", decision="deny", reason="pyafk fast path: deny all"
+        )
     elif fast_result == FastPathResult.FALLBACK:
         return {}  # Fall back to Claude's CLI approval
 
@@ -100,7 +86,7 @@ async def handle_pretool_use(
                 f"pyafk: {'allowed' if decision == 'allow' else 'denied'} via Telegram"
             )
 
-        return _make_response(decision, reason)
+        return make_hook_response("PreToolUse", decision=decision, reason=reason)
     finally:
         await manager.close()
 
