@@ -1,7 +1,6 @@
 """Telegram notifier using Bot API."""
 
 import json
-from pathlib import Path
 from typing import Any, Optional
 
 import httpx
@@ -652,30 +651,6 @@ class TelegramNotifier(Notifier):
         if result.get("ok") and "result" in result:
             msg_id = result["result"].get("message_id")
             return int(msg_id) if msg_id is not None else None
-        return None
-
-    async def send_document(self, file_path: Path, caption: str = "") -> Optional[int]:
-        """Send a file as a document."""
-        import aiofiles
-
-        url = f"{self._base_url}/sendDocument"
-        try:
-            async with aiofiles.open(file_path, "rb") as f:
-                file_content = await f.read()
-
-            client = await self._get_client()
-            files = {"document": (file_path.name, file_content)}
-            data = {"chat_id": self.chat_id}
-            if caption:
-                data["caption"] = caption
-            response = await client.post(url, data=data, files=files)
-            result = response.json()
-
-            if result.get("ok") and "result" in result:
-                msg_id = result["result"].get("message_id")
-            return int(msg_id) if msg_id is not None else None
-        except Exception:
-            pass
         return None
 
     async def send_chain_approval_request(
