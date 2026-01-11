@@ -18,43 +18,19 @@ def test_format_auto_approval_message_single_command():
 
 
 def test_format_auto_approval_message_chain():
-    """Should format chain auto-approval message."""
+    """Should format chain with original command."""
     msg = format_auto_approval_message(
         tool_name="Bash",
-        tool_input='{"command": "git add . && git commit"}',
+        tool_input='{"command": "git add . && git commit -m test && git push"}',
         project_path="/home/user/project",
         session_id="session-123",
-        is_chain=True,
-        chain_commands=["git add .", "git commit -m 'test'", "git push"],
     )
 
     assert "user/project" in msg
     assert "Auto-approved" in msg
-    assert "3 commands" in msg
+    # Shows the original chain command (truncated at 100 chars)
     assert "git add" in msg
-
-
-def test_format_auto_approval_message_chain_truncation():
-    """Should truncate long chain commands."""
-    long_commands = [
-        "echo 'this is a very long command that exceeds thirty characters'",
-        "second command",
-        "third command",
-        "fourth command",
-        "fifth command",
-    ]
-
-    msg = format_auto_approval_message(
-        tool_name="Bash",
-        tool_input='{"command": "..."}',
-        project_path="/home/user/project",
-        session_id="session-123",
-        is_chain=True,
-        chain_commands=long_commands,
-    )
-
-    assert "5 commands" in msg
-    assert "(+2 more)" in msg  # 5 - 3 preview = 2 more
+    assert "git commit" in msg
 
 
 def test_format_auto_approval_message_no_project_path():

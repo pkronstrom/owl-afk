@@ -31,8 +31,6 @@ def format_auto_approval_message(
     tool_input: Optional[str],
     project_path: Optional[str],
     session_id: str,
-    is_chain: bool = False,
-    chain_commands: Optional[list[str]] = None,
 ) -> str:
     """Format auto-approval notification message.
 
@@ -41,34 +39,20 @@ def format_auto_approval_message(
         tool_input: JSON tool input
         project_path: Project path for display
         session_id: Session ID for display
-        is_chain: Whether this is a command chain
-        chain_commands: List of commands if chain
 
     Returns:
         HTML-formatted message string
     """
     project_id = format_project_id(project_path, session_id)
 
-    if is_chain and chain_commands:
-        # Chain: show count and first few commands
-        preview = chain_commands[:3]
-        preview_text = ", ".join(
-            cmd[:30] + "..." if len(cmd) > 30 else cmd for cmd in preview
-        )
-        if len(chain_commands) > 3:
-            preview_text += f" (+{len(chain_commands) - 3} more)"
-        summary = f"{len(chain_commands)} commands: {preview_text}"
-    else:
-        # Single command: extract summary from tool_input
-        summary = format_tool_summary(tool_name, tool_input)
+    # Always use the original tool_input - shows full command for both
+    # single commands and chains
+    summary = format_tool_summary(tool_name, tool_input)
 
-    # Note: summary is already escaped by format_tool_summary for single commands,
-    # but not for chains. For consistency, we don't double-escape.
-    # Chain summaries need escaping, single commands are pre-escaped.
-    if is_chain and chain_commands:
-        summary = escape_html(summary)
-
-    return f"<i>{escape_html(project_id)}</i>\n✓ Auto-approved: <code>{summary}</code>"
+    return (
+        f"<i>{escape_html(project_id)}</i>\n"
+        f"✓ Auto-approved <b>[{escape_html(tool_name)}]</b>: <code>{summary}</code>"
+    )
 
 
 def format_tool_summary(tool_name: str, tool_input: Optional[str]) -> str:

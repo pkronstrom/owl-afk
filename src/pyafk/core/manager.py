@@ -227,10 +227,6 @@ class ApprovalManager:
                     tool_input=tool_input,
                     project_path=project_path,
                     session_id=session_id,
-                    is_chain=check_result.is_chain,
-                    chain_commands=check_result.chain_commands
-                    if check_result.is_chain
-                    else None,
                 )
                 await self.notifier.send_info_message(msg)
 
