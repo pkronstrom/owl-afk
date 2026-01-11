@@ -28,7 +28,7 @@ async def handle_stop(
     config = Config(pyafk_dir)
 
     # Pass through when mode is off or hook is disabled
-    if config.get_mode() != "on" or config.disable_stop_hook:
+    if config.get_mode() != "on" or not config.stop_hook:
         return {}
 
     # Check Telegram config

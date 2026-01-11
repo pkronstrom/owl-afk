@@ -209,7 +209,7 @@ async def handle_subagent_stop(
     config = Config(pyafk_dir)
 
     # Pass through when mode is off or hook is disabled
-    if config.get_mode() != "on" or config.disable_subagent_hook:
+    if config.get_mode() != "on" or not config.subagent_hook:
         return {}
 
     # Check if Telegram is configured

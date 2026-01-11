@@ -1,6 +1,6 @@
 """Allow running pyafk.cli as a module: python -m pyafk.cli"""
 
-from pyafk.cli import main
+from pyafk.cli import cli_main
 
 if __name__ == "__main__":
-    main()
+    cli_main()

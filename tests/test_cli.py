@@ -300,3 +300,28 @@ class TestCaptainHookCommands:
 
         # May fail if captain-hook not installed, but shouldn't crash
         assert result.returncode in [0, 1]
+
+
+class TestTyperCLI:
+    """Smoke tests for new Typer CLI."""
+
+    def test_cli_help(self):
+        """Test CLI help works."""
+        from typer.testing import CliRunner
+
+        from pyafk.cli import app
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["--help"])
+        assert result.exit_code == 0
+        assert "pyafk" in result.output
+
+    def test_cli_status(self, cli_env):
+        """Test status command via Typer."""
+        from typer.testing import CliRunner
+
+        from pyafk.cli import app
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["status"])
+        assert result.exit_code == 0

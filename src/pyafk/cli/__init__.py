@@ -1,162 +1,234 @@
 """CLI entry point for pyafk.
 
-This module provides the main CLI interface via the `main()` function,
-which is the entry point for the `pyafk` command.
+Uses Typer for command routing with lazy loading for performance.
+Hook commands stay fast by not importing UI modules.
 """
 
-import argparse
+import typer
 
-__all__ = ["main"]
+__all__ = ["app", "main"]
 
-from pyafk.cli.commands import (
-    cmd_captain_hook_install,
-    cmd_captain_hook_uninstall,
-    cmd_debug_off,
-    cmd_debug_on,
-    cmd_env_list,
-    cmd_env_set,
-    cmd_env_unset,
-    cmd_hook,
-    cmd_install,
-    cmd_off,
-    cmd_on,
-    cmd_reset,
-    cmd_rules_add,
-    cmd_rules_list,
-    cmd_rules_remove,
-    cmd_status,
-    cmd_telegram_test,
-    cmd_uninstall,
+app = typer.Typer(
+    name="pyafk",
+    help="Remote approval system for Claude Code",
+    no_args_is_help=False,
 )
-from pyafk.cli.interactive import interactive_menu
 
 
-def main():
-    """Main entry point."""
-    parser = argparse.ArgumentParser(
-        description="pyafk - Remote approval system for Claude Code",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
+@app.callback(invoke_without_command=True)
+def main(ctx: typer.Context) -> None:
+    """Launch interactive menu if no command given."""
+    if ctx.invoked_subcommand is None:
+        # Lazy load UI - only when interactive
+        from pyafk.cli.ui.interactive import interactive_menu
 
-    subparsers = parser.add_subparsers(dest="command")
-
-    # status
-    status_parser = subparsers.add_parser("status", help="Show current status")
-    status_parser.set_defaults(func=cmd_status)
-
-    # on
-    on_parser = subparsers.add_parser("on", help="Enable pyafk")
-    on_parser.set_defaults(func=cmd_on)
-
-    # off
-    off_parser = subparsers.add_parser("off", help="Disable pyafk")
-    off_parser.set_defaults(func=cmd_off)
-
-    # install
-    install_parser = subparsers.add_parser(
-        "install", help="Install pyafk hooks (standalone)"
-    )
-    install_parser.set_defaults(func=cmd_install)
-
-    # uninstall
-    uninstall_parser = subparsers.add_parser("uninstall", help="Uninstall pyafk hooks")
-    uninstall_parser.set_defaults(func=cmd_uninstall)
-
-    # reset
-    reset_parser = subparsers.add_parser("reset", help="Reset database and rules")
-    reset_parser.add_argument("--force", action="store_true", help="Skip confirmation")
-    reset_parser.set_defaults(func=cmd_reset)
-
-    # hook (internal)
-    hook_parser = subparsers.add_parser("hook", help="Internal hook handler")
-    hook_parser.add_argument("hook_type", help="Hook type (PreToolUse, etc.)")
-    hook_parser.set_defaults(func=cmd_hook)
-
-    # debug
-    debug_parser = subparsers.add_parser("debug", help="Debug mode commands")
-    debug_subparsers = debug_parser.add_subparsers(dest="debug_command")
-
-    debug_on_parser = debug_subparsers.add_parser("on", help="Enable debug logging")
-    debug_on_parser.set_defaults(func=cmd_debug_on)
-
-    debug_off_parser = debug_subparsers.add_parser("off", help="Disable debug logging")
-    debug_off_parser.set_defaults(func=cmd_debug_off)
-
-    # rules
-    rules_parser = subparsers.add_parser("rules", help="Manage auto-approve rules")
-    rules_subparsers = rules_parser.add_subparsers(dest="rules_command")
-
-    rules_list_parser = rules_subparsers.add_parser("list", help="List all rules")
-    rules_list_parser.set_defaults(func=cmd_rules_list)
-
-    rules_add_parser = rules_subparsers.add_parser("add", help="Add a new rule")
-    rules_add_parser.add_argument("pattern", help="Pattern to match")
-    rules_add_parser.add_argument(
-        "--action",
-        choices=["approve", "deny"],
-        default="approve",
-        help="Action (default: approve)",
-    )
-    rules_add_parser.set_defaults(func=cmd_rules_add)
-
-    rules_remove_parser = rules_subparsers.add_parser("remove", help="Remove a rule")
-    rules_remove_parser.add_argument("rule_id", type=int, help="Rule ID to remove")
-    rules_remove_parser.set_defaults(func=cmd_rules_remove)
-
-    # telegram
-    telegram_parser = subparsers.add_parser("telegram", help="Telegram configuration")
-    telegram_subparsers = telegram_parser.add_subparsers(dest="telegram_command")
-
-    telegram_test_parser = telegram_subparsers.add_parser(
-        "test", help="Send a test message"
-    )
-    telegram_test_parser.set_defaults(func=cmd_telegram_test)
-
-    # env - environment variable overrides
-    env_parser = subparsers.add_parser("env", help="Manage env var overrides")
-    env_subparsers = env_parser.add_subparsers(dest="env_command")
-
-    env_list_parser = env_subparsers.add_parser("list", help="List env var overrides")
-    env_list_parser.set_defaults(func=cmd_env_list)
-
-    env_set_parser = env_subparsers.add_parser("set", help="Set an env var override")
-    env_set_parser.add_argument("key", help="Variable name (e.g., DISABLE_STOP_HOOK)")
-    env_set_parser.add_argument("value", help="Value (e.g., true)")
-    env_set_parser.set_defaults(func=cmd_env_set)
-
-    env_unset_parser = env_subparsers.add_parser(
-        "unset", help="Remove an env var override"
-    )
-    env_unset_parser.add_argument("key", help="Variable name to remove")
-    env_unset_parser.set_defaults(func=cmd_env_unset)
-
-    # captain-hook
-    captain_parser = subparsers.add_parser(
-        "captain-hook", help="Captain-hook integration"
-    )
-    captain_subparsers = captain_parser.add_subparsers(dest="captain_command")
-
-    captain_install_parser = captain_subparsers.add_parser(
-        "install", help="Install pyafk hooks for captain-hook"
-    )
-    captain_install_parser.set_defaults(func=cmd_captain_hook_install)
-
-    captain_uninstall_parser = captain_subparsers.add_parser(
-        "uninstall", help="Remove pyafk hooks from captain-hook"
-    )
-    captain_uninstall_parser.set_defaults(func=cmd_captain_hook_uninstall)
-
-    args = parser.parse_args()
-
-    if args.command is None:
-        # No command - run interactive mode
         interactive_menu()
-    elif hasattr(args, "func"):
-        args.func(args)
-    else:
-        # Subcommand group without specific command - show help
-        parser.parse_args([args.command, "--help"])
+
+
+@app.command()
+def status() -> None:
+    """Show current status."""
+    from pyafk.cli.commands import cmd_status
+
+    cmd_status(None)
+
+
+@app.command()
+def on() -> None:
+    """Enable pyafk."""
+    from pyafk.cli.commands import cmd_on
+
+    cmd_on(None)
+
+
+@app.command()
+def off() -> None:
+    """Disable pyafk."""
+    from pyafk.cli.commands import cmd_off
+
+    cmd_off(None)
+
+
+@app.command()
+def install() -> None:
+    """Install pyafk hooks (standalone)."""
+    from pyafk.cli.commands import cmd_install
+
+    cmd_install(None)
+
+
+@app.command()
+def uninstall() -> None:
+    """Uninstall pyafk hooks."""
+    from pyafk.cli.commands import cmd_uninstall
+
+    cmd_uninstall(None)
+
+
+@app.command()
+def reset(
+    force: bool = typer.Option(False, "--force", help="Skip confirmation"),
+) -> None:
+    """Reset database and rules."""
+    from pyafk.cli.commands import cmd_reset
+
+    class Args:
+        def __init__(self):
+            self.force = force
+
+    cmd_reset(Args())
+
+
+@app.command()
+def hook(hook_type: str) -> None:
+    """Internal hook handler (called by Claude Code)."""
+    from pyafk.cli.commands import cmd_hook
+
+    class Args:
+        def __init__(self):
+            self.hook_type = hook_type
+
+    cmd_hook(Args())
+
+
+# Rules subcommand group
+rules_app = typer.Typer(help="Manage auto-approve rules")
+app.add_typer(rules_app, name="rules")
+
+
+@rules_app.command("list")
+def rules_list() -> None:
+    """List all rules."""
+    from pyafk.cli.commands import cmd_rules_list
+
+    cmd_rules_list(None)
+
+
+@rules_app.command("add")
+def rules_add(
+    pattern: str,
+    action: str = typer.Option("approve", "--action", help="approve or deny"),
+) -> None:
+    """Add a new rule."""
+    from pyafk.cli.commands import cmd_rules_add
+
+    class Args:
+        def __init__(self):
+            self.pattern = pattern
+            self.action = action
+
+    cmd_rules_add(Args())
+
+
+@rules_app.command("remove")
+def rules_remove(rule_id: int) -> None:
+    """Remove a rule by ID."""
+    from pyafk.cli.commands import cmd_rules_remove
+
+    class Args:
+        def __init__(self):
+            self.rule_id = rule_id
+
+    cmd_rules_remove(Args())
+
+
+# Telegram subcommand group
+telegram_app = typer.Typer(help="Telegram configuration")
+app.add_typer(telegram_app, name="telegram")
+
+
+@telegram_app.command("test")
+def telegram_test() -> None:
+    """Send a test message."""
+    from pyafk.cli.commands import cmd_telegram_test
+
+    cmd_telegram_test(None)
+
+
+# Debug subcommand group
+debug_app = typer.Typer(help="Debug mode commands")
+app.add_typer(debug_app, name="debug")
+
+
+@debug_app.command("on")
+def debug_on() -> None:
+    """Enable debug logging."""
+    from pyafk.cli.commands import cmd_debug_on
+
+    cmd_debug_on(None)
+
+
+@debug_app.command("off")
+def debug_off() -> None:
+    """Disable debug logging."""
+    from pyafk.cli.commands import cmd_debug_off
+
+    cmd_debug_off(None)
+
+
+# Env subcommand group
+env_app = typer.Typer(help="Manage env var overrides")
+app.add_typer(env_app, name="env")
+
+
+@env_app.command("list")
+def env_list() -> None:
+    """List env var overrides."""
+    from pyafk.cli.commands import cmd_env_list
+
+    cmd_env_list(None)
+
+
+@env_app.command("set")
+def env_set(key: str, value: str) -> None:
+    """Set an env var override."""
+    from pyafk.cli.commands import cmd_env_set
+
+    class Args:
+        def __init__(self):
+            self.key = key
+            self.value = value
+
+    cmd_env_set(Args())
+
+
+@env_app.command("unset")
+def env_unset(key: str) -> None:
+    """Remove an env var override."""
+    from pyafk.cli.commands import cmd_env_unset
+
+    class Args:
+        def __init__(self):
+            self.key = key
+
+    cmd_env_unset(Args())
+
+
+# Captain-hook subcommand group
+captain_app = typer.Typer(help="Captain-hook integration")
+app.add_typer(captain_app, name="captain-hook")
+
+
+@captain_app.command("install")
+def captain_install() -> None:
+    """Install pyafk hooks for captain-hook."""
+    from pyafk.cli.commands import cmd_captain_hook_install
+
+    cmd_captain_hook_install(None)
+
+
+@captain_app.command("uninstall")
+def captain_uninstall() -> None:
+    """Remove pyafk hooks from captain-hook."""
+    from pyafk.cli.commands import cmd_captain_hook_uninstall
+
+    cmd_captain_hook_uninstall(None)
+
+
+def cli_main() -> None:
+    """Entry point for pyproject.toml scripts."""
+    app()
 
 
 if __name__ == "__main__":
-    main()
+    cli_main()
