@@ -27,6 +27,7 @@ async def handle_permission_request(
 
     from pyafk.core.manager import ApprovalManager
     from pyafk.fast_path import FastPathResult, check_fast_path
+    from pyafk.utils.config import Config
 
     fast_result = check_fast_path(pyafk_dir)
     if fast_result == FastPathResult.APPROVE:
@@ -55,7 +56,14 @@ async def handle_permission_request(
 
     project_path = hook_input.get("cwd")
 
-    manager = ApprovalManager(pyafk_dir=pyafk_dir)
+    # Load config for timeout settings
+    config = Config(pyafk_dir)
+    manager = ApprovalManager(
+        pyafk_dir=pyafk_dir,
+        timeout=config.timeout_seconds,
+        timeout_action=config.timeout_action,
+        config=config,
+    )
     try:
         result, denial_reason = await manager.request_approval(
             session_id=session_id,

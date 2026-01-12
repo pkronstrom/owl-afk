@@ -7,6 +7,7 @@ from typing import Optional
 from pyafk.core.manager import ApprovalManager
 from pyafk.fast_path import FastPathResult, check_fast_path
 from pyafk.hooks.response import make_hook_response
+from pyafk.utils.config import Config
 
 
 async def handle_pretool_use(
@@ -60,7 +61,14 @@ async def handle_pretool_use(
         or hook_input.get("workingDirectory")
     )
 
-    manager = ApprovalManager(pyafk_dir=pyafk_dir)
+    # Load config for timeout settings
+    config = Config(pyafk_dir)
+    manager = ApprovalManager(
+        pyafk_dir=pyafk_dir,
+        timeout=config.timeout_seconds,
+        timeout_action=config.timeout_action,
+        config=config,
+    )
     try:
         result, denial_reason = await manager.request_approval(
             session_id=session_id,
