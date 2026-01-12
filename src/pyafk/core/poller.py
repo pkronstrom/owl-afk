@@ -814,6 +814,9 @@ class Poller:
         prompt_msg_id: int,
     ) -> None:
         """Handle reply to stop comment prompt."""
+        # Clear the pending feedback entry
+        await self.storage.clear_pending_feedback(prompt_msg_id)
+
         # Resolve the stop with the comment
         await self.storage.resolve_stop(session_id, "comment", message)
         await self.notifier.send_message("📨 Message will be delivered to Claude")
