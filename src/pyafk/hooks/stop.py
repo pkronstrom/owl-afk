@@ -26,9 +26,10 @@ async def handle_stop(
         pyafk_dir = get_pyafk_dir()
 
     config = Config(pyafk_dir)
+    project_path = hook_input.get("cwd")
 
-    # Pass through when mode is off or hook is disabled
-    if config.get_mode() != "on" or not config.stop_hook:
+    # Pass through when mode is off, project not enabled, or hook is disabled
+    if not config.is_enabled_for_project(project_path) or not config.stop_hook:
         return {}
 
     # Check Telegram config
@@ -36,7 +37,6 @@ async def handle_stop(
         return {}
 
     session_id = hook_input.get("session_id", "unknown")
-    project_path = hook_input.get("cwd")
 
     storage = Storage(config.db_path)
     try:

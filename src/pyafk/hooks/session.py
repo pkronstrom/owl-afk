@@ -43,9 +43,10 @@ async def handle_session_end(
         pyafk_dir = get_pyafk_dir()
 
     config = Config(pyafk_dir)
+    cwd = hook_input.get("cwd", "")
 
-    # Only notify if pyafk is enabled and Telegram is configured
-    if config.get_mode() != "on":
+    # Only notify if pyafk is enabled for this project and Telegram is configured
+    if not config.is_enabled_for_project(cwd):
         return {}
 
     if not config.telegram_bot_token or not config.telegram_chat_id:
@@ -53,7 +54,6 @@ async def handle_session_end(
 
     reason = hook_input.get("reason", "unknown")
     session_id = hook_input.get("session_id", "unknown")
-    cwd = hook_input.get("cwd", "")
 
     # Format project name from cwd
     project_name = Path(cwd).name if cwd else "unknown"

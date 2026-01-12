@@ -56,8 +56,11 @@ async def handle_permission_request(
 
     project_path = hook_input.get("cwd")
 
-    # Load config for timeout settings
+    # Load config and check if enabled for this project
     config = Config(pyafk_dir)
+    if not config.is_enabled_for_project(project_path):
+        return {}  # Fall back to CLI approval
+
     manager = ApprovalManager(
         pyafk_dir=pyafk_dir,
         timeout=config.timeout_seconds,

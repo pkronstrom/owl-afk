@@ -28,9 +28,10 @@ async def handle_posttool_use(
         pyafk_dir = get_pyafk_dir()
 
     config = Config(pyafk_dir)
+    project_path = hook_input.get("cwd")
 
-    # Pass through when mode is off
-    if config.get_mode() != "on":
+    # Pass through when mode is off or project not enabled
+    if not config.is_enabled_for_project(project_path):
         return {}
 
     storage = Storage(config.db_path)

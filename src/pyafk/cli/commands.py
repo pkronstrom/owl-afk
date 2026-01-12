@@ -30,7 +30,14 @@ def cmd_status(args):
 
     # Mode with color
     mode_color = "green" if mode == "on" else "yellow"
-    console.print(f"[bold]Mode:[/bold] [{mode_color}]{mode}[/{mode_color}]")
+    if mode == "on" and config.enabled_projects:
+        console.print(
+            f"[bold]Mode:[/bold] [{mode_color}]{mode}[/{mode_color}] [dim](filtered)[/dim]"
+        )
+        for project in config.enabled_projects:
+            console.print(f"  [cyan]{project}[/cyan]")
+    else:
+        console.print(f"[bold]Mode:[/bold] [{mode_color}]{mode}[/{mode_color}]")
 
     # Debug
     debug_color = "green" if config.debug else "dim"
@@ -66,8 +73,10 @@ def cmd_status(args):
         console.print("[bold]Hooks:[/bold] [yellow]not installed[/yellow]")
 
 
-def cmd_on(args):
+def cmd_on(only: str | None):
     """Enable pyafk."""
+    from pathlib import Path
+
     from pyafk.cli.ui import console
 
     pyafk_dir = get_pyafk_dir()
@@ -79,40 +88,86 @@ def cmd_on(args):
         console.print("[dim]Install hooks with: pyafk install[/dim]")
         console.print()
 
-    config.set_mode("on")
-
-    mode_info = f"via {hooks_mode}" if hooks_installed else "no hooks"
-
-    if config.telegram_bot_token and config.telegram_chat_id:
-        if not config.daemon_enabled:
-            console.print(
-                f"[green]✓ pyafk enabled[/green] [dim]({mode_info}, inline polling)[/dim]"
-            )
+    if only is not None:
+        # --only flag used: add project to enabled list
+        if only == ".":
+            # No argument given, use current directory
+            project = str(Path.cwd())
         else:
-            from pyafk.daemon import is_daemon_running, start_daemon
+            project = only
+        config.add_enabled_project(project)
+        config.set_mode("on")
+        console.print(f"[green]✓ pyafk enabled[/green] for [cyan]{project}[/cyan]")
+        if len(config.enabled_projects) > 1:
+            console.print(
+                f"[dim]Enabled projects: {', '.join(config.enabled_projects)}[/dim]"
+            )
+    else:
+        # Global on: clear project filter
+        config.clear_enabled_projects()
+        config.set_mode("on")
 
-            if is_daemon_running(pyafk_dir):
+        mode_info = f"via {hooks_mode}" if hooks_installed else "no hooks"
+
+        if config.telegram_bot_token and config.telegram_chat_id:
+            if not config.daemon_enabled:
                 console.print(
-                    f"[green]✓ pyafk enabled[/green] [dim]({mode_info}, daemon already running)[/dim]"
-                )
-            elif start_daemon(pyafk_dir):
-                console.print(
-                    f"[green]✓ pyafk enabled[/green] [dim]({mode_info}, daemon started)[/dim]"
+                    f"[green]✓ pyafk enabled[/green] [dim]({mode_info}, inline polling)[/dim]"
                 )
             else:
-                console.print(
-                    f"[yellow]⚠ pyafk enabled[/yellow] [dim]({mode_info}, daemon failed to start)[/dim]"
-                )
-    else:
-        console.print(
-            f"[yellow]⚠ pyafk enabled[/yellow] [dim]({mode_info}, no Telegram configured)[/dim]"
-        )
+                from pyafk.daemon import is_daemon_running, start_daemon
+
+                if is_daemon_running(pyafk_dir):
+                    console.print(
+                        f"[green]✓ pyafk enabled[/green] [dim]({mode_info}, daemon already running)[/dim]"
+                    )
+                elif start_daemon(pyafk_dir):
+                    console.print(
+                        f"[green]✓ pyafk enabled[/green] [dim]({mode_info}, daemon started)[/dim]"
+                    )
+                else:
+                    console.print(
+                        f"[yellow]⚠ pyafk enabled[/yellow] [dim]({mode_info}, daemon failed to start)[/dim]"
+                    )
+        else:
+            console.print(
+                f"[yellow]⚠ pyafk enabled[/yellow] [dim]({mode_info}, no Telegram configured)[/dim]"
+            )
 
 
-def cmd_off(args):
+def cmd_off(only: str | None):
     """Disable pyafk."""
+    from pathlib import Path
+
+    from pyafk.cli.ui import console
+
     pyafk_dir = get_pyafk_dir()
     config = Config(pyafk_dir)
+
+    if only is not None:
+        # --only flag used: remove project from enabled list
+        if only == ".":
+            project = str(Path.cwd())
+        else:
+            project = only
+
+        if config.remove_enabled_project(project):
+            console.print(
+                f"[yellow]⏸ pyafk disabled[/yellow] for [cyan]{project}[/cyan]"
+            )
+            if config.enabled_projects:
+                console.print(
+                    f"[dim]Still enabled for: {', '.join(config.enabled_projects)}[/dim]"
+                )
+            else:
+                # List is empty, auto-off
+                config.set_mode("off")
+                console.print("[dim]No projects enabled, mode set to off[/dim]")
+        else:
+            console.print(f"[yellow]Project not in enabled list:[/yellow] {project}")
+        return
+
+    # Global off
     config.set_mode("off")
 
     async def cleanup():

@@ -62,6 +62,8 @@ class Config:
         self.env: dict[str, str] = {}
         # Editor for text input
         self.editor = os.environ.get("EDITOR", "vim")
+        # Project filter - empty list means global (all projects)
+        self.enabled_projects: list[str] = []
 
         if self._config_file.exists():
             try:
@@ -93,6 +95,7 @@ class Config:
                 self.polling_grace_period = data.get("polling_grace_period", 900)
                 self.env = data.get("env", {})
                 self.editor = data.get("editor", os.environ.get("EDITOR", "vim"))
+                self.enabled_projects = data.get("enabled_projects", [])
             except (json.JSONDecodeError, IOError):
                 pass
 
@@ -149,6 +152,7 @@ class Config:
             "polling_grace_period": self.polling_grace_period,
             "env": self.env,
             "editor": self.editor,
+            "enabled_projects": self.enabled_projects,
         }
         self._config_file.write_text(json.dumps(data, indent=2))
 
@@ -229,3 +233,50 @@ class Config:
         """Set current mode."""
         self.pyafk_dir.mkdir(parents=True, exist_ok=True)
         self.mode_file.write_text(mode)
+
+    def is_enabled_for_project(self, project_path: Optional[str]) -> bool:
+        """Check if pyafk is enabled for a given project path.
+
+        Returns True if:
+        - Mode is on AND no project filter (global mode)
+        - Mode is on AND project matches one of enabled_projects
+        """
+        if self.get_mode() != "on":
+            return False
+        if not self.enabled_projects:
+            return True  # Global mode - all projects enabled
+
+        if not project_path:
+            return False
+
+        for pattern in self.enabled_projects:
+            if pattern.startswith("/"):
+                # Full path - check if session starts with it
+                if project_path.startswith(pattern):
+                    return True
+            else:
+                # Name only - check if path contains /name/ or ends with /name
+                if f"/{pattern}/" in project_path or project_path.endswith(
+                    f"/{pattern}"
+                ):
+                    return True
+        return False
+
+    def add_enabled_project(self, project: str) -> None:
+        """Add a project to the enabled list."""
+        if project not in self.enabled_projects:
+            self.enabled_projects.append(project)
+            self.save()
+
+    def remove_enabled_project(self, project: str) -> bool:
+        """Remove a project from the enabled list. Returns True if removed."""
+        if project in self.enabled_projects:
+            self.enabled_projects.remove(project)
+            self.save()
+            return True
+        return False
+
+    def clear_enabled_projects(self) -> None:
+        """Clear all enabled projects (switch to global mode)."""
+        self.enabled_projects = []
+        self.save()
