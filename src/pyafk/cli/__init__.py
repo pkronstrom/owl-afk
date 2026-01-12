@@ -35,34 +35,28 @@ def status() -> None:
 
 @app.command()
 def on(
-    only: str = typer.Option(
+    project: str = typer.Argument(
         None,
-        "--only",
-        help="Enable only for this project (path or name). No arg = current dir.",
-        is_flag=False,
-        flag_value=".",
+        help="Enable for specific project only. Use '.' for cwd. Omit for global.",
     ),
 ) -> None:
     """Enable pyafk."""
     from pyafk.cli.commands import cmd_on
 
-    cmd_on(only)
+    cmd_on(project)
 
 
 @app.command()
 def off(
-    only: str = typer.Option(
+    project: str = typer.Argument(
         None,
-        "--only",
-        help="Disable only for this project (path or name). No arg = current dir.",
-        is_flag=False,
-        flag_value=".",
+        help="Disable for specific project. Use '.' for cwd. Omit for global off.",
     ),
 ) -> None:
     """Disable pyafk."""
     from pyafk.cli.commands import cmd_off
 
-    cmd_off(only)
+    cmd_off(project)
 
 
 @app.command()

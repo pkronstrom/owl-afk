@@ -73,7 +73,7 @@ def cmd_status(args):
         console.print("[bold]Hooks:[/bold] [yellow]not installed[/yellow]")
 
 
-def cmd_on(only: str | None):
+def cmd_on(project: str | None):
     """Enable pyafk."""
     from pathlib import Path
 
@@ -88,13 +88,11 @@ def cmd_on(only: str | None):
         console.print("[dim]Install hooks with: pyafk install[/dim]")
         console.print()
 
-    if only is not None:
-        # --only flag used: add project to enabled list
-        if only == ".":
-            # No argument given, use current directory
+    if project is not None:
+        # Project specified: add to enabled list
+        if project == ".":
+            # Use current directory
             project = str(Path.cwd())
-        else:
-            project = only
         config.add_enabled_project(project)
         config.set_mode("on")
         console.print(f"[green]✓ pyafk enabled[/green] for [cyan]{project}[/cyan]")
@@ -135,7 +133,7 @@ def cmd_on(only: str | None):
             )
 
 
-def cmd_off(only: str | None):
+def cmd_off(project: str | None):
     """Disable pyafk."""
     from pathlib import Path
 
@@ -144,12 +142,10 @@ def cmd_off(only: str | None):
     pyafk_dir = get_pyafk_dir()
     config = Config(pyafk_dir)
 
-    if only is not None:
-        # --only flag used: remove project from enabled list
-        if only == ".":
+    if project is not None:
+        # Project specified: remove from enabled list
+        if project == ".":
             project = str(Path.cwd())
-        else:
-            project = only
 
         if config.remove_enabled_project(project):
             console.print(

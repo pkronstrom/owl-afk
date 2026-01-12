@@ -215,10 +215,19 @@ def do_captain_hook_install():
         wrapper_name = f"pyafk-{event}.sh"
         wrapper_path = event_dir / wrapper_name
 
+        # Add timeout for hooks that wait for user approval
+        needs_timeout = hook_type in (
+            "PreToolUse",
+            "PermissionRequest",
+            "SubagentStop",
+            "Stop",
+        )
+        timeout_line = "# Timeout: 3600\n" if needs_timeout else ""
+
         wrapper_content = f"""#!/usr/bin/env bash
 # Description: {description}
 # Deps: pyafk
-exec pyafk hook {hook_type}
+{timeout_line}exec pyafk hook {hook_type}
 """
         wrapper_path.write_text(wrapper_content)
         wrapper_path.chmod(0o755)
