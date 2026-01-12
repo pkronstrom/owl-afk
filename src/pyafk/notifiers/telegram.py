@@ -715,6 +715,7 @@ class TelegramNotifier(Notifier):
         commands: list[str],
         project_path: Optional[str] = None,
         description: Optional[str] = None,
+        approved_indices: Optional[list[int]] = None,
     ) -> Optional[int]:
         """Send chain approval request with stacked command list.
 
@@ -724,6 +725,7 @@ class TelegramNotifier(Notifier):
             commands: List of commands in the chain
             project_path: Optional project path for display
             description: Optional description of the chain
+            approved_indices: Indices of commands pre-approved by rules
 
         Returns:
             Message ID if successful
@@ -734,6 +736,9 @@ class TelegramNotifier(Notifier):
         # Validate commands list
         if not commands:
             raise ValueError("Cannot create chain approval with empty commands")
+        if approved_indices is None:
+            approved_indices = []
+
         # Format project identifier
         project_id = format_project_id(project_path, session_id)
 
@@ -751,14 +756,19 @@ class TelegramNotifier(Notifier):
         # If too many commands, truncate the middle
         MAX_MESSAGE_LENGTH = 4000  # Leave buffer for formatting
 
+        # Find first unapproved command index
+        first_unapproved = 0
+        while first_unapproved < len(commands) and first_unapproved in approved_indices:
+            first_unapproved += 1
+
         # Build command list first to check length
         cmd_lines = []
         for idx, cmd in enumerate(commands):
-            if idx == 0:
-                # First command is current
+            if idx in approved_indices:
+                marker = "✓"
+            elif idx == first_unapproved:
                 marker = "→"
             else:
-                # Rest are pending
                 marker = " "
 
             # Truncate long commands
@@ -773,7 +783,12 @@ class TelegramNotifier(Notifier):
                 truncated_cmd_lines = []
                 for idx in range(min(20, len(commands))):
                     cmd = commands[idx]
-                    marker = "→" if idx == 0 else " "
+                    if idx in approved_indices:
+                        marker = "✓"
+                    elif idx == first_unapproved:
+                        marker = "→"
+                    else:
+                        marker = " "
                     cmd_display = cmd if len(cmd) <= 60 else cmd[:60] + "..."
                     truncated_cmd_lines.append(
                         f"{marker} <code>{escape_html(cmd_display)}</code>"
@@ -785,7 +800,12 @@ class TelegramNotifier(Notifier):
 
                 for idx in range(len(commands) - 10, len(commands)):
                     cmd = commands[idx]
-                    marker = " "
+                    if idx in approved_indices:
+                        marker = "✓"
+                    elif idx == first_unapproved:
+                        marker = "→"
+                    else:
+                        marker = " "
                     cmd_display = cmd if len(cmd) <= 60 else cmd[:60] + "..."
                     truncated_cmd_lines.append(
                         f"{marker} <code>{escape_html(cmd_display)}</code>"
@@ -796,8 +816,8 @@ class TelegramNotifier(Notifier):
         lines.extend(cmd_lines)
         message = "\n".join(lines)
 
-        # Keyboard for first command - Approve Chain first (full width), then step approve
-        keyboard = self._build_chain_keyboard(request_id, current_idx=0)
+        # Keyboard for first unapproved command
+        keyboard = self._build_chain_keyboard(request_id, current_idx=first_unapproved)
 
         result = await self._api_request(
             "sendMessage",

@@ -143,6 +143,23 @@ class ApprovalManager:
             chain_commands=chain_commands,
         )
 
+    async def _get_chain_approved_indices(self, commands: list[str]) -> list[int]:
+        """Check which chain commands are pre-approved by existing rules.
+
+        Returns list of indices for commands that match approval rules.
+        """
+        if not self.rules:
+            return []
+
+        approved_indices: list[int] = []
+        for idx, cmd in enumerate(commands):
+            cmd_input = json.dumps({"command": cmd})
+            rule_result = await self.rules.check("Bash", cmd_input)
+            if rule_result == "approve":
+                approved_indices.append(idx)
+
+        return approved_indices
+
     async def _send_notification(
         self,
         request_id: str,
@@ -164,13 +181,20 @@ class ApprovalManager:
             Message ID from notifier, or None
         """
         if is_chain and chain_commands and isinstance(self.notifier, TelegramNotifier):
-            debug_chain("Using chain approval UI", command_count=len(chain_commands))
+            # Pre-check which commands are already approved by rules
+            approved_indices = await self._get_chain_approved_indices(chain_commands)
+            debug_chain(
+                "Using chain approval UI",
+                command_count=len(chain_commands),
+                pre_approved=len(approved_indices),
+            )
             return await self.notifier.send_chain_approval_request(
                 request_id=request_id,
                 session_id=session_id,
                 commands=chain_commands,
                 project_path=project_path,
                 description=description,
+                approved_indices=approved_indices,
             )
         else:
             debug_chain(
