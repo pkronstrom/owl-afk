@@ -46,7 +46,8 @@ async def check_request_pending(
 
     This helper implements the idempotency check pattern used across handlers.
     It checks if a request has already been resolved and handles the case
-    gracefully by answering the callback and returning False.
+    gracefully by answering the callback, cleaning up stale keyboard,
+    and returning False.
 
     Args:
         request: The approval request to check
@@ -60,12 +61,27 @@ async def check_request_pending(
     """
     if request.status != "pending":
         debug_fn(
-            "Request already resolved, skipping",
+            "Request already resolved, cleaning up stale keyboard",
             request_id=request_id,
             status=request.status,
         )
-        # Still answer the callback to dismiss Telegram loading state
-        await ctx.notifier.answer_callback(ctx.callback_id, "Already processed")
+        # Clean up stale keyboard by updating message to show resolved state
+        if ctx.message_id:
+            from pyafk.core.handlers.utils import format_resolved_message
+            from pyafk.utils.formatting import format_project_id, format_tool_summary
+
+            session = await ctx.storage.get_session(request.session_id)
+            project_id = format_project_id(
+                session.project_path if session else None, request.session_id
+            )
+            tool_summary = format_tool_summary(request.tool_name, request.tool_input)
+            message = format_resolved_message(
+                approved=(request.status == "approved"),
+                project_id=project_id,
+                tool_name=request.tool_name,
+                tool_summary=tool_summary,
+            )
+            await ctx.notifier.edit_message(ctx.message_id, message)
         return False
     return True
 

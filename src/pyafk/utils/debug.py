@@ -2,7 +2,6 @@
 
 import sys
 from datetime import datetime
-from pathlib import Path
 
 from pyafk.utils.config import Config, get_pyafk_dir
 
@@ -53,7 +52,10 @@ def debug(category: str, message: str, **kwargs):
 
     # Log to file (always) and stderr
     _log_to_file(line)
-    print(line, file=sys.stderr)
+    try:
+        print(line, file=sys.stderr)
+    except BrokenPipeError:
+        pass  # Parent process closed stderr, continue silently
 
 
 def debug_chain(message: str, **kwargs):

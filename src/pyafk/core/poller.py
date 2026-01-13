@@ -115,7 +115,10 @@ class Poller:
 
         with open(self._debug_log, "a") as f:
             f.write(f"{time_module.strftime('%H:%M:%S')} [poller] {msg}\n")
-        print(f"[pyafk] {msg}", file=sys.stderr, flush=True)
+        try:
+            print(f"[pyafk] {msg}", file=sys.stderr, flush=True)
+        except BrokenPipeError:
+            pass
 
     def _load_offset(self) -> Optional[int]:
         """Load persisted Telegram update offset."""

@@ -158,15 +158,25 @@ class ChainApproveHandler:
                     await ctx.notifier.edit_message(ctx.message_id, "⚠️ Request expired")
                 return
 
-            # Skip if already resolved (handles duplicate callbacks from multiple pollers)
+            # Skip if already resolved - clean up stale keyboard
             if request.status != "pending":
                 debug_chain(
-                    "Request already resolved, skipping",
+                    "Request already resolved, cleaning up",
                     request_id=request_id,
                     status=request.status,
                 )
-                # Still answer the callback to dismiss Telegram loading state
-                await ctx.notifier.answer_callback(ctx.callback_id, "Already processed")
+                if ctx.message_id:
+                    session = await ctx.storage.get_session(request.session_id)
+                    project_id = format_project_id(
+                        session.project_path if session else None, request.session_id
+                    )
+                    if request.status == "approved":
+                        msg = format_chain_approved_message(
+                            request.tool_input, project_id
+                        )
+                    else:
+                        msg = f"<i>{escape_html(project_id)}</i>\n✗ Chain {request.status}"
+                    await ctx.notifier.edit_message(ctx.message_id, msg)
                 return
 
             # Get or initialize chain state
@@ -390,15 +400,25 @@ class ChainApproveAllHandler:
                     await ctx.notifier.edit_message(ctx.message_id, "⚠️ Request expired")
                 return
 
-            # Skip if already resolved (handles duplicate callbacks from multiple pollers)
+            # Skip if already resolved - clean up stale keyboard
             if request.status != "pending":
                 debug_chain(
-                    "Request already resolved, skipping",
+                    "Request already resolved, cleaning up",
                     request_id=request_id,
                     status=request.status,
                 )
-                # Still answer the callback to dismiss Telegram loading state
-                await ctx.notifier.answer_callback(ctx.callback_id, "Already processed")
+                if ctx.message_id:
+                    session = await ctx.storage.get_session(request.session_id)
+                    project_id = format_project_id(
+                        session.project_path if session else None, request.session_id
+                    )
+                    if request.status == "approved":
+                        msg = format_chain_approved_message(
+                            request.tool_input, project_id
+                        )
+                    else:
+                        msg = f"<i>{escape_html(project_id)}</i>\n✗ Chain {request.status}"
+                    await ctx.notifier.edit_message(ctx.message_id, msg)
                 return
 
             chain_mgr = ChainStateManager(ctx.storage)
@@ -469,15 +489,25 @@ class ChainApproveEntireHandler:
                     await ctx.notifier.edit_message(ctx.message_id, "⚠️ Request expired")
                 return
 
-            # Skip if already resolved (handles duplicate callbacks from multiple pollers)
+            # Skip if already resolved - clean up stale keyboard
             if request.status != "pending":
                 debug_chain(
-                    "Request already resolved, skipping",
+                    "Request already resolved, cleaning up",
                     request_id=request_id,
                     status=request.status,
                 )
-                # Still answer the callback to dismiss Telegram loading state
-                await ctx.notifier.answer_callback(ctx.callback_id, "Already processed")
+                if ctx.message_id:
+                    session = await ctx.storage.get_session(request.session_id)
+                    project_id = format_project_id(
+                        session.project_path if session else None, request.session_id
+                    )
+                    if request.status == "approved":
+                        msg = format_chain_approved_message(
+                            request.tool_input, project_id
+                        )
+                    else:
+                        msg = f"<i>{escape_html(project_id)}</i>\n✗ Chain {request.status}"
+                    await ctx.notifier.edit_message(ctx.message_id, msg)
                 return
 
             debug_chain("Getting chain state", request_id=request_id)
