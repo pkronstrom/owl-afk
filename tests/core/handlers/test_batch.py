@@ -3,8 +3,8 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from pyafk.core.handlers.base import CallbackContext
-from pyafk.core.handlers.batch import ApproveAllHandler
+from owl.core.handlers.base import CallbackContext
+from owl.core.handlers.batch import ApproveAllHandler
 
 
 @pytest.fixture
@@ -74,7 +74,7 @@ async def test_approve_all_approves_matching_requests(
         notifier=mock_notifier,
     )
 
-    with patch("pyafk.core.rules.RulesEngine") as mock_engine_class:
+    with patch("owl.core.rules.RulesEngine") as mock_engine_class:
         mock_engine = AsyncMock()
         mock_engine_class.return_value = mock_engine
 

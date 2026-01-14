@@ -7,10 +7,10 @@ import json
 import pytest
 from unittest.mock import AsyncMock, patch
 
-from pyafk.core.command_parser import CommandParser, CommandType
-from pyafk.core.manager import ApprovalManager
-from pyafk.core.poller import Poller
-from pyafk.notifiers.telegram import TelegramNotifier
+from owl.core.command_parser import CommandParser, CommandType
+from owl.core.manager import ApprovalManager
+from owl.core.poller import Poller
+from owl.notifiers.telegram import TelegramNotifier
 
 
 class TestSSHWithNestedChains:
@@ -257,14 +257,14 @@ class TestRuleMatchingIntegration:
     """Test that patterns generated match commands correctly."""
 
     @pytest.mark.asyncio
-    async def test_partial_pattern_matches(self, mock_pyafk_dir):
+    async def test_partial_pattern_matches(self, mock_owl_dir):
         """Test that git branch * matches git branch -a --no-merged."""
-        manager = ApprovalManager(pyafk_dir=mock_pyafk_dir, timeout=0.5)
+        manager = ApprovalManager(owl_dir=mock_owl_dir, timeout=0.5)
         await manager.initialize()
 
         notifier = TelegramNotifier(bot_token="test-token", chat_id="12345")
         manager.notifier = notifier
-        manager.poller = Poller(manager.storage, notifier, mock_pyafk_dir)
+        manager.poller = Poller(manager.storage, notifier, mock_owl_dir)
 
         # Add rule for partial pattern
         await manager.rules.add_rule("Bash(git branch *)", "approve", priority=0)
@@ -290,14 +290,14 @@ class TestRuleMatchingIntegration:
         await manager.close()
 
     @pytest.mark.asyncio
-    async def test_ssh_wrapper_pattern_matches(self, mock_pyafk_dir):
+    async def test_ssh_wrapper_pattern_matches(self, mock_owl_dir):
         """Test that ssh aarni git * matches ssh aarni git log."""
-        manager = ApprovalManager(pyafk_dir=mock_pyafk_dir, timeout=0.5)
+        manager = ApprovalManager(owl_dir=mock_owl_dir, timeout=0.5)
         await manager.initialize()
 
         notifier = TelegramNotifier(bot_token="test-token", chat_id="12345")
         manager.notifier = notifier
-        manager.poller = Poller(manager.storage, notifier, mock_pyafk_dir)
+        manager.poller = Poller(manager.storage, notifier, mock_owl_dir)
 
         # Add rule for ssh wrapper pattern
         await manager.rules.add_rule("Bash(ssh aarni git *)", "approve", priority=0)
@@ -319,14 +319,14 @@ class TestRuleMatchingIntegration:
         await manager.close()
 
     @pytest.mark.asyncio
-    async def test_chain_with_mixed_rule_coverage(self, mock_pyafk_dir):
+    async def test_chain_with_mixed_rule_coverage(self, mock_owl_dir):
         """Test chain where some commands have rules and some don't."""
-        manager = ApprovalManager(pyafk_dir=mock_pyafk_dir, timeout=2.0)
+        manager = ApprovalManager(owl_dir=mock_owl_dir, timeout=2.0)
         await manager.initialize()
 
         notifier = TelegramNotifier(bot_token="test-token", chat_id="12345")
         manager.notifier = notifier
-        manager.poller = Poller(manager.storage, notifier, mock_pyafk_dir)
+        manager.poller = Poller(manager.storage, notifier, mock_owl_dir)
 
         # Add rules for ls and pwd, but NOT rm
         await manager.rules.add_rule("Bash(ls *)", "approve", priority=0)

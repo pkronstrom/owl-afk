@@ -1,4 +1,4 @@
-# pyafk
+# owl
 
 Remote approval system for Claude Code via Telegram.
 
@@ -9,7 +9,7 @@ Python 3.10+, aiosqlite, httpx, typer, rich
 ## Structure
 
 ```
-src/pyafk/
+src/owl/
 ├── cli/                      # Typer CLI: on/off/status/rules/debug/install
 ├── core/
 │   ├── handlers/             # Telegram callback handlers (approval, chain, rules, batch)
@@ -24,7 +24,7 @@ src/pyafk/
 ├── utils/
 │   ├── config.py             # Bot token, chat ID from env/config
 │   ├── pattern_generator.py  # Generate rule patterns from tool calls
-│   └── debug.py              # Debug logging to ~/.config/pyafk/debug.log
+│   └── debug.py              # Debug logging to ~/.config/owl/debug.log
 └── data/
     └── safe_defaults.txt     # Default safe patterns for quick setup
 ```
@@ -33,10 +33,10 @@ src/pyafk/
 
 ```bash
 uv run pytest              # Run tests (180 tests)
-uv run mypy src/pyafk      # Type check
-pyafk on/off/status        # Toggle approval mode
-pyafk rules list/add/remove # Manage auto-approve patterns
-pyafk debug on             # Enable debug logging
+uv run mypy src/owl      # Type check
+owl on/off/status        # Toggle approval mode
+owl rules list/add/remove # Manage auto-approve patterns
+owl debug on             # Enable debug logging
 ```
 
 ## Key Patterns
@@ -56,7 +56,7 @@ Leader election via `poll.lock` - one hook polls Telegram, others check DB.
 See `poller.py:poll_as_leader()` and `manager.py:_wait_for_response()`.
 
 ### Request Deduplication
-Multiple hooks may call pyafk. `storage.py:find_duplicate_pending_request()`
+Multiple hooks may call owl. `storage.py:find_duplicate_pending_request()`
 prevents duplicate Telegram messages.
 
 ### Chain Pre-approval

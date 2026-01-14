@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "pyafk"
+name = "owl-afk"
 version = "0.2.0"
 description = "Remote approval system for Claude Code via Telegram"
 readme = "README.md"
@@ -28,11 +28,11 @@ dev = [
 ]
 
 [project.scripts]
-pyafk = "pyafk.cli:cli_main"
-afk = "pyafk.cli:cli_main"
+owl = "owl.cli:cli_main"
+afk = "owl.cli:cli_main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/pyafk"]
+packages = ["src/owl"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -51,20 +51,20 @@ no_implicit_optional = true
 warn_redundant_casts = true
 warn_unused_configs = true
 show_error_codes = true
-files = ["src/pyafk"]
+files = ["src/owl"]
 
 # Utility modules - relaxed checking (to be cleaned up later)
 [[tool.mypy.overrides]]
 module = [
-    "pyafk.utils.debug",
-    "pyafk.utils.config",
-    "pyafk.fast_path",
-    "pyafk.hooks.*",
-    "pyafk.notifiers.base",
-    "pyafk.notifiers.console",
-    "pyafk.core.command_parser",
-    "pyafk.core.manager",
-    "pyafk.cli",
-    "pyafk.cli.*",
+    "owl.utils.debug",
+    "owl.utils.config",
+    "owl.fast_path",
+    "owl.hooks.*",
+    "owl.notifiers.base",
+    "owl.notifiers.console",
+    "owl.core.command_parser",
+    "owl.core.manager",
+    "owl.cli",
+    "owl.cli.*",
 ]
 ignore_errors = true

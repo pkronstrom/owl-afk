@@ -1,6 +1,6 @@
 """Tests for hook response helpers."""
 
-from pyafk.hooks.response import make_hook_response
+from owl.hooks.response import make_hook_response
 
 
 class TestMakeHookResponse:

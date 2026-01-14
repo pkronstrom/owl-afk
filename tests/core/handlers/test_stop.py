@@ -3,8 +3,8 @@
 import pytest
 from unittest.mock import AsyncMock
 
-from pyafk.core.handlers.base import CallbackContext
-from pyafk.core.handlers.stop import StopOkHandler, StopCommentHandler
+from owl.core.handlers.base import CallbackContext
+from owl.core.handlers.stop import StopOkHandler, StopCommentHandler
 
 
 @pytest.fixture

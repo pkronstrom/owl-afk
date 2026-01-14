@@ -1,7 +1,7 @@
 """Tests for handler base classes."""
 
 
-from pyafk.core.handlers.base import CallbackContext
+from owl.core.handlers.base import CallbackContext
 
 
 def test_callback_context_has_required_fields():

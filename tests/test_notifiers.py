@@ -2,8 +2,8 @@
 
 import pytest
 
-from pyafk.notifiers.base import Notifier
-from pyafk.notifiers.console import ConsoleNotifier
+from owl.notifiers.base import Notifier
+from owl.notifiers.console import ConsoleNotifier
 
 
 def test_console_notifier_is_notifier():

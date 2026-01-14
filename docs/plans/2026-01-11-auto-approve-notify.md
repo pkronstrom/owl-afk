@@ -19,7 +19,7 @@ Add a config toggle that sends informational Telegram messages when auto-approve
 
 ### 1. Config Toggle
 
-**File:** `src/pyafk/utils/config.py`
+**File:** `src/owl/utils/config.py`
 
 Add to `TOGGLES` dict:
 ```python
@@ -36,11 +36,11 @@ self.auto_approve_notify = False
 
 Load/save in `_load()` and `save()` methods.
 
-Env override: `PYAFK_AUTO_APPROVE_NOTIFY=1`
+Env override: `OWL_AUTO_APPROVE_NOTIFY=1`
 
 ### 2. Notifier Base Class Extension
 
-**File:** `src/pyafk/notifiers/base.py`
+**File:** `src/owl/notifiers/base.py`
 
 Add method with no-op default:
 ```python
@@ -55,7 +55,7 @@ async def send_info_message(self, text: str) -> None:
 
 ### 3. TelegramNotifier Override
 
-**File:** `src/pyafk/notifiers/telegram.py`
+**File:** `src/owl/notifiers/telegram.py`
 
 Override to use existing `send_message()`:
 ```python
@@ -66,7 +66,7 @@ async def send_info_message(self, text: str) -> None:
 
 ### 4. Formatting Helper
 
-**File:** `src/pyafk/utils/formatting.py`
+**File:** `src/owl/utils/formatting.py`
 
 Add function:
 ```python
@@ -112,7 +112,7 @@ def format_auto_approval_message(
 
 ### 5. Manager Integration
 
-**File:** `src/pyafk/core/manager.py`
+**File:** `src/owl/core/manager.py`
 
 In `request_approval()`, after rule check returns approve (around line 217):
 
@@ -120,7 +120,7 @@ In `request_approval()`, after rule check returns approve (around line 217):
 if check_result.rule_result:
     # Send auto-approval notification if enabled
     if check_result.rule_result == "approve" and self.config.auto_approve_notify:
-        from pyafk.utils.formatting import format_auto_approval_message
+        from owl.utils.formatting import format_auto_approval_message
 
         msg = format_auto_approval_message(
             tool_name=tool_name,
@@ -153,11 +153,11 @@ if check_result.rule_result:
 
 | File | Changes |
 |------|---------|
-| `src/pyafk/utils/config.py` | Add `auto_approve_notify` toggle |
-| `src/pyafk/notifiers/base.py` | Add `send_info_message()` no-op |
-| `src/pyafk/notifiers/telegram.py` | Override `send_info_message()` |
-| `src/pyafk/utils/formatting.py` | Add `format_auto_approval_message()` |
-| `src/pyafk/core/manager.py` | Call notification after auto-approve |
+| `src/owl/utils/config.py` | Add `auto_approve_notify` toggle |
+| `src/owl/notifiers/base.py` | Add `send_info_message()` no-op |
+| `src/owl/notifiers/telegram.py` | Override `send_info_message()` |
+| `src/owl/utils/formatting.py` | Add `format_auto_approval_message()` |
+| `src/owl/core/manager.py` | Call notification after auto-approve |
 | `tests/test_config.py` | Test new toggle |
 | `tests/test_manager.py` | Test notification integration |
 

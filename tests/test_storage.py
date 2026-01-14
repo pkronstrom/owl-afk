@@ -2,13 +2,13 @@
 
 import pytest
 
-from pyafk.core.storage import Storage, Request, Session, AuditEntry
+from owl.core.storage import Storage, Request, Session, AuditEntry
 
 
 @pytest.mark.asyncio
-async def test_storage_creates_tables(mock_pyafk_dir):
+async def test_storage_creates_tables(mock_owl_dir):
     """Storage should create tables on init."""
-    db_path = mock_pyafk_dir / "test.db"
+    db_path = mock_owl_dir / "test.db"
 
     async with Storage(db_path) as storage:
         tables = await storage.list_tables()
@@ -19,9 +19,9 @@ async def test_storage_creates_tables(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_storage_create_request(mock_pyafk_dir):
+async def test_storage_create_request(mock_owl_dir):
     """Storage should create and retrieve requests."""
-    db_path = mock_pyafk_dir / "test.db"
+    db_path = mock_owl_dir / "test.db"
 
     async with Storage(db_path) as storage:
         request_id = await storage.create_request(
@@ -39,9 +39,9 @@ async def test_storage_create_request(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_storage_resolve_request(mock_pyafk_dir):
+async def test_storage_resolve_request(mock_owl_dir):
     """Storage should update request status."""
-    db_path = mock_pyafk_dir / "test.db"
+    db_path = mock_owl_dir / "test.db"
 
     async with Storage(db_path) as storage:
         request_id = await storage.create_request(
@@ -58,9 +58,9 @@ async def test_storage_resolve_request(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_storage_pending_requests(mock_pyafk_dir):
+async def test_storage_pending_requests(mock_owl_dir):
     """Storage should list pending requests."""
-    db_path = mock_pyafk_dir / "test.db"
+    db_path = mock_owl_dir / "test.db"
 
     async with Storage(db_path) as storage:
         await storage.create_request(session_id="s1", tool_name="Bash", tool_input="{}")
@@ -71,9 +71,9 @@ async def test_storage_pending_requests(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_storage_sessions(mock_pyafk_dir):
+async def test_storage_sessions(mock_owl_dir):
     """Storage should track sessions."""
-    db_path = mock_pyafk_dir / "test.db"
+    db_path = mock_owl_dir / "test.db"
 
     async with Storage(db_path) as storage:
         await storage.upsert_session(
@@ -87,9 +87,9 @@ async def test_storage_sessions(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_storage_audit_log(mock_pyafk_dir):
+async def test_storage_audit_log(mock_owl_dir):
     """Storage should append to audit log."""
-    db_path = mock_pyafk_dir / "test.db"
+    db_path = mock_owl_dir / "test.db"
 
     async with Storage(db_path) as storage:
         await storage.log_audit(

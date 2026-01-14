@@ -1,0 +1,745 @@
+"""SQLite storage layer with WAL mode."""
+
+import json
+import time
+import uuid
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Optional
+
+import aiosqlite
+
+
+@dataclass
+class Request:
+    """Approval request."""
+
+    id: str
+    session_id: str
+    tool_name: str
+    tool_input: Optional[str]
+    context: Optional[str]
+    description: Optional[str]
+    status: str
+    telegram_msg_id: Optional[int]
+    created_at: float
+    resolved_at: Optional[float]
+    resolved_by: Optional[str]
+    denial_reason: Optional[str] = None
+
+
+@dataclass
+class Session:
+    """Claude Code session."""
+
+    session_id: str
+    project_path: Optional[str]
+    started_at: float
+    last_seen_at: float
+    status: str
+
+
+@dataclass
+class AuditEntry:
+    """Audit log entry."""
+
+    id: int
+    timestamp: float
+    event_type: str
+    session_id: Optional[str]
+    details: dict[str, Any]
+
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS requests (
+    id              TEXT PRIMARY KEY,
+    session_id      TEXT NOT NULL,
+    tool_name       TEXT NOT NULL,
+    tool_input      TEXT,
+    context         TEXT,
+    description     TEXT,
+    status          TEXT DEFAULT 'pending',
+    telegram_msg_id INTEGER,
+    created_at      REAL,
+    resolved_at     REAL,
+    resolved_by     TEXT,
+    denial_reason   TEXT
+);
+
+CREATE TABLE IF NOT EXISTS pending_feedback (
+    prompt_msg_id   INTEGER PRIMARY KEY,
+    request_id      TEXT NOT NULL,
+    created_at      REAL
+);
+
+CREATE TABLE IF NOT EXISTS pending_subagent (
+    subagent_id     TEXT PRIMARY KEY,
+    telegram_msg_id INTEGER,
+    status          TEXT DEFAULT 'pending',
+    response        TEXT,
+    created_at      REAL
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+    session_id      TEXT PRIMARY KEY,
+    project_path    TEXT,
+    started_at      REAL,
+    last_seen_at    REAL,
+    status          TEXT DEFAULT 'active'
+);
+
+CREATE TABLE IF NOT EXISTS auto_approve_rules (
+    id              INTEGER PRIMARY KEY,
+    pattern         TEXT NOT NULL,
+    action          TEXT DEFAULT 'approve',
+    priority        INTEGER DEFAULT 0,
+    created_via     TEXT,
+    created_at      REAL
+);
+
+CREATE TABLE IF NOT EXISTS audit_log (
+    id              INTEGER PRIMARY KEY,
+    timestamp       REAL,
+    event_type      TEXT,
+    session_id      TEXT,
+    details         TEXT
+);
+
+CREATE TABLE IF NOT EXISTS pending_messages (
+    id              INTEGER PRIMARY KEY,
+    session_id      TEXT NOT NULL,
+    message         TEXT NOT NULL,
+    created_at      REAL,
+    delivered_at    REAL
+);
+
+CREATE TABLE IF NOT EXISTS pending_stop (
+    session_id      TEXT PRIMARY KEY,
+    telegram_msg_id INTEGER,
+    status          TEXT DEFAULT 'pending',
+    response        TEXT,
+    created_at      REAL
+);
+
+CREATE TABLE IF NOT EXISTS subagent_messages (
+    msg_id          INTEGER PRIMARY KEY,
+    compact_text    TEXT NOT NULL,
+    created_at      REAL NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_requests_status ON requests(status);
+CREATE INDEX IF NOT EXISTS idx_requests_session ON requests(session_id);
+CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp);
+CREATE INDEX IF NOT EXISTS idx_pending_messages_session ON pending_messages(session_id);
+CREATE INDEX IF NOT EXISTS idx_subagent_messages_created ON subagent_messages(created_at);
+"""
+
+
+class Storage:
+    """Async SQLite storage with WAL mode."""
+
+    def __init__(self, db_path: Path) -> None:
+        self.db_path = db_path
+        self._conn: Optional[aiosqlite.Connection] = None
+
+    @property
+    def conn(self) -> aiosqlite.Connection:
+        """Get connection, raising if not connected."""
+        if self._conn is None:
+            raise RuntimeError("Storage not connected. Call connect() first.")
+        return self._conn
+
+    async def __aenter__(self) -> "Storage":
+        await self.connect()
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        await self.close()
+
+    async def connect(self) -> None:
+        """Open database connection."""
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._conn = await aiosqlite.connect(self.db_path)
+        self._conn.row_factory = aiosqlite.Row
+
+        # Enable WAL mode for concurrent access
+        await self.conn.execute("PRAGMA journal_mode=WAL")
+        await self.conn.execute("PRAGMA busy_timeout=5000")
+        await self.conn.execute("PRAGMA synchronous=NORMAL")
+        await self.conn.execute("PRAGMA temp_store=memory")
+
+        # Create tables
+        await self.conn.executescript(SCHEMA)
+        await self.conn.commit()
+
+    async def close(self) -> None:
+        """Close database connection."""
+        if self._conn:
+            try:
+                await self._conn.close()
+            finally:
+                self._conn = None
+
+    async def list_tables(self) -> list[str]:
+        """List all tables (for testing)."""
+        cursor = await self.conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        )
+        rows = await cursor.fetchall()
+        return [row["name"] for row in rows]
+
+    # Requests
+
+    async def create_request(
+        self,
+        session_id: str,
+        tool_name: str,
+        tool_input: Optional[str] = None,
+        context: Optional[str] = None,
+        description: Optional[str] = None,
+    ) -> str:
+        """Create a new approval request."""
+        request_id = str(uuid.uuid4())
+        now = time.time()
+
+        await self.conn.execute(
+            """
+            INSERT INTO requests (id, session_id, tool_name, tool_input, context, description, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (request_id, session_id, tool_name, tool_input, context, description, now),
+        )
+        await self.conn.commit()
+        return request_id
+
+    async def get_request(self, request_id: str) -> Optional[Request]:
+        """Get a request by ID."""
+        cursor = await self.conn.execute(
+            "SELECT * FROM requests WHERE id = ?", (request_id,)
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        return Request(**dict(row))
+
+    async def find_duplicate_pending_request(
+        self,
+        session_id: str,
+        tool_name: str,
+        tool_input: Optional[str] = None,
+        max_age_seconds: float = 60.0,
+    ) -> Optional[Request]:
+        """Find an existing pending request with the same tool call.
+
+        Used to deduplicate when multiple hooks call owl for the same request.
+        Only matches requests created within max_age_seconds.
+        """
+        min_created_at = time.time() - max_age_seconds
+        cursor = await self.conn.execute(
+            """
+            SELECT * FROM requests
+            WHERE session_id = ?
+              AND tool_name = ?
+              AND tool_input IS ?
+              AND status = 'pending'
+              AND created_at >= ?
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (session_id, tool_name, tool_input, min_created_at),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        return Request(**dict(row))
+
+    async def get_request_by_telegram_msg(
+        self, telegram_msg_id: int
+    ) -> Optional[Request]:
+        """Get a request by Telegram message ID."""
+        cursor = await self.conn.execute(
+            "SELECT * FROM requests WHERE telegram_msg_id = ? ORDER BY created_at DESC LIMIT 1",
+            (telegram_msg_id,),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        return Request(**dict(row))
+
+    async def resolve_request(
+        self,
+        request_id: str,
+        status: str,
+        resolved_by: str,
+        denial_reason: Optional[str] = None,
+    ) -> None:
+        """Update request status."""
+        now = time.time()
+        await self.conn.execute(
+            """
+            UPDATE requests SET status = ?, resolved_at = ?, resolved_by = ?, denial_reason = ?
+            WHERE id = ?
+            """,
+            (status, now, resolved_by, denial_reason, request_id),
+        )
+        await self.conn.commit()
+
+    async def get_pending_requests(self) -> list[Request]:
+        """Get all pending requests."""
+        cursor = await self.conn.execute(
+            "SELECT * FROM requests WHERE status = 'pending' ORDER BY created_at"
+        )
+        rows = await cursor.fetchall()
+        return [Request(**dict(row)) for row in rows]
+
+    async def set_telegram_msg_id(self, request_id: str, msg_id: int) -> None:
+        """Set the Telegram message ID for a request."""
+        await self.conn.execute(
+            "UPDATE requests SET telegram_msg_id = ? WHERE id = ?",
+            (msg_id, request_id),
+        )
+        await self.conn.commit()
+
+    # Pending feedback
+
+    async def set_pending_feedback(self, prompt_msg_id: int, request_id: str) -> None:
+        """Track a feedback prompt message."""
+        now = time.time()
+        await self.conn.execute(
+            """
+            INSERT OR REPLACE INTO pending_feedback (prompt_msg_id, request_id, created_at)
+            VALUES (?, ?, ?)
+            """,
+            (prompt_msg_id, request_id, now),
+        )
+        await self.conn.commit()
+
+    async def get_pending_feedback(self, prompt_msg_id: int) -> Optional[str]:
+        """Get request_id for a feedback prompt message."""
+        cursor = await self.conn.execute(
+            "SELECT request_id FROM pending_feedback WHERE prompt_msg_id = ?",
+            (prompt_msg_id,),
+        )
+        row = await cursor.fetchone()
+        return row["request_id"] if row else None
+
+    async def clear_pending_feedback(self, prompt_msg_id: int) -> None:
+        """Remove a pending feedback entry."""
+        await self.conn.execute(
+            "DELETE FROM pending_feedback WHERE prompt_msg_id = ?",
+            (prompt_msg_id,),
+        )
+        await self.conn.commit()
+
+    # Pending subagent responses
+
+    async def create_pending_subagent(
+        self, subagent_id: str, telegram_msg_id: Optional[int] = None
+    ) -> None:
+        """Create a pending subagent entry."""
+        now = time.time()
+        await self.conn.execute(
+            """
+            INSERT OR REPLACE INTO pending_subagent (subagent_id, telegram_msg_id, status, created_at)
+            VALUES (?, ?, 'pending', ?)
+            """,
+            (subagent_id, telegram_msg_id, now),
+        )
+        await self.conn.commit()
+
+    async def get_pending_subagent(self, subagent_id: str) -> Optional[dict[str, Any]]:
+        """Get pending subagent entry."""
+        cursor = await self.conn.execute(
+            "SELECT * FROM pending_subagent WHERE subagent_id = ?",
+            (subagent_id,),
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+    async def get_subagent_by_telegram_msg(
+        self, telegram_msg_id: int
+    ) -> Optional[dict[str, Any]]:
+        """Get pending subagent entry by telegram message ID."""
+        cursor = await self.conn.execute(
+            "SELECT * FROM pending_subagent WHERE telegram_msg_id = ? AND status = 'pending'",
+            (telegram_msg_id,),
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+    async def resolve_subagent(
+        self, subagent_id: str, status: str, response: Optional[str] = None
+    ) -> None:
+        """Resolve a pending subagent."""
+        await self.conn.execute(
+            "UPDATE pending_subagent SET status = ?, response = ? WHERE subagent_id = ?",
+            (status, response, subagent_id),
+        )
+        await self.conn.commit()
+
+    async def set_subagent_continue_prompt(
+        self, subagent_id: str, prompt_msg_id: int
+    ) -> None:
+        """Track the continue prompt message for a subagent."""
+        await self.conn.execute(
+            """
+            INSERT OR REPLACE INTO pending_feedback (prompt_msg_id, request_id, created_at)
+            VALUES (?, ?, ?)
+            """,
+            (prompt_msg_id, f"subagent:{subagent_id}", time.time()),
+        )
+        await self.conn.commit()
+
+    # Subagent message auto-dismiss tracking
+
+    async def store_subagent_message(self, msg_id: int, compact_text: str) -> None:
+        """Store a subagent message for auto-dismiss tracking."""
+        await self.conn.execute(
+            "INSERT OR REPLACE INTO subagent_messages (msg_id, compact_text, created_at) VALUES (?, ?, ?)",
+            (msg_id, compact_text, time.time()),
+        )
+        await self.conn.commit()
+
+    async def get_expired_subagent_messages(
+        self, max_age_seconds: int
+    ) -> list[tuple[int, str]]:
+        """Get subagent messages older than max_age_seconds.
+
+        Returns list of (msg_id, compact_text) tuples.
+        """
+        cutoff = time.time() - max_age_seconds
+        cursor = await self.conn.execute(
+            "SELECT msg_id, compact_text FROM subagent_messages WHERE created_at < ?",
+            (cutoff,),
+        )
+        rows = await cursor.fetchall()
+        return [(row["msg_id"], row["compact_text"]) for row in rows]
+
+    async def delete_subagent_message(self, msg_id: int) -> None:
+        """Delete a subagent message from tracking."""
+        await self.conn.execute(
+            "DELETE FROM subagent_messages WHERE msg_id = ?",
+            (msg_id,),
+        )
+        await self.conn.commit()
+
+    # Pending stop (main agent stop approval)
+
+    async def create_pending_stop(
+        self, session_id: str, telegram_msg_id: Optional[int] = None
+    ) -> None:
+        """Create a pending stop entry."""
+        now = time.time()
+        await self.conn.execute(
+            """
+            INSERT OR REPLACE INTO pending_stop (session_id, telegram_msg_id, status, created_at)
+            VALUES (?, ?, 'pending', ?)
+            """,
+            (session_id, telegram_msg_id, now),
+        )
+        await self.conn.commit()
+
+    async def get_pending_stop(self, session_id: str) -> Optional[dict[str, Any]]:
+        """Get pending stop entry."""
+        cursor = await self.conn.execute(
+            "SELECT * FROM pending_stop WHERE session_id = ?",
+            (session_id,),
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+    async def get_all_pending_stops(self) -> list[dict[str, Any]]:
+        """Get all pending stop entries with status='pending'."""
+        cursor = await self.conn.execute(
+            "SELECT * FROM pending_stop WHERE status = 'pending'"
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    async def resolve_stop(
+        self, session_id: str, status: str, response: Optional[str] = None
+    ) -> None:
+        """Resolve a pending stop."""
+        await self.conn.execute(
+            "UPDATE pending_stop SET status = ?, response = ? WHERE session_id = ?",
+            (status, response, session_id),
+        )
+        await self.conn.commit()
+
+    async def set_stop_comment_prompt(
+        self, session_id: str, prompt_msg_id: int
+    ) -> None:
+        """Track the comment prompt message for a stop."""
+        await self.conn.execute(
+            """
+            INSERT OR REPLACE INTO pending_feedback (prompt_msg_id, request_id, created_at)
+            VALUES (?, ?, ?)
+            """,
+            (prompt_msg_id, f"stop:{session_id}", time.time()),
+        )
+        await self.conn.commit()
+
+    # Sessions
+
+    async def upsert_session(
+        self,
+        session_id: str,
+        project_path: Optional[str] = None,
+    ) -> None:
+        """Create or update a session."""
+        now = time.time()
+        await self.conn.execute(
+            """
+            INSERT INTO sessions (session_id, project_path, started_at, last_seen_at, status)
+            VALUES (?, ?, ?, ?, 'active')
+            ON CONFLICT(session_id) DO UPDATE SET
+                last_seen_at = ?,
+                project_path = COALESCE(?, project_path)
+            """,
+            (session_id, project_path, now, now, now, project_path),
+        )
+        await self.conn.commit()
+
+    async def get_session(self, session_id: str) -> Optional[Session]:
+        """Get a session by ID."""
+        cursor = await self.conn.execute(
+            "SELECT * FROM sessions WHERE session_id = ?", (session_id,)
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        return Session(**dict(row))
+
+    async def get_active_sessions(self) -> list[Session]:
+        """Get all active sessions."""
+        cursor = await self.conn.execute(
+            "SELECT * FROM sessions WHERE status = 'active' ORDER BY last_seen_at DESC"
+        )
+        rows = await cursor.fetchall()
+        return [Session(**dict(row)) for row in rows]
+
+    # Audit log
+
+    async def log_audit(
+        self,
+        event_type: str,
+        session_id: Optional[str] = None,
+        details: Optional[dict[str, Any]] = None,
+    ) -> None:
+        """Append to audit log."""
+        now = time.time()
+        details_json = json.dumps(details) if details else None
+        await self.conn.execute(
+            """
+            INSERT INTO audit_log (timestamp, event_type, session_id, details)
+            VALUES (?, ?, ?, ?)
+            """,
+            (now, event_type, session_id, details_json),
+        )
+        await self.conn.commit()
+
+    async def get_audit_log(self, limit: int = 100) -> list[AuditEntry]:
+        """Get recent audit log entries."""
+        cursor = await self.conn.execute(
+            "SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT ?", (limit,)
+        )
+        rows = await cursor.fetchall()
+        entries = []
+        for row in rows:
+            d = dict(row)
+            d["details"] = json.loads(d["details"]) if d["details"] else {}
+            entries.append(AuditEntry(**d))
+        return entries
+
+    # Pending messages for /msg command
+    async def add_pending_message(self, session_id: str, message: str) -> None:
+        """Add a pending message for a session.
+
+        Limits: max 100 messages per session, messages expire after 1 hour.
+        """
+        now = time.time()
+        one_hour_ago = now - 3600
+
+        # Clean up expired messages first
+        await self.conn.execute(
+            "DELETE FROM pending_messages WHERE created_at < ?",
+            (one_hour_ago,),
+        )
+
+        # Check message count for this session
+        cursor = await self.conn.execute(
+            "SELECT COUNT(*) FROM pending_messages WHERE session_id = ?",
+            (session_id,),
+        )
+        row = await cursor.fetchone()
+        count = row[0] if row else 0
+
+        if count >= 100:
+            # Delete oldest message to make room
+            await self.conn.execute(
+                """
+                DELETE FROM pending_messages WHERE id = (
+                    SELECT id FROM pending_messages
+                    WHERE session_id = ?
+                    ORDER BY created_at ASC LIMIT 1
+                )
+                """,
+                (session_id,),
+            )
+
+        await self.conn.execute(
+            """
+            INSERT INTO pending_messages (session_id, message, created_at)
+            VALUES (?, ?, ?)
+            """,
+            (session_id, message, now),
+        )
+        await self.conn.commit()
+
+    async def get_pending_messages(self, session_id: str) -> list[tuple[int, str]]:
+        """Get pending messages for a session.
+
+        Returns list of (id, message) tuples.
+        """
+        cursor = await self.conn.execute(
+            """
+            SELECT id, message FROM pending_messages
+            WHERE session_id = ? AND delivered_at IS NULL
+            ORDER BY created_at
+            """,
+            (session_id,),
+        )
+        return [(row["id"], row["message"]) for row in await cursor.fetchall()]
+
+    async def mark_message_delivered(self, message_id: int) -> None:
+        """Mark a message as delivered."""
+        await self.conn.execute(
+            "UPDATE pending_messages SET delivered_at = ? WHERE id = ?",
+            (time.time(), message_id),
+        )
+        await self.conn.commit()
+
+    # Chain state (stored in pending_feedback table)
+
+    async def get_chain_state(self, msg_id: int) -> Optional[tuple[str, int]]:
+        """Get chain state JSON and version.
+
+        Returns (state_json, version) or None.
+        """
+        cursor = await self.conn.execute(
+            "SELECT request_id, created_at FROM pending_feedback WHERE prompt_msg_id = ?",
+            (msg_id,),
+        )
+        row = await cursor.fetchone()
+        if row:
+            # Use created_at * 1000 as version (milliseconds for precision)
+            return (row["request_id"], int(row["created_at"] * 1000))
+        return None
+
+    async def save_chain_state(self, msg_id: int, state_json: str) -> None:
+        """Save chain approval state JSON."""
+        await self.conn.execute(
+            """
+            INSERT OR REPLACE INTO pending_feedback (prompt_msg_id, request_id, created_at)
+            VALUES (?, ?, ?)
+            """,
+            (msg_id, state_json, time.time()),
+        )
+        await self.conn.commit()
+
+    async def save_chain_state_atomic(
+        self, msg_id: int, state_json: str, expected_version: int
+    ) -> bool:
+        """Save chain state atomically with version check.
+
+        Returns True if saved, False if version mismatch (stale update).
+        """
+        new_version = time.time()
+        cursor = await self.conn.execute(
+            """
+            UPDATE pending_feedback
+            SET request_id = ?, created_at = ?
+            WHERE prompt_msg_id = ? AND CAST(created_at * 1000 AS INTEGER) = ?
+            """,
+            (state_json, new_version, msg_id, expected_version),
+        )
+        if cursor.rowcount == 0:
+            # Doesn't exist or version mismatch - try insert for new records
+            try:
+                await self.conn.execute(
+                    """
+                    INSERT INTO pending_feedback (prompt_msg_id, request_id, created_at)
+                    VALUES (?, ?, ?)
+                    """,
+                    (msg_id, state_json, new_version),
+                )
+            except Exception:
+                # Insert failed (probably exists with different version)
+                await self.conn.rollback()
+                return False
+        await self.conn.commit()
+        return True
+
+    async def clear_chain_state(self, msg_id: int) -> None:
+        """Clear chain approval state."""
+        await self.conn.execute(
+            "DELETE FROM pending_feedback WHERE prompt_msg_id = ?",
+            (msg_id,),
+        )
+        await self.conn.commit()
+
+    # Auto-approve rules
+
+    async def get_rules(self) -> list[dict[str, Any]]:
+        """Get all auto-approve rules sorted by priority."""
+        cursor = await self.conn.execute(
+            "SELECT * FROM auto_approve_rules ORDER BY priority DESC, id"
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    async def get_rules_for_matching(self) -> list[tuple[str, str]]:
+        """Get rules for pattern matching (pattern, action tuples)."""
+        cursor = await self.conn.execute(
+            "SELECT pattern, action FROM auto_approve_rules ORDER BY priority DESC"
+        )
+        rows = await cursor.fetchall()
+        return [(row["pattern"], row["action"]) for row in rows]
+
+    async def get_rule_by_pattern(
+        self, pattern: str, action: str
+    ) -> Optional[dict[str, Any]]:
+        """Get a rule by pattern and action."""
+        cursor = await self.conn.execute(
+            "SELECT * FROM auto_approve_rules WHERE pattern = ? AND action = ?",
+            (pattern, action),
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+    async def add_rule(
+        self,
+        pattern: str,
+        action: str,
+        priority: int,
+        created_via: str,
+    ) -> int:
+        """Add a new rule. Returns rule ID."""
+        cursor = await self.conn.execute(
+            """
+            INSERT INTO auto_approve_rules (pattern, action, priority, created_via, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (pattern, action, priority, created_via, time.time()),
+        )
+        await self.conn.commit()
+        assert cursor.lastrowid is not None, "INSERT should return lastrowid"
+        return cursor.lastrowid
+
+    async def remove_rule(self, rule_id: int) -> bool:
+        """Remove a rule by ID. Returns True if deleted."""
+        cursor = await self.conn.execute(
+            "DELETE FROM auto_approve_rules WHERE id = ?", (rule_id,)
+        )
+        await self.conn.commit()
+        return cursor.rowcount > 0

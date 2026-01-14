@@ -17,10 +17,10 @@ Telegram chain approval buttons were remaining visible after clicking "Approve C
 
 ## Final Solution
 
-Added the missing `format_tool_summary` import to `src/pyafk/core/handlers/chain.py`:
+Added the missing `format_tool_summary` import to `src/owl/core/handlers/chain.py`:
 
 ```python
-from pyafk.utils.formatting import (
+from owl.utils.formatting import (
     escape_html,
     format_project_id,
     format_tool_summary,  # <-- was missing
@@ -32,7 +32,7 @@ The function was being used at line 119 in `format_chain_approved_message()` but
 
 ## Key Learnings
 
-- **Always check debug logs first** - The error was clearly visible in `~/.config/pyafk/debug.log` with full context
+- **Always check debug logs first** - The error was clearly visible in `~/.config/owl/debug.log` with full context
 - **Requests can be internally resolved while appearing stuck** - The storage marked the request as approved, but the Telegram message edit failed afterward, creating a disconnect between state and UI
 - **Missing imports can silently fail in try/except blocks** - The error was caught and logged but didn't propagate, making it non-obvious without logs
 - **This bug predates recent changes** - User suspected recent timeout/reliability changes caused it, but the bug was in the original chain approval implementation
@@ -52,12 +52,12 @@ The function was being used at line 119 in `format_chain_approved_message()` but
 
 ## Gotchas & Warnings
 
-- **The debug log location is `~/.config/pyafk/debug.log`** - not `~/.pyafk/` (the config uses XDG paths)
+- **The debug log location is `~/.config/owl/debug.log`** - not `~/.owl/` (the config uses XDG paths)
 - **Handler errors are caught and logged but don't crash** - This is good for resilience but means bugs can hide if you don't check logs
 - **Telegram message state can diverge from storage state** - If message edit fails after request resolution, UI shows stale state
 
 ## References
 
-- `src/pyafk/core/handlers/chain.py:119` - where format_tool_summary is called
-- `src/pyafk/utils/formatting.py:58` - where format_tool_summary is defined
-- `~/.config/pyafk/debug.log` - debug log with full error traces
+- `src/owl/core/handlers/chain.py:119` - where format_tool_summary is called
+- `src/owl/utils/formatting.py:58` - where format_tool_summary is defined
+- `~/.config/owl/debug.log` - debug log with full error traces

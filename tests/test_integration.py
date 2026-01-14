@@ -4,14 +4,14 @@ import json
 import pytest
 from unittest.mock import patch, AsyncMock
 
-from pyafk.core.manager import ApprovalManager
-from pyafk.hooks.pretool import handle_pretool_use
+from owl.core.manager import ApprovalManager
+from owl.hooks.pretool import handle_pretool_use
 
 
 @pytest.mark.asyncio
-async def test_full_approval_flow(mock_pyafk_dir):
+async def test_full_approval_flow(mock_owl_dir):
     """Test complete approval flow from hook to response."""
-    (mock_pyafk_dir / "mode").write_text("on")
+    (mock_owl_dir / "mode").write_text("on")
 
     config_data = {
         "telegram_bot_token": "test-token",
@@ -19,25 +19,25 @@ async def test_full_approval_flow(mock_pyafk_dir):
         "timeout_seconds": 1,
         "timeout_action": "deny",
     }
-    (mock_pyafk_dir / "config.json").write_text(json.dumps(config_data))
+    (mock_owl_dir / "config.json").write_text(json.dumps(config_data))
 
     # Patch ApprovalManager to use short timeout from config
     original_init = ApprovalManager.__init__
 
-    def patched_init(self, pyafk_dir=None, timeout=3600, timeout_action="deny", config=None):
+    def patched_init(self, owl_dir=None, timeout=3600, timeout_action="deny", config=None):
         # Read config to get timeout settings
-        from pyafk.utils.config import Config
-        cfg = Config(pyafk_dir)
+        from owl.utils.config import Config
+        cfg = Config(owl_dir)
         original_init(
             self,
-            pyafk_dir=pyafk_dir,
+            owl_dir=owl_dir,
             timeout=cfg.timeout_seconds,
             timeout_action=cfg.timeout_action,
             config=cfg,
         )
 
     with patch.object(ApprovalManager, "__init__", patched_init):
-        with patch("pyafk.notifiers.telegram.TelegramNotifier._api_request") as mock_api:
+        with patch("owl.notifiers.telegram.TelegramNotifier._api_request") as mock_api:
             mock_api.return_value = {"ok": True, "result": {"message_id": 1}}
 
             hook_input = {
@@ -47,18 +47,18 @@ async def test_full_approval_flow(mock_pyafk_dir):
             }
 
             # This should timeout and deny (1 second timeout)
-            result = await handle_pretool_use(hook_input, mock_pyafk_dir)
+            result = await handle_pretool_use(hook_input, mock_owl_dir)
 
             assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
             mock_api.assert_called()
 
 
 @pytest.mark.asyncio
-async def test_rule_based_auto_approve(mock_pyafk_dir):
+async def test_rule_based_auto_approve(mock_owl_dir):
     """Test that rules auto-approve without Telegram."""
-    (mock_pyafk_dir / "mode").write_text("on")
+    (mock_owl_dir / "mode").write_text("on")
 
-    manager = ApprovalManager(pyafk_dir=mock_pyafk_dir)
+    manager = ApprovalManager(owl_dir=mock_owl_dir)
     await manager.initialize()
     await manager.rules.add_rule("Read(*)", "approve")
     await manager.close()
@@ -69,16 +69,16 @@ async def test_rule_based_auto_approve(mock_pyafk_dir):
         "session_id": "rule-test",
     }
 
-    result = await handle_pretool_use(hook_input, mock_pyafk_dir)
+    result = await handle_pretool_use(hook_input, mock_owl_dir)
     assert result["hookSpecificOutput"]["permissionDecision"] == "allow"
 
 
 @pytest.mark.asyncio
-async def test_session_tracking(mock_pyafk_dir):
+async def test_session_tracking(mock_owl_dir):
     """Test that sessions are tracked across requests."""
-    (mock_pyafk_dir / "mode").write_text("on")
+    (mock_owl_dir / "mode").write_text("on")
 
-    manager = ApprovalManager(pyafk_dir=mock_pyafk_dir)
+    manager = ApprovalManager(owl_dir=mock_owl_dir)
     await manager.initialize()
     await manager.rules.add_rule("*", "approve")
 

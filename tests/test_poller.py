@@ -3,13 +3,13 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from pyafk.core.poller import Poller, PollLock
+from owl.core.poller import Poller, PollLock
 
 
 @pytest.mark.asyncio
-async def test_poll_lock_acquire(mock_pyafk_dir):
+async def test_poll_lock_acquire(mock_owl_dir):
     """PollLock should acquire and release."""
-    lock = PollLock(mock_pyafk_dir / "poll.lock")
+    lock = PollLock(mock_owl_dir / "poll.lock")
 
     acquired = await lock.acquire()
     assert acquired is True
@@ -18,10 +18,10 @@ async def test_poll_lock_acquire(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_poll_lock_exclusive(mock_pyafk_dir):
+async def test_poll_lock_exclusive(mock_owl_dir):
     """Only one process can hold the lock."""
-    lock1 = PollLock(mock_pyafk_dir / "poll.lock")
-    lock2 = PollLock(mock_pyafk_dir / "poll.lock")
+    lock1 = PollLock(mock_owl_dir / "poll.lock")
+    lock2 = PollLock(mock_owl_dir / "poll.lock")
 
     acquired1 = await lock1.acquire()
     assert acquired1 is True
@@ -37,12 +37,12 @@ async def test_poll_lock_exclusive(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_poller_processes_callback(mock_pyafk_dir):
+async def test_poller_processes_callback(mock_owl_dir):
     """Poller should process callback queries."""
-    from pyafk.core.storage import Storage
-    from pyafk.notifiers.telegram import TelegramNotifier
+    from owl.core.storage import Storage
+    from owl.notifiers.telegram import TelegramNotifier
 
-    db_path = mock_pyafk_dir / "test.db"
+    db_path = mock_owl_dir / "test.db"
 
     async with Storage(db_path) as storage:
         # Create session first
@@ -73,7 +73,7 @@ async def test_poller_processes_callback(mock_pyafk_dir):
         notifier.answer_callback = AsyncMock()
         notifier.edit_message = AsyncMock()
 
-        poller = Poller(storage, notifier, mock_pyafk_dir)
+        poller = Poller(storage, notifier, mock_owl_dir)
         # Set initial offset so first call processes updates instead of skipping
         poller._offset = 0
 
@@ -84,13 +84,13 @@ async def test_poller_processes_callback(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_chain_rules_all_allow(mock_pyafk_dir):
+async def test_chain_rules_all_allow(mock_owl_dir):
     """Chain should auto-approve if all commands match allow rules."""
-    from pyafk.core.storage import Storage
-    from pyafk.core.rules import RulesEngine
-    from pyafk.core.handlers.chain import check_chain_rules
+    from owl.core.storage import Storage
+    from owl.core.rules import RulesEngine
+    from owl.core.handlers.chain import check_chain_rules
 
-    db_path = mock_pyafk_dir / "test.db"
+    db_path = mock_owl_dir / "test.db"
 
     async with Storage(db_path) as storage:
         # Add allow rules for each command in the chain
@@ -105,13 +105,13 @@ async def test_chain_rules_all_allow(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_chain_rules_any_deny(mock_pyafk_dir):
+async def test_chain_rules_any_deny(mock_owl_dir):
     """Chain should auto-deny if any command matches deny rule."""
-    from pyafk.core.storage import Storage
-    from pyafk.core.rules import RulesEngine
-    from pyafk.core.handlers.chain import check_chain_rules
+    from owl.core.storage import Storage
+    from owl.core.rules import RulesEngine
+    from owl.core.handlers.chain import check_chain_rules
 
-    db_path = mock_pyafk_dir / "test.db"
+    db_path = mock_owl_dir / "test.db"
 
     async with Storage(db_path) as storage:
         # Add allow rules for some commands and deny for one
@@ -125,13 +125,13 @@ async def test_chain_rules_any_deny(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_chain_rules_manual_approval_needed(mock_pyafk_dir):
+async def test_chain_rules_manual_approval_needed(mock_owl_dir):
     """Chain should return None if some commands don't match any rule."""
-    from pyafk.core.storage import Storage
-    from pyafk.core.rules import RulesEngine
-    from pyafk.core.handlers.chain import check_chain_rules
+    from owl.core.storage import Storage
+    from owl.core.rules import RulesEngine
+    from owl.core.handlers.chain import check_chain_rules
 
-    db_path = mock_pyafk_dir / "test.db"
+    db_path = mock_owl_dir / "test.db"
 
     async with Storage(db_path) as storage:
         # Add allow rule for only one command
@@ -144,13 +144,13 @@ async def test_chain_rules_manual_approval_needed(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_chain_rules_single_command(mock_pyafk_dir):
+async def test_chain_rules_single_command(mock_owl_dir):
     """Single command should work with chain rule check."""
-    from pyafk.core.storage import Storage
-    from pyafk.core.rules import RulesEngine
-    from pyafk.core.handlers.chain import check_chain_rules
+    from owl.core.storage import Storage
+    from owl.core.rules import RulesEngine
+    from owl.core.handlers.chain import check_chain_rules
 
-    db_path = mock_pyafk_dir / "test.db"
+    db_path = mock_owl_dir / "test.db"
 
     async with Storage(db_path) as storage:
         # Add allow rule
@@ -163,13 +163,13 @@ async def test_chain_rules_single_command(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_chain_rules_with_quotes(mock_pyafk_dir):
+async def test_chain_rules_with_quotes(mock_owl_dir):
     """Chain rules should handle commands with quotes correctly."""
-    from pyafk.core.storage import Storage
-    from pyafk.core.rules import RulesEngine
-    from pyafk.core.handlers.chain import check_chain_rules
+    from owl.core.storage import Storage
+    from owl.core.rules import RulesEngine
+    from owl.core.handlers.chain import check_chain_rules
 
-    db_path = mock_pyafk_dir / "test.db"
+    db_path = mock_owl_dir / "test.db"
 
     async with Storage(db_path) as storage:
         engine = RulesEngine(storage)
@@ -181,14 +181,14 @@ async def test_chain_rules_with_quotes(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_chain_approval_integration(mock_pyafk_dir):
+async def test_chain_approval_integration(mock_owl_dir):
     """Integration test: chain approval should work through ApprovalManager."""
-    from pyafk.core.manager import ApprovalManager
-    from pyafk.notifiers.telegram import TelegramNotifier
+    from owl.core.manager import ApprovalManager
+    from owl.notifiers.telegram import TelegramNotifier
     import json
 
     # Create ApprovalManager first
-    manager = ApprovalManager(pyafk_dir=mock_pyafk_dir)
+    manager = ApprovalManager(owl_dir=mock_owl_dir)
     await manager.initialize()
 
     # Add rules using the manager's storage (not a separate one)

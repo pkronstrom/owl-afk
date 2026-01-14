@@ -8,15 +8,15 @@ import pytest
 
 
 @pytest.fixture
-def cli_env(mock_pyafk_dir, monkeypatch):
+def cli_env(mock_owl_dir, monkeypatch):
     """Set up environment for CLI tests."""
-    monkeypatch.setenv("PYAFK_DIR", str(mock_pyafk_dir))
-    return mock_pyafk_dir
+    monkeypatch.setenv("OWL_DIR", str(mock_owl_dir))
+    return mock_owl_dir
 
 
 def run_cli(*args, env=None, input_text=None):
-    """Run pyafk CLI command and return result."""
-    cmd = [sys.executable, "-m", "pyafk.cli"] + list(args)
+    """Run owl CLI command and return result."""
+    cmd = [sys.executable, "-m", "owl.cli"] + list(args)
     result = subprocess.run(
         cmd,
         capture_output=True,
@@ -35,7 +35,7 @@ class TestStatusCommand:
         import os
 
         env = os.environ.copy()
-        env["PYAFK_DIR"] = str(cli_env)
+        env["OWL_DIR"] = str(cli_env)
         (cli_env / "mode").write_text("off")
 
         result = run_cli("status", env=env)
@@ -48,7 +48,7 @@ class TestStatusCommand:
         import os
 
         env = os.environ.copy()
-        env["PYAFK_DIR"] = str(cli_env)
+        env["OWL_DIR"] = str(cli_env)
         (cli_env / "mode").write_text("on")
 
         result = run_cli("status", env=env)
@@ -61,11 +61,11 @@ class TestOnOffCommands:
     """Tests for on/off commands."""
 
     def test_on_command_enables(self, cli_env):
-        """On command enables pyafk."""
+        """On command enables owl."""
         import os
 
         env = os.environ.copy()
-        env["PYAFK_DIR"] = str(cli_env)
+        env["OWL_DIR"] = str(cli_env)
 
         result = run_cli("on", env=env)
 
@@ -73,11 +73,11 @@ class TestOnOffCommands:
         assert (cli_env / "mode").read_text() == "on"
 
     def test_off_command_disables(self, cli_env):
-        """Off command disables pyafk."""
+        """Off command disables owl."""
         import os
 
         env = os.environ.copy()
-        env["PYAFK_DIR"] = str(cli_env)
+        env["OWL_DIR"] = str(cli_env)
         (cli_env / "mode").write_text("on")
 
         result = run_cli("off", env=env)
@@ -94,7 +94,7 @@ class TestRulesCommands:
         import os
 
         env = os.environ.copy()
-        env["PYAFK_DIR"] = str(cli_env)
+        env["OWL_DIR"] = str(cli_env)
 
         result = run_cli("rules", "list", env=env)
 
@@ -105,7 +105,7 @@ class TestRulesCommands:
         import os
 
         env = os.environ.copy()
-        env["PYAFK_DIR"] = str(cli_env)
+        env["OWL_DIR"] = str(cli_env)
 
         result = run_cli("rules", "add", "Bash(git *)", env=env)
 
@@ -120,7 +120,7 @@ class TestRulesCommands:
         import os
 
         env = os.environ.copy()
-        env["PYAFK_DIR"] = str(cli_env)
+        env["OWL_DIR"] = str(cli_env)
 
         result = run_cli("rules", "add", "Bash(rm *)", "--action", "deny", env=env)
 
@@ -131,7 +131,7 @@ class TestRulesCommands:
         import os
 
         env = os.environ.copy()
-        env["PYAFK_DIR"] = str(cli_env)
+        env["OWL_DIR"] = str(cli_env)
 
         # First add a rule
         run_cli("rules", "add", "Bash(test *)", env=env)
@@ -155,7 +155,7 @@ class TestDebugCommands:
         import os
 
         env = os.environ.copy()
-        env["PYAFK_DIR"] = str(cli_env)
+        env["OWL_DIR"] = str(cli_env)
 
         result = run_cli("debug", "on", env=env)
 
@@ -172,7 +172,7 @@ class TestDebugCommands:
         import os
 
         env = os.environ.copy()
-        env["PYAFK_DIR"] = str(cli_env)
+        env["OWL_DIR"] = str(cli_env)
 
         # First enable
         run_cli("debug", "on", env=env)
@@ -191,10 +191,10 @@ class TestResetCommand:
         import os
 
         env = os.environ.copy()
-        env["PYAFK_DIR"] = str(cli_env)
+        env["OWL_DIR"] = str(cli_env)
 
         # Create a database file
-        db_file = cli_env / "pyafk.db"
+        db_file = cli_env / "owl.db"
         db_file.write_text("dummy")
 
         result = run_cli("reset", "--force", env=env)
@@ -210,7 +210,7 @@ class TestEnvCommands:
         import os
 
         env = os.environ.copy()
-        env["PYAFK_DIR"] = str(cli_env)
+        env["OWL_DIR"] = str(cli_env)
 
         result = run_cli("env", "list", env=env)
 
@@ -221,7 +221,7 @@ class TestEnvCommands:
         import os
 
         env = os.environ.copy()
-        env["PYAFK_DIR"] = str(cli_env)
+        env["OWL_DIR"] = str(cli_env)
 
         result = run_cli("env", "set", "DISABLE_STOP_HOOK", "true", env=env)
 
@@ -232,7 +232,7 @@ class TestEnvCommands:
         import os
 
         env = os.environ.copy()
-        env["PYAFK_DIR"] = str(cli_env)
+        env["OWL_DIR"] = str(cli_env)
 
         # First set
         run_cli("env", "set", "TEST_VAR", "value", env=env)
@@ -251,7 +251,7 @@ class TestTelegramCommand:
         import os
 
         env = os.environ.copy()
-        env["PYAFK_DIR"] = str(cli_env)
+        env["OWL_DIR"] = str(cli_env)
 
         result = run_cli("telegram", "test", env=env)
 
@@ -268,7 +268,7 @@ class TestCaptainHookCommands:
         import os
 
         env = os.environ.copy()
-        env["PYAFK_DIR"] = str(cli_env)
+        env["OWL_DIR"] = str(cli_env)
         env["HOME"] = str(tmp_path)
 
         # Create captain-hook config directory
@@ -286,14 +286,14 @@ class TestCaptainHookCommands:
         import os
 
         env = os.environ.copy()
-        env["PYAFK_DIR"] = str(cli_env)
+        env["OWL_DIR"] = str(cli_env)
         env["HOME"] = str(tmp_path)
 
-        # Create captain-hook config with pyafk hooks
+        # Create captain-hook config with owl hooks
         captain_dir = tmp_path / ".captain-hook"
         captain_dir.mkdir()
         (captain_dir / "hooks.json").write_text(
-            json.dumps({"PreToolUse": [{"command": "pyafk hook PreToolUse"}]})
+            json.dumps({"PreToolUse": [{"command": "owl hook PreToolUse"}]})
         )
 
         result = run_cli("captain-hook", "uninstall", env=env)
@@ -309,18 +309,18 @@ class TestTyperCLI:
         """Test CLI help works."""
         from typer.testing import CliRunner
 
-        from pyafk.cli import app
+        from owl.cli import app
 
         runner = CliRunner()
         result = runner.invoke(app, ["--help"])
         assert result.exit_code == 0
-        assert "pyafk" in result.output
+        assert "owl" in result.output
 
     def test_cli_status(self, cli_env):
         """Test status command via Typer."""
         from typer.testing import CliRunner
 
-        from pyafk.cli import app
+        from owl.cli import app
 
         runner = CliRunner()
         result = runner.invoke(app, ["status"])

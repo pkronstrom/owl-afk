@@ -4,7 +4,7 @@ import json
 import pytest
 from unittest.mock import AsyncMock, patch
 
-from pyafk.notifiers.telegram import TelegramNotifier, format_approval_message
+from owl.notifiers.telegram import TelegramNotifier, format_approval_message
 
 
 def test_format_approval_message():

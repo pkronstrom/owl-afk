@@ -3,8 +3,8 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from pyafk.core.handlers.dispatcher import HandlerDispatcher
-from pyafk.core.handlers.registry import HandlerRegistry
+from owl.core.handlers.dispatcher import HandlerDispatcher
+from owl.core.handlers.registry import HandlerRegistry
 
 
 @pytest.fixture

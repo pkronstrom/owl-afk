@@ -3,8 +3,8 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from pyafk.core.handlers.base import CallbackContext
-from pyafk.core.handlers.feedback import DenyWithMessageHandler
+from owl.core.handlers.base import CallbackContext
+from owl.core.handlers.feedback import DenyWithMessageHandler
 
 
 @pytest.fixture

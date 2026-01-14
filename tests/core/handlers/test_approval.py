@@ -3,8 +3,8 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from pyafk.core.handlers.base import CallbackContext
-from pyafk.core.handlers.approval import ApproveHandler, DenyHandler
+from owl.core.handlers.base import CallbackContext
+from owl.core.handlers.approval import ApproveHandler, DenyHandler
 
 
 @pytest.fixture

@@ -2,13 +2,13 @@
 
 import pytest
 
-from pyafk.core.manager import ApprovalManager
+from owl.core.manager import ApprovalManager
 
 
 @pytest.mark.asyncio
-async def test_manager_auto_approve_by_rule(mock_pyafk_dir):
+async def test_manager_auto_approve_by_rule(mock_owl_dir):
     """Manager should auto-approve based on rules."""
-    manager = ApprovalManager(pyafk_dir=mock_pyafk_dir)
+    manager = ApprovalManager(owl_dir=mock_owl_dir)
     await manager.initialize()
 
     await manager.rules.add_rule("Bash(git *)", "approve")
@@ -24,9 +24,9 @@ async def test_manager_auto_approve_by_rule(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_manager_auto_deny_by_rule(mock_pyafk_dir):
+async def test_manager_auto_deny_by_rule(mock_owl_dir):
     """Manager should auto-deny based on rules."""
-    manager = ApprovalManager(pyafk_dir=mock_pyafk_dir)
+    manager = ApprovalManager(owl_dir=mock_owl_dir)
     await manager.initialize()
 
     await manager.rules.add_rule("Bash(rm *)", "deny")
@@ -42,16 +42,16 @@ async def test_manager_auto_deny_by_rule(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_manager_timeout_action(mock_pyafk_dir):
+async def test_manager_timeout_action(mock_owl_dir):
     """Manager should apply timeout action when no response."""
     manager = ApprovalManager(
-        pyafk_dir=mock_pyafk_dir,
+        owl_dir=mock_owl_dir,
         timeout=0.1,
         timeout_action="deny",
     )
     await manager.initialize()
 
-    from pyafk.notifiers.console import ConsoleNotifier
+    from owl.notifiers.console import ConsoleNotifier
 
     manager.notifier = ConsoleNotifier()
 
@@ -66,9 +66,9 @@ async def test_manager_timeout_action(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_manager_tracks_session(mock_pyafk_dir):
+async def test_manager_tracks_session(mock_owl_dir):
     """Manager should track session heartbeat."""
-    manager = ApprovalManager(pyafk_dir=mock_pyafk_dir)
+    manager = ApprovalManager(owl_dir=mock_owl_dir)
     await manager.initialize()
 
     await manager.rules.add_rule("Read(*)", "approve")
@@ -88,11 +88,11 @@ async def test_manager_tracks_session(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_auto_approve_notify_sends_message(mock_pyafk_dir):
+async def test_auto_approve_notify_sends_message(mock_owl_dir):
     """Manager should send info message when auto_approve_notify is enabled."""
     from unittest.mock import AsyncMock
 
-    manager = ApprovalManager(pyafk_dir=mock_pyafk_dir)
+    manager = ApprovalManager(owl_dir=mock_owl_dir)
     await manager.initialize()
 
     # Enable auto_approve_notify
@@ -124,11 +124,11 @@ async def test_auto_approve_notify_sends_message(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_auto_approve_notify_disabled_no_message(mock_pyafk_dir):
+async def test_auto_approve_notify_disabled_no_message(mock_owl_dir):
     """Manager should not send message when auto_approve_notify is disabled."""
     from unittest.mock import AsyncMock
 
-    manager = ApprovalManager(pyafk_dir=mock_pyafk_dir)
+    manager = ApprovalManager(owl_dir=mock_owl_dir)
     await manager.initialize()
 
     # Ensure auto_approve_notify is disabled (default)
@@ -153,11 +153,11 @@ async def test_auto_approve_notify_disabled_no_message(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_auto_approve_notify_not_on_deny(mock_pyafk_dir):
+async def test_auto_approve_notify_not_on_deny(mock_owl_dir):
     """Manager should not send notify message for auto-deny rules."""
     from unittest.mock import AsyncMock
 
-    manager = ApprovalManager(pyafk_dir=mock_pyafk_dir)
+    manager = ApprovalManager(owl_dir=mock_owl_dir)
     await manager.initialize()
 
     # Enable auto_approve_notify

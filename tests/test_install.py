@@ -6,8 +6,8 @@ import sys
 
 
 def run_cli(*args, env=None, input_text=None):
-    """Run pyafk CLI command and return result."""
-    cmd = [sys.executable, "-m", "pyafk.cli"] + list(args)
+    """Run owl CLI command and return result."""
+    cmd = [sys.executable, "-m", "owl.cli"] + list(args)
     result = subprocess.run(
         cmd,
         capture_output=True,
@@ -18,12 +18,12 @@ def run_cli(*args, env=None, input_text=None):
     return result
 
 
-def test_install_creates_hooks(mock_pyafk_dir, tmp_path):
+def test_install_creates_hooks(mock_owl_dir, tmp_path):
     """Install should create hook configuration."""
     import os
 
     env = os.environ.copy()
-    env["PYAFK_DIR"] = str(mock_pyafk_dir)
+    env["OWL_DIR"] = str(mock_owl_dir)
     env["HOME"] = str(tmp_path)
 
     claude_dir = tmp_path / ".claude"
@@ -38,19 +38,19 @@ def test_install_creates_hooks(mock_pyafk_dir, tmp_path):
     assert "hooks" in settings
 
 
-def test_uninstall_removes_hooks(mock_pyafk_dir, tmp_path):
+def test_uninstall_removes_hooks(mock_owl_dir, tmp_path):
     """Uninstall should remove hook configuration."""
     import os
 
     env = os.environ.copy()
-    env["PYAFK_DIR"] = str(mock_pyafk_dir)
+    env["OWL_DIR"] = str(mock_owl_dir)
     env["HOME"] = str(tmp_path)
 
     claude_dir = tmp_path / ".claude"
     claude_dir.mkdir()
     settings_file = claude_dir / "settings.json"
     settings_file.write_text(
-        json.dumps({"hooks": {"PreToolUse": [{"command": "pyafk hook PreToolUse"}]}})
+        json.dumps({"hooks": {"PreToolUse": [{"command": "owl hook PreToolUse"}]}})
     )
 
     result = run_cli("uninstall", env=env, input_text="y\n")
@@ -60,16 +60,16 @@ def test_uninstall_removes_hooks(mock_pyafk_dir, tmp_path):
     # After uninstall, PreToolUse should be empty or removed
     hooks = settings.get("hooks", {})
     pretool_hooks = hooks.get("PreToolUse", [])
-    # Check that pyafk hooks are removed
-    pyafk_hooks = [h for h in pretool_hooks if "pyafk" in h.get("command", "")]
-    assert len(pyafk_hooks) == 0
+    # Check that owl hooks are removed
+    owl_hooks = [h for h in pretool_hooks if "owl" in h.get("command", "")]
+    assert len(owl_hooks) == 0
 
 
 def test_hook_matchers_include_websearch():
     """Verify WebSearch is included in hook matchers."""
-    from pyafk.cli.install import get_pyafk_hooks
+    from owl.cli.install import get_owl_hooks
 
-    hooks = get_pyafk_hooks()
+    hooks = get_owl_hooks()
 
     # Check PreToolUse matcher includes WebSearch
     pretool = hooks.get("PreToolUse", [])
@@ -94,9 +94,9 @@ def test_hook_matchers_include_websearch():
 
 def test_hook_matchers_include_all_expected_tools():
     """Verify all expected tools are in hook matchers."""
-    from pyafk.cli.install import get_pyafk_hooks
+    from owl.cli.install import get_owl_hooks
 
-    hooks = get_pyafk_hooks()
+    hooks = get_owl_hooks()
     pretool = hooks.get("PreToolUse", [])
     matcher = pretool[0].get("matcher", "")
 

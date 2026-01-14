@@ -3,8 +3,8 @@
 import pytest
 from unittest.mock import AsyncMock
 
-from pyafk.core.handlers.base import CallbackContext
-from pyafk.core.handlers.subagent import SubagentOkHandler, SubagentContinueHandler
+from owl.core.handlers.base import CallbackContext
+from owl.core.handlers.subagent import SubagentOkHandler, SubagentContinueHandler
 
 
 @pytest.fixture

@@ -1,4 +1,4 @@
-# pyafk
+# owl
 
 Remote approval system for Claude Code via Telegram. Approve or deny tool calls from your phone while away from your computer.
 
@@ -14,14 +14,14 @@ Remote approval system for Claude Code via Telegram. Approve or deny tool calls 
 ## Installation
 
 ```bash
-pip install pyafk
+pip install owl-afk
 ```
 
 Or install from source:
 
 ```bash
-git clone https://github.com/pkronstrom/pyafk
-cd pyafk
+git clone https://github.com/pkronstrom/owl-afk
+cd owl-afk
 pip install -e .
 ```
 
@@ -39,10 +39,10 @@ pip install -e .
 2. Visit `https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates`
 3. Find your `chat.id` in the response
 
-### 3. Configure pyafk
+### 3. Configure owl
 
 ```bash
-pyafk install
+owl install
 ```
 
 This will prompt for your bot token and chat ID, then set up Claude Code hooks.
@@ -52,29 +52,29 @@ This will prompt for your bot token and chat ID, then set up Claude Code hooks.
 ### Enable/Disable
 
 ```bash
-pyafk on   # Enable remote approval
-pyafk off  # Disable (auto-approves pending requests)
+owl on   # Enable remote approval
+owl off  # Disable (auto-approves pending requests)
 ```
 
 ### Check Status
 
 ```bash
-pyafk status
+owl status
 ```
 
 ### Manage Rules
 
 ```bash
-pyafk rules list              # List all rules
-pyafk rules add "Bash(git *)" # Add a rule
-pyafk rules remove 1          # Remove rule by ID
+owl rules list              # List all rules
+owl rules add "Bash(git *)" # Add a rule
+owl rules remove 1          # Remove rule by ID
 ```
 
 ### Debug Mode
 
 ```bash
-pyafk debug on   # Enable debug logging to ~/.config/pyafk/debug.log
-pyafk debug off  # Disable debug logging
+owl debug on   # Enable debug logging to ~/.config/owl/debug.log
+owl debug off  # Disable debug logging
 ```
 
 ## Telegram Commands
@@ -100,14 +100,14 @@ Once a request comes in, you'll see inline buttons:
 ## Architecture
 
 ```
-~/.config/pyafk/
+~/.config/owl/
 ├── mode           # "on" or "off"
-├── pyafk.db       # SQLite database (requests, rules, sessions)
+├── owl.db       # SQLite database (requests, rules, sessions)
 ├── debug.log      # Debug log (when enabled)
 └── config.json    # Bot token and chat ID
 ```
 
-pyafk uses Claude Code hooks to intercept tool calls:
+owl uses Claude Code hooks to intercept tool calls:
 - `PreToolUse` - Intercepts before tool execution
 - `PostToolUse` - Delivers queued messages
 - `Stop` - Interactive confirmation before Claude stops
@@ -115,7 +115,7 @@ pyafk uses Claude Code hooks to intercept tool calls:
 
 ## Captain-Hook Integration
 
-pyafk can also be used with [captain-hook](https://github.com/pkronstrom/captain-hook) as the hook manager. See [extras/captain-hook/README.md](extras/captain-hook/README.md) for setup instructions.
+owl can also be used with [captain-hook](https://github.com/pkronstrom/captain-hook) as the hook manager. See [extras/captain-hook/README.md](extras/captain-hook/README.md) for setup instructions.
 
 ## Requirements
 

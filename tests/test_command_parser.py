@@ -2,7 +2,7 @@
 
 import pytest
 
-from pyafk.core.command_parser import CommandNode, CommandParser, CommandType
+from owl.core.command_parser import CommandNode, CommandParser, CommandType
 
 
 def test_command_node_simple_command():

@@ -12,25 +12,25 @@ import json
 import pytest
 from unittest.mock import AsyncMock, patch
 
-from pyafk.core.manager import ApprovalManager
-from pyafk.core.storage import Storage
-from pyafk.core.rules import RulesEngine
-from pyafk.notifiers.telegram import TelegramNotifier
-from pyafk.core.poller import Poller
-from pyafk.core.command_parser import CommandParser
+from owl.core.manager import ApprovalManager
+from owl.core.storage import Storage
+from owl.core.rules import RulesEngine
+from owl.notifiers.telegram import TelegramNotifier
+from owl.core.poller import Poller
+from owl.core.command_parser import CommandParser
 
 
 @pytest.mark.asyncio
-async def test_full_chain_approval_flow(mock_pyafk_dir):
+async def test_full_chain_approval_flow(mock_owl_dir):
     """Test complete chain approval workflow with sequential approvals."""
     # Setup manager with Telegram notifier - longer timeout for test
-    manager = ApprovalManager(pyafk_dir=mock_pyafk_dir, timeout=2.0)
+    manager = ApprovalManager(owl_dir=mock_owl_dir, timeout=2.0)
     await manager.initialize()
 
     # Configure Telegram notifier
     notifier = TelegramNotifier(bot_token="test-token", chat_id="12345")
     manager.notifier = notifier
-    manager.poller = Poller(manager.storage, notifier, mock_pyafk_dir)
+    manager.poller = Poller(manager.storage, notifier, mock_owl_dir)
 
     # Mock Telegram API calls
     with patch.object(notifier, "_api_request", new_callable=AsyncMock) as mock_api:
@@ -46,7 +46,7 @@ async def test_full_chain_approval_flow(mock_pyafk_dir):
 
         async def approve_chain():
             """Simulate user approving each command in sequence."""
-            from pyafk.core.handlers.chain import ChainStateManager
+            from owl.core.handlers.chain import ChainStateManager
 
             # Very short delay to ensure request is created
             await asyncio.sleep(0.05)
@@ -115,16 +115,16 @@ async def test_full_chain_approval_flow(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_chain_denial_flow(mock_pyafk_dir):
+async def test_chain_denial_flow(mock_owl_dir):
     """Test chain denial workflow."""
     # Setup manager with Telegram notifier
-    manager = ApprovalManager(pyafk_dir=mock_pyafk_dir, timeout=2.0)
+    manager = ApprovalManager(owl_dir=mock_owl_dir, timeout=2.0)
     await manager.initialize()
 
     # Configure Telegram notifier
     notifier = TelegramNotifier(bot_token="test-token", chat_id="12345")
     manager.notifier = notifier
-    manager.poller = Poller(manager.storage, notifier, mock_pyafk_dir)
+    manager.poller = Poller(manager.storage, notifier, mock_owl_dir)
 
     # Mock Telegram API calls
     with patch.object(notifier, "_api_request", new_callable=AsyncMock) as mock_api:
@@ -183,16 +183,16 @@ async def test_chain_denial_flow(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_chain_rule_creation(mock_pyafk_dir):
+async def test_chain_rule_creation(mock_owl_dir):
     """Test creating a rule for one command in a chain."""
     # Setup manager with Telegram notifier
-    manager = ApprovalManager(pyafk_dir=mock_pyafk_dir, timeout=2.0)
+    manager = ApprovalManager(owl_dir=mock_owl_dir, timeout=2.0)
     await manager.initialize()
 
     # Configure Telegram notifier
     notifier = TelegramNotifier(bot_token="test-token", chat_id="12345")
     manager.notifier = notifier
-    manager.poller = Poller(manager.storage, notifier, mock_pyafk_dir)
+    manager.poller = Poller(manager.storage, notifier, mock_owl_dir)
 
     # Mock Telegram API calls
     with patch.object(notifier, "_api_request", new_callable=AsyncMock) as mock_api:
@@ -207,7 +207,7 @@ async def test_chain_rule_creation(mock_pyafk_dir):
 
         async def approve_with_rule():
             """Simulate user creating rule for first command and approving rest."""
-            from pyafk.core.handlers.chain import ChainStateManager
+            from owl.core.handlers.chain import ChainStateManager
 
             await asyncio.sleep(0.05)
 
@@ -281,16 +281,16 @@ async def test_chain_rule_creation(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_chain_auto_approval_via_rules(mock_pyafk_dir):
+async def test_chain_auto_approval_via_rules(mock_owl_dir):
     """Test auto-approval of chain when all commands match rules."""
     # Setup manager
-    manager = ApprovalManager(pyafk_dir=mock_pyafk_dir, timeout=0.5)
+    manager = ApprovalManager(owl_dir=mock_owl_dir, timeout=0.5)
     await manager.initialize()
 
     # Configure Telegram notifier (even though we won't need it)
     notifier = TelegramNotifier(bot_token="test-token", chat_id="12345")
     manager.notifier = notifier
-    manager.poller = Poller(manager.storage, notifier, mock_pyafk_dir)
+    manager.poller = Poller(manager.storage, notifier, mock_owl_dir)
 
     # Create rules for all commands in the chain
     await manager.rules.add_rule("Bash(git status)", "approve", priority=0)
@@ -321,16 +321,16 @@ async def test_chain_auto_approval_via_rules(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_chain_partial_auto_approval(mock_pyafk_dir):
+async def test_chain_partial_auto_approval(mock_owl_dir):
     """Test that chain requires manual approval if any command doesn't match rules."""
     # Setup manager
-    manager = ApprovalManager(pyafk_dir=mock_pyafk_dir, timeout=2.0)
+    manager = ApprovalManager(owl_dir=mock_owl_dir, timeout=2.0)
     await manager.initialize()
 
     # Configure Telegram notifier
     notifier = TelegramNotifier(bot_token="test-token", chat_id="12345")
     manager.notifier = notifier
-    manager.poller = Poller(manager.storage, notifier, mock_pyafk_dir)
+    manager.poller = Poller(manager.storage, notifier, mock_owl_dir)
 
     # Create rules for only SOME commands
     await manager.rules.add_rule("Bash(git status)", "approve", priority=0)
@@ -386,16 +386,16 @@ async def test_chain_partial_auto_approval(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_chain_deny_rule_blocks_entire_chain(mock_pyafk_dir):
+async def test_chain_deny_rule_blocks_entire_chain(mock_owl_dir):
     """Test that a deny rule for any command denies the entire chain."""
     # Setup manager
-    manager = ApprovalManager(pyafk_dir=mock_pyafk_dir, timeout=0.5)
+    manager = ApprovalManager(owl_dir=mock_owl_dir, timeout=0.5)
     await manager.initialize()
 
     # Configure Telegram notifier
     notifier = TelegramNotifier(bot_token="test-token", chat_id="12345")
     manager.notifier = notifier
-    manager.poller = Poller(manager.storage, notifier, mock_pyafk_dir)
+    manager.poller = Poller(manager.storage, notifier, mock_owl_dir)
 
     # Create allow rules for some commands, deny rule for one
     await manager.rules.add_rule("Bash(cd *)", "approve", priority=0)
@@ -425,7 +425,7 @@ async def test_chain_deny_rule_blocks_entire_chain(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_parser_integration_with_chains(mock_pyafk_dir):
+async def test_parser_integration_with_chains(mock_owl_dir):
     """Test that complex commands are properly parsed into chains."""
     # Setup parser
     parser = CommandParser()
@@ -450,16 +450,16 @@ async def test_parser_integration_with_chains(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_wrapper_command_in_chain(mock_pyafk_dir):
+async def test_wrapper_command_in_chain(mock_owl_dir):
     """Test that wrapper commands within chains are handled correctly."""
     # Setup manager
-    manager = ApprovalManager(pyafk_dir=mock_pyafk_dir, timeout=0.5)
+    manager = ApprovalManager(owl_dir=mock_owl_dir, timeout=0.5)
     await manager.initialize()
 
     # Configure Telegram notifier
     notifier = TelegramNotifier(bot_token="test-token", chat_id="12345")
     manager.notifier = notifier
-    manager.poller = Poller(manager.storage, notifier, mock_pyafk_dir)
+    manager.poller = Poller(manager.storage, notifier, mock_owl_dir)
 
     # Create rule for wrapper command
     await manager.rules.add_rule("Bash(sudo apt-get update)", "approve", priority=0)
@@ -489,16 +489,16 @@ async def test_wrapper_command_in_chain(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_single_command_not_treated_as_chain(mock_pyafk_dir):
+async def test_single_command_not_treated_as_chain(mock_owl_dir):
     """Test that single commands are NOT treated as chains."""
     # Setup manager
-    manager = ApprovalManager(pyafk_dir=mock_pyafk_dir, timeout=2.0)
+    manager = ApprovalManager(owl_dir=mock_owl_dir, timeout=2.0)
     await manager.initialize()
 
     # Configure Telegram notifier
     notifier = TelegramNotifier(bot_token="test-token", chat_id="12345")
     manager.notifier = notifier
-    manager.poller = Poller(manager.storage, notifier, mock_pyafk_dir)
+    manager.poller = Poller(manager.storage, notifier, mock_owl_dir)
 
     # Mock Telegram API
     with patch.object(notifier, "_api_request", new_callable=AsyncMock) as mock_api:
@@ -551,7 +551,7 @@ async def test_single_command_not_treated_as_chain(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_empty_chain_handling(mock_pyafk_dir):
+async def test_empty_chain_handling(mock_owl_dir):
     """Test handling of edge case: empty or whitespace-only commands."""
     # Setup parser
     parser = CommandParser()
@@ -570,12 +570,12 @@ async def test_empty_chain_handling(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_chain_state_persistence(mock_pyafk_dir):
+async def test_chain_state_persistence(mock_owl_dir):
     """Test that chain approval state persists via ChainStateManager."""
-    from pyafk.core.handlers.chain import ChainStateManager
+    from owl.core.handlers.chain import ChainStateManager
 
     # Setup storage
-    storage = Storage(mock_pyafk_dir / "test.db")
+    storage = Storage(mock_owl_dir / "test.db")
     await storage.connect()
 
     # Create ChainStateManager
@@ -608,7 +608,7 @@ async def test_chain_state_persistence(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_pattern_generation_for_chain_commands(mock_pyafk_dir):
+async def test_pattern_generation_for_chain_commands(mock_owl_dir):
     """Test that pattern generation works correctly for chain commands."""
     parser = CommandParser()
 
@@ -627,16 +627,16 @@ async def test_pattern_generation_for_chain_commands(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_chain_with_quoted_arguments(mock_pyafk_dir):
+async def test_chain_with_quoted_arguments(mock_owl_dir):
     """Test chain handling with complex quoted arguments."""
     # Setup manager
-    manager = ApprovalManager(pyafk_dir=mock_pyafk_dir, timeout=0.5)
+    manager = ApprovalManager(owl_dir=mock_owl_dir, timeout=0.5)
     await manager.initialize()
 
     # Configure Telegram notifier
     notifier = TelegramNotifier(bot_token="test-token", chat_id="12345")
     manager.notifier = notifier
-    manager.poller = Poller(manager.storage, notifier, mock_pyafk_dir)
+    manager.poller = Poller(manager.storage, notifier, mock_owl_dir)
 
     # Create rule for git commit with wildcard
     await manager.rules.add_rule("Bash(git commit *)", "approve", priority=0)
@@ -666,16 +666,16 @@ async def test_chain_with_quoted_arguments(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_long_chain_truncation_in_ui(mock_pyafk_dir):
+async def test_long_chain_truncation_in_ui(mock_owl_dir):
     """Test that very long chains are properly truncated in Telegram UI."""
     # Setup manager
-    manager = ApprovalManager(pyafk_dir=mock_pyafk_dir, timeout=2.0)
+    manager = ApprovalManager(owl_dir=mock_owl_dir, timeout=2.0)
     await manager.initialize()
 
     # Configure Telegram notifier
     notifier = TelegramNotifier(bot_token="test-token", chat_id="12345")
     manager.notifier = notifier
-    manager.poller = Poller(manager.storage, notifier, mock_pyafk_dir)
+    manager.poller = Poller(manager.storage, notifier, mock_owl_dir)
 
     # Mock Telegram API
     with patch.object(notifier, "_api_request", new_callable=AsyncMock) as mock_api:

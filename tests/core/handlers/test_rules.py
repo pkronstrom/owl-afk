@@ -3,8 +3,8 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from pyafk.core.handlers.base import CallbackContext
-from pyafk.core.handlers.rules import (
+from owl.core.handlers.base import CallbackContext
+from owl.core.handlers.rules import (
     CancelRuleHandler,
 )
 
@@ -93,7 +93,7 @@ async def test_add_rule_menu_shows_patterns(
     mock_storage, mock_notifier, mock_request, mock_session
 ):
     """Test AddRuleMenuHandler shows pattern options."""
-    from pyafk.core.handlers.rules import AddRuleMenuHandler
+    from owl.core.handlers.rules import AddRuleMenuHandler
 
     mock_storage.get_request.return_value = mock_request
     mock_storage.get_session.return_value = mock_session
@@ -117,7 +117,7 @@ async def test_add_rule_menu_shows_patterns(
 @pytest.mark.asyncio
 async def test_add_rule_menu_handles_missing_request(mock_storage, mock_notifier):
     """Test AddRuleMenuHandler handles missing request."""
-    from pyafk.core.handlers.rules import AddRuleMenuHandler
+    from owl.core.handlers.rules import AddRuleMenuHandler
 
     mock_storage.get_request.return_value = None
 
@@ -144,7 +144,7 @@ async def test_add_rule_pattern_creates_rule(
 ):
     """Test AddRulePatternHandler creates rule and approves request."""
     from unittest.mock import patch
-    from pyafk.core.handlers.rules import AddRulePatternHandler
+    from owl.core.handlers.rules import AddRulePatternHandler
 
     mock_storage.get_request.return_value = mock_request
     mock_storage.get_session.return_value = mock_session
@@ -159,7 +159,7 @@ async def test_add_rule_pattern_creates_rule(
         notifier=mock_notifier,
     )
 
-    with patch("pyafk.core.rules.RulesEngine") as mock_engine_class:
+    with patch("owl.core.rules.RulesEngine") as mock_engine_class:
         mock_engine = AsyncMock()
         mock_engine_class.return_value = mock_engine
         # Make the engine say the request matches the new rule
@@ -182,7 +182,7 @@ async def test_add_rule_pattern_creates_rule(
 @pytest.mark.asyncio
 async def test_add_rule_pattern_handles_invalid_format(mock_storage, mock_notifier):
     """Test AddRulePatternHandler handles invalid target_id format."""
-    from pyafk.core.handlers.rules import AddRulePatternHandler
+    from owl.core.handlers.rules import AddRulePatternHandler
 
     ctx = CallbackContext(
         target_id="invalid_no_colon",  # Missing pattern index

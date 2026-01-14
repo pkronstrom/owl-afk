@@ -1,6 +1,6 @@
 """Tests for formatting utilities."""
 
-from pyafk.utils.formatting import format_auto_approval_message
+from owl.utils.formatting import format_auto_approval_message
 
 
 def test_format_auto_approval_message_single_command():

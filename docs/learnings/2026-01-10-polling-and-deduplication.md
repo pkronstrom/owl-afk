@@ -1,12 +1,12 @@
 # Learnings: Polling and Request Deduplication
 
 **Date**: 2026-01-10
-**Objective**: Fix multiple issues with pyafk's polling including pattern matching for worktrees, polling hangs, and duplicate requests
+**Objective**: Fix multiple issues with owl's polling including pattern matching for worktrees, polling hangs, and duplicate requests
 **Outcome**: Success - All issues resolved with commits `d686c52`, `62a28ec`, and `585ceae`
 
 ## Summary
 
-When running pyafk (multiple hook processes polling Telegram independently), several race conditions and coordination issues emerged. We solved these through: (1) wildcard-based pattern matching for portability, (2) leader election for cooperative polling, (3) request deduplication at creation time, and (4) idempotent callback handling.
+When running owl (multiple hook processes polling Telegram independently), several race conditions and coordination issues emerged. We solved these through: (1) wildcard-based pattern matching for portability, (2) leader election for cooperative polling, (3) request deduplication at creation time, and (4) idempotent callback handling.
 
 ## What We Tried
 
@@ -40,7 +40,7 @@ When running pyafk (multiple hook processes polling Telegram independently), sev
 3. **Request Deduplication** (`storage.py`, `manager.py`):
    - `find_duplicate_pending_request()` checks for existing pending request with same tool_name, tool_input, session_id
    - If duplicate found, wait for existing request instead of creating new one
-   - Prevents duplicate Telegram messages when multiple hooks (captain-hook + direct pyafk) call pyafk
+   - Prevents duplicate Telegram messages when multiple hooks (captain-hook + direct owl) call owl
 
 4. **Idempotent Callbacks** (`approval.py`, `chain.py`):
    - Check `request.status != "pending"` before processing
@@ -67,7 +67,7 @@ When running pyafk (multiple hook processes polling Telegram independently), sev
 |-------|------------|------------|
 | "Any in /dodo/" pattern didn't match worktree paths | Pattern used absolute path `/Users/.../dodo/*` but worktree was at `/Users/.../dodo-formatters/` | Changed to `*/dodo/*` wildcard prefix |
 | Last command in chain hung in standalone mode | Hook finished polling, no one picked up callback | Leader election with retry - hooks retry becoming leader when their task finishes |
-| Duplicate Telegram messages | Two hooks (captain-hook + direct pyafk) both calling pyafk | Request deduplication - check for existing pending request before creating |
+| Duplicate Telegram messages | Two hooks (captain-hook + direct owl) both calling owl | Request deduplication - check for existing pending request before creating |
 | Same callback processed multiple times | Multiple pollers received same Telegram update | Idempotent handlers - skip if `request.status != "pending"` |
 | 409 Conflict errors from Telegram | Multiple processes calling `getUpdates` simultaneously | Leader election ensures only one process polls at a time |
 
@@ -75,7 +75,7 @@ When running pyafk (multiple hook processes polling Telegram independently), sev
 
 - **Lock files persist** - If a process crashes while holding `poll.lock`, the lock file remains. The `PollLock` class handles this by opening file fresh each time, but stale lock files can cause confusion during debugging
 
-- **captain-hook can chain to pyafk** - Users may have pyafk in both captain-hook hooks AND direct Claude settings. Must handle this gracefully via deduplication
+- **captain-hook can chain to owl** - Users may have owl in both captain-hook hooks AND direct Claude settings. Must handle this gracefully via deduplication
 
 - **`tool_input IS ?` in SQLite** - Using `IS` instead of `=` for NULL-safe comparison when deduplicating requests
 
@@ -83,9 +83,9 @@ When running pyafk (multiple hook processes polling Telegram independently), sev
 
 ## References
 
-- `src/pyafk/core/poller.py` - Leader election and polling logic
-- `src/pyafk/core/manager.py` - Request creation with deduplication
-- `src/pyafk/core/storage.py` - `find_duplicate_pending_request()` method
-- `src/pyafk/core/handlers/approval.py` - Idempotent approve handler
-- `src/pyafk/core/handlers/chain.py` - Idempotent chain handlers
-- `src/pyafk/utils/pattern_generator.py` - Wildcard pattern generation
+- `src/owl/core/poller.py` - Leader election and polling logic
+- `src/owl/core/manager.py` - Request creation with deduplication
+- `src/owl/core/storage.py` - `find_duplicate_pending_request()` method
+- `src/owl/core/handlers/approval.py` - Idempotent approve handler
+- `src/owl/core/handlers/chain.py` - Idempotent chain handlers
+- `src/owl/utils/pattern_generator.py` - Wildcard pattern generation

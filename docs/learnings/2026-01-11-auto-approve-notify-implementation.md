@@ -78,7 +78,7 @@ Key moments where user direction shaped the outcome:
 
 ## References
 
-- `src/pyafk/core/manager.py:217-235` - Integration point
-- `src/pyafk/notifiers/base.py:80-86` - Base class extension
-- `src/pyafk/utils/formatting.py:29-74` - Formatting helper
+- `src/owl/core/manager.py:217-235` - Integration point
+- `src/owl/notifiers/base.py:80-86` - Base class extension
+- `src/owl/utils/formatting.py:29-74` - Formatting helper
 - `docs/plans/2026-01-11-auto-approve-notify.md` - Revised plan document

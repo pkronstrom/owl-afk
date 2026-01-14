@@ -15,9 +15,9 @@ def temp_dir():
 
 
 @pytest.fixture
-def mock_pyafk_dir(temp_dir, monkeypatch):
-    """Set up a mock ~/.pyafk directory."""
-    pyafk_dir = temp_dir / ".pyafk"
-    pyafk_dir.mkdir()
-    monkeypatch.setenv("PYAFK_DIR", str(pyafk_dir))
-    return pyafk_dir
+def mock_owl_dir(temp_dir, monkeypatch):
+    """Set up a mock ~/.owl directory."""
+    owl_dir = temp_dir / ".owl"
+    owl_dir.mkdir()
+    monkeypatch.setenv("OWL_DIR", str(owl_dir))
+    return owl_dir

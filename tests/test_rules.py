@@ -2,7 +2,7 @@
 
 import pytest
 
-from pyafk.core.rules import RulesEngine, matches_pattern
+from owl.core.rules import RulesEngine, matches_pattern
 
 
 def test_matches_pattern_exact():
@@ -25,11 +25,11 @@ def test_matches_pattern_glob_path():
 
 
 @pytest.mark.asyncio
-async def test_rules_engine_no_rules(mock_pyafk_dir):
+async def test_rules_engine_no_rules(mock_owl_dir):
     """No rules means no auto-approve."""
-    from pyafk.core.storage import Storage
+    from owl.core.storage import Storage
 
-    db_path = mock_pyafk_dir / "test.db"
+    db_path = mock_owl_dir / "test.db"
     async with Storage(db_path) as storage:
         engine = RulesEngine(storage)
 
@@ -38,11 +38,11 @@ async def test_rules_engine_no_rules(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_rules_engine_approve_rule(mock_pyafk_dir):
+async def test_rules_engine_approve_rule(mock_owl_dir):
     """Matching approve rule."""
-    from pyafk.core.storage import Storage
+    from owl.core.storage import Storage
 
-    db_path = mock_pyafk_dir / "test.db"
+    db_path = mock_owl_dir / "test.db"
     async with Storage(db_path) as storage:
         await storage._conn.execute(
             "INSERT INTO auto_approve_rules (pattern, action, priority, created_at) VALUES (?, ?, ?, ?)",
@@ -57,11 +57,11 @@ async def test_rules_engine_approve_rule(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_rules_engine_deny_rule(mock_pyafk_dir):
+async def test_rules_engine_deny_rule(mock_owl_dir):
     """Matching deny rule."""
-    from pyafk.core.storage import Storage
+    from owl.core.storage import Storage
 
-    db_path = mock_pyafk_dir / "test.db"
+    db_path = mock_owl_dir / "test.db"
     async with Storage(db_path) as storage:
         await storage._conn.execute(
             "INSERT INTO auto_approve_rules (pattern, action, priority, created_at) VALUES (?, ?, ?, ?)",
@@ -76,11 +76,11 @@ async def test_rules_engine_deny_rule(mock_pyafk_dir):
 
 
 @pytest.mark.asyncio
-async def test_rules_engine_priority(mock_pyafk_dir):
+async def test_rules_engine_priority(mock_owl_dir):
     """Higher priority rules win."""
-    from pyafk.core.storage import Storage
+    from owl.core.storage import Storage
 
-    db_path = mock_pyafk_dir / "test.db"
+    db_path = mock_owl_dir / "test.db"
     async with Storage(db_path) as storage:
         # Lower priority approve
         await storage._conn.execute(

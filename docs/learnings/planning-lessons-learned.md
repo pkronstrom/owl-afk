@@ -1,6 +1,6 @@
 # Lessons Learned
 
-Analysis of historical planning documents from the pyafk project, distilled into actionable takeaways.
+Analysis of historical planning documents from the owl project, distilled into actionable takeaways.
 
 **Source:** Archived plan docs from `docs/plans/` (2025-01 to 2026-01)
 
