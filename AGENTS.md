@@ -32,7 +32,7 @@ src/owl/
 ## Commands
 
 ```bash
-uv run pytest              # Run tests (180 tests)
+uv run pytest              # Run tests (191 tests)
 uv run mypy src/owl      # Type check
 owl on/off/status        # Toggle approval mode
 owl rules list/add/remove # Manage auto-approve patterns
