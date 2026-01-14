@@ -10,7 +10,6 @@ from pyafk.utils.config import Config, get_pyafk_dir
 def _print_header() -> None:
     """Print application header with status."""
     from pyafk.cli.install import check_hooks_installed
-    from pyafk.daemon import is_daemon_running
 
     pyafk_dir = get_pyafk_dir()
     config = Config(pyafk_dir)
@@ -24,9 +23,6 @@ def _print_header() -> None:
         parts.append("[green]tg[/green]")
     else:
         parts.append("[dim]tg[/dim]")
-
-    if is_daemon_running(pyafk_dir):
-        parts.append("[green]daemon[/green]")
 
     hooks_installed, hooks_mode = check_hooks_installed()
     if hooks_installed:
@@ -468,7 +464,7 @@ def interactive_config() -> None:
     PANEL_HEIGHT = 19  # Room for 3 sections + spacers + items + status + legend
 
     # Which toggles belong to which section
-    GENERAL_TOGGLES = ["debug", "daemon_enabled", "auto_approve_notify"]
+    GENERAL_TOGGLES = ["debug", "auto_approve_notify"]
     HOOK_TOGGLES = ["stop_hook", "subagent_hook", "notification_hook"]
 
     def build_items(config):

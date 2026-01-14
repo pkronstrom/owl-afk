@@ -1,12 +1,12 @@
-# Learnings: Standalone Polling and Request Deduplication
+# Learnings: Polling and Request Deduplication
 
 **Date**: 2026-01-10
-**Objective**: Fix multiple issues with pyafk's standalone mode (no daemon) including pattern matching for worktrees, polling hangs, and duplicate requests
+**Objective**: Fix multiple issues with pyafk's polling including pattern matching for worktrees, polling hangs, and duplicate requests
 **Outcome**: Success - All issues resolved with commits `d686c52`, `62a28ec`, and `585ceae`
 
 ## Summary
 
-When running pyafk in standalone mode (multiple hook processes polling Telegram independently), several race conditions and coordination issues emerged. We solved these through: (1) wildcard-based pattern matching for portability, (2) leader election for cooperative polling, (3) request deduplication at creation time, and (4) idempotent callback handling.
+When running pyafk (multiple hook processes polling Telegram independently), several race conditions and coordination issues emerged. We solved these through: (1) wildcard-based pattern matching for portability, (2) leader election for cooperative polling, (3) request deduplication at creation time, and (4) idempotent callback handling.
 
 ## What We Tried
 

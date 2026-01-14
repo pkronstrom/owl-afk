@@ -34,22 +34,9 @@ This creates and enables pyafk wrapper scripts in `~/.config/captain-hook/hooks/
 
 When using captain-hook mode:
 
-1. **No daemon required** - Hooks poll Telegram inline during execution
-2. **Same config** - Uses `~/.config/pyafk/` for settings, rules, and storage
-3. **Same features** - Approve/deny, rules, chain approval all work
-4. **No /msg, /afk commands** - Those require the daemon (standalone mode)
-
-## Standalone vs Captain-Hook Mode
-
-| Feature | Standalone (`pyafk on`) | Captain-Hook |
-|---------|------------------------|--------------|
-| Telegram approval | Yes | Yes |
-| Rules engine | Yes | Yes |
-| Chain approval | Yes | Yes |
-| /msg command | Yes | No |
-| /afk on/off | Yes | No |
-| /start command | Yes | No |
-| Continuous polling | Yes (daemon) | No (inline) |
+1. **Same config** - Uses `~/.config/pyafk/` for settings, rules, and storage
+2. **Same features** - Approve/deny, rules, chain approval all work
+3. **Inline polling** - Hooks poll Telegram inline during execution
 
 ## Configuration
 

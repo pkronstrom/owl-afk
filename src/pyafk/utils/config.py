@@ -20,7 +20,6 @@ class Config:
     # These are auto-discovered by the interactive menu
     TOGGLES: dict[str, str] = {
         "debug": "Log to ~/.config/pyafk/debug.log",
-        "daemon_enabled": "Background polling (vs inline)",
         "stop_hook": "Notify when Claude session ends",
         "subagent_hook": "Notify when subagent finishes",
         "notification_hook": "Forward notifications to TG",
@@ -46,8 +45,6 @@ class Config:
         self.timeout_seconds = DEFAULT_REQUEST_TIMEOUT
         self.timeout_action = DEFAULT_TIMEOUT_ACTION
         self.debug = False
-        # WARNING: experimental - daemon_enabled=False means hooks poll inline
-        self.daemon_enabled = False
         self.subagent_auto_dismiss_seconds = (
             60  # Auto-dismiss subagent messages after 1 min
         )
@@ -75,7 +72,6 @@ class Config:
                 )
                 self.timeout_action = data.get("timeout_action", DEFAULT_TIMEOUT_ACTION)
                 self.debug = data.get("debug", False)
-                self.daemon_enabled = data.get("daemon_enabled", False)
                 self.subagent_auto_dismiss_seconds = data.get(
                     "subagent_auto_dismiss_seconds", 60
                 )
@@ -143,7 +139,6 @@ class Config:
             "timeout_seconds": self.timeout_seconds,
             "timeout_action": self.timeout_action,
             "debug": self.debug,
-            "daemon_enabled": self.daemon_enabled,
             "subagent_auto_dismiss_seconds": self.subagent_auto_dismiss_seconds,
             "stop_hook": self.stop_hook,
             "subagent_hook": self.subagent_hook,

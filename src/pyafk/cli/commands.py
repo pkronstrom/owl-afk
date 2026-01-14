@@ -54,17 +54,6 @@ def cmd_status(args):
     else:
         console.print("[bold]Telegram:[/bold] [yellow]not configured[/yellow]")
 
-    from pyafk.daemon import get_daemon_pid, is_daemon_running
-
-    # Daemon
-    if is_daemon_running(pyafk_dir):
-        pid = get_daemon_pid(pyafk_dir)
-        console.print(
-            f"[bold]Daemon:[/bold] [green]running[/green] [dim](pid {pid})[/dim]"
-        )
-    else:
-        console.print("[bold]Daemon:[/bold] [dim]not running[/dim]")
-
     # Hooks
     hooks_installed, hooks_mode = check_hooks_installed()
     if hooks_installed:
@@ -108,25 +97,7 @@ def cmd_on(project: str | None):
         mode_info = f"via {hooks_mode}" if hooks_installed else "no hooks"
 
         if config.telegram_bot_token and config.telegram_chat_id:
-            if not config.daemon_enabled:
-                console.print(
-                    f"[green]✓ pyafk enabled[/green] [dim]({mode_info}, inline polling)[/dim]"
-                )
-            else:
-                from pyafk.daemon import is_daemon_running, start_daemon
-
-                if is_daemon_running(pyafk_dir):
-                    console.print(
-                        f"[green]✓ pyafk enabled[/green] [dim]({mode_info}, daemon already running)[/dim]"
-                    )
-                elif start_daemon(pyafk_dir):
-                    console.print(
-                        f"[green]✓ pyafk enabled[/green] [dim]({mode_info}, daemon started)[/dim]"
-                    )
-                else:
-                    console.print(
-                        f"[yellow]⚠ pyafk enabled[/yellow] [dim]({mode_info}, daemon failed to start)[/dim]"
-                    )
+            console.print(f"[green]✓ pyafk enabled[/green] [dim]({mode_info})[/dim]")
         else:
             console.print(
                 f"[yellow]⚠ pyafk enabled[/yellow] [dim]({mode_info}, no Telegram configured)[/dim]"
@@ -224,16 +195,10 @@ def cmd_off(project: str | None):
     cleaned = asyncio.run(cleanup())
 
     from pyafk.cli.ui import console
-    from pyafk.daemon import is_daemon_running
 
-    if is_daemon_running(pyafk_dir):
-        console.print(
-            f"[yellow]⏸ pyafk off[/yellow] [dim]({cleaned} pending rejected, use /afk on in Telegram)[/dim]"
-        )
-    else:
-        console.print(
-            f"[yellow]⏸ pyafk off[/yellow] [dim]({cleaned} pending rejected, use 'pyafk on' to start)[/dim]"
-        )
+    console.print(
+        f"[yellow]⏸ pyafk off[/yellow] [dim]({cleaned} pending rejected)[/dim]"
+    )
 
 
 def cmd_install(args):

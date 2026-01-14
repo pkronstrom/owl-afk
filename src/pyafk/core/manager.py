@@ -313,21 +313,18 @@ class ApprovalManager:
     async def _wait_for_response(self, request_id: str) -> tuple[str, Optional[str]]:
         """Wait for approval response with polling.
 
-        When daemon is running, we just poll storage for status changes.
-        When daemon is not running, one hook becomes the "polling leader" and
-        polls Telegram for ALL pending requests. Other hooks just check the database.
+        One hook becomes the "polling leader" and polls Telegram for ALL pending
+        requests. Other hooks just check the database.
 
         Returns:
             Tuple of (decision, denial_reason)
         """
-        from pyafk.daemon import is_daemon_running
-
         start = time.monotonic()
         poll_task: Optional[asyncio.Task[bool]] = None
 
-        # Start leader polling in background if no daemon running
+        # Start leader polling in background
         grace_period = self._config.polling_grace_period if self._config else 900.0
-        if self.poller and not is_daemon_running(self.pyafk_dir):
+        if self.poller:
             poll_task = asyncio.create_task(
                 self.poller.poll_as_leader(request_id, grace_period=grace_period)
             )

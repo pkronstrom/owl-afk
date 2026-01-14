@@ -284,8 +284,6 @@ async def handle_subagent_stop(
             await storage.store_subagent_message(msg_id, compact_text)
 
         # Create poller and wait for response
-        from pyafk.daemon import is_daemon_running
-
         poller = Poller(storage, notifier, pyafk_dir)
 
         timeout = 3600  # 1 hour
@@ -298,13 +296,11 @@ async def handle_subagent_stop(
                     log(f"Timeout reached after {elapsed:.0f}s")
                     return {}  # Timeout, let it stop
 
-                # Poll for updates (only if daemon is not running)
-                # Re-check each iteration in case daemon crashes
-                if not is_daemon_running(pyafk_dir):
-                    try:
-                        await poller.process_updates_once()
-                    except Exception:
-                        pass
+                # Poll for updates
+                try:
+                    await poller.process_updates_once()
+                except Exception:
+                    pass
 
                 # Check if resolved
                 entry = await storage.get_pending_subagent(subagent_id)

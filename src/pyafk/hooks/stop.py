@@ -82,7 +82,6 @@ async def handle_stop(
 
         # Poll for response
         from pyafk.core.poller import Poller
-        from pyafk.daemon import is_daemon_running
 
         poller = Poller(storage, notifier, pyafk_dir)
 
@@ -96,13 +95,11 @@ async def handle_stop(
                     # Timeout - let Claude stop
                     return {}
 
-                # Poll for updates (only if daemon not running)
-                # Re-check each iteration in case daemon crashes
-                if not is_daemon_running(pyafk_dir):
-                    try:
-                        await poller.process_updates_once()
-                    except Exception:
-                        pass
+                # Poll for updates
+                try:
+                    await poller.process_updates_once()
+                except Exception:
+                    pass
 
                 # Check status
                 entry = await storage.get_pending_stop(session_id)

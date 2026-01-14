@@ -51,7 +51,7 @@ pyafk debug on             # Enable debug logging
 Hooks return `hookSpecificOutput` wrapper for Claude Code compatibility.
 See `hooks/response.py:make_hook_response()` and `hooks/subagent.py:316-328`.
 
-### Standalone Polling (no daemon)
+### Polling Architecture
 Leader election via `poll.lock` - one hook polls Telegram, others check DB.
 See `poller.py:poll_as_leader()` and `manager.py:_wait_for_response()`.
 
