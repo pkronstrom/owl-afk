@@ -7,28 +7,10 @@ from typing import Optional
 
 
 def get_owl_dir() -> Path:
-    """Get the owl data directory (XDG-compliant).
-
-    Handles migration from old ~/.config/pyafk to ~/.config/owl.
-    """
+    """Get the owl data directory (XDG-compliant)."""
     if env_dir := os.environ.get("OWL_DIR"):
         return Path(env_dir)
-
-    owl_dir = Path.home() / ".config" / "owl"
-    old_dir = Path.home() / ".config" / "pyafk"
-
-    # Migrate from pyafk to owl if needed
-    if old_dir.exists() and not owl_dir.exists():
-        import shutil
-
-        shutil.move(str(old_dir), str(owl_dir))
-        # Rename database file if it exists
-        old_db = owl_dir / "pyafk.db"
-        new_db = owl_dir / "owl.db"
-        if old_db.exists() and not new_db.exists():
-            old_db.rename(new_db)
-
-    return owl_dir
+    return Path.home() / ".config" / "owl"
 
 
 class Config:
