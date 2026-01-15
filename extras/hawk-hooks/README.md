@@ -1,11 +1,11 @@
-# owl + captain-hook Integration
+# owl + hawk-hooks Integration
 
-Use owl's Telegram approval system with captain-hook as the hook manager.
+Use owl's Telegram approval system with hawk-hooks as the hook manager.
 
 ## Prerequisites
 
 1. **owl installed**: `pip install owl-afk` or `pipx install owl-afk`
-2. **captain-hook set up**: Run `captain-hook` to initialize
+2. **hawk-hooks set up**: Run `hawk-hooks` to initialize
 3. **Telegram bot configured**: Run `owl telegram setup` to configure your bot token and chat ID
 
 ## Switching from Standalone Mode
@@ -21,10 +21,16 @@ This prevents duplicate hooks running.
 ## Installation
 
 ```bash
-owl captain-hook install
+owl hawk install
 ```
 
-This creates and enables owl wrapper scripts in `~/.config/captain-hook/hooks/`:
+Or equivalently:
+
+```bash
+owl hawk-hooks install
+```
+
+This creates and enables owl wrapper scripts in `~/.config/hawk-hooks/hooks/`:
 - `pre_tool_use/owl-pre_tool_use.sh` - Remote approval for tool calls
 - `post_tool_use/owl-post_tool_use.sh` - Deliver queued messages after tool execution
 - `stop/owl-stop.sh` - Notify on session stop
@@ -32,7 +38,7 @@ This creates and enables owl wrapper scripts in `~/.config/captain-hook/hooks/`:
 
 ## How It Works
 
-When using captain-hook mode:
+When using hawk-hooks mode:
 
 1. **Same config** - Uses `~/.config/owl/` for settings, rules, and storage
 2. **Same features** - Approve/deny, rules, chain approval all work
@@ -57,6 +63,6 @@ owl telegram setup
 ## Uninstall
 
 ```bash
-owl captain-hook uninstall
-captain-hook toggle  # Update runners
+owl hawk uninstall
+hawk-hooks toggle  # Update runners
 ```

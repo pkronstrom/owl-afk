@@ -214,25 +214,26 @@ def env_unset(key: str) -> None:
     cmd_env_unset(Args())
 
 
-# Captain-hook subcommand group
-captain_app = typer.Typer(help="Captain-hook integration")
-app.add_typer(captain_app, name="captain-hook")
+# Hawk-hooks subcommand group (external hook manager integration)
+hawk_app = typer.Typer(help="Hawk-hooks integration")
+app.add_typer(hawk_app, name="hawk-hooks")
+app.add_typer(hawk_app, name="hawk")  # Short alias
 
 
-@captain_app.command("install")
-def captain_install() -> None:
-    """Install owl hooks for captain-hook."""
-    from owl.cli.commands import cmd_captain_hook_install
+@hawk_app.command("install")
+def hawk_install() -> None:
+    """Install owl hooks for hawk-hooks."""
+    from owl.cli.commands import cmd_hawk_hooks_install
 
-    cmd_captain_hook_install(None)
+    cmd_hawk_hooks_install(None)
 
 
-@captain_app.command("uninstall")
-def captain_uninstall() -> None:
-    """Remove owl hooks from captain-hook."""
-    from owl.cli.commands import cmd_captain_hook_uninstall
+@hawk_app.command("uninstall")
+def hawk_uninstall() -> None:
+    """Remove owl hooks from hawk-hooks."""
+    from owl.cli.commands import cmd_hawk_hooks_uninstall
 
-    cmd_captain_hook_uninstall(None)
+    cmd_hawk_hooks_uninstall(None)
 
 
 def cli_main() -> None:

@@ -6,8 +6,8 @@ from pathlib import Path
 
 from owl.cli.ui import console
 
-# Captain-hook integration
-CAPTAIN_HOOK_DIR = Path.home() / ".config" / "captain-hook" / "hooks"
+# Hawk-hooks integration
+HAWK_HOOKS_DIR = Path.home() / ".config" / "hawk-hooks" / "hooks"
 HOOK_CONFIG = {
     "pre_tool_use": {
         "type": "PreToolUse",
@@ -164,9 +164,9 @@ def check_hooks_installed() -> tuple[bool, str]:
                 if is_owl_hook(entry):
                     return True, "standalone"
 
-    captain_hook_dir = Path.home() / ".config" / "captain-hook" / "hooks"
-    if (captain_hook_dir / "pre_tool_use" / "owl-pre_tool_use.sh").exists():
-        return True, "captain-hook"
+    hawk_hooks_dir = Path.home() / ".config" / "hawk-hooks" / "hooks"
+    if (hawk_hooks_dir / "pre_tool_use" / "owl-pre_tool_use.sh").exists():
+        return True, "hawk-hooks"
 
     return False, "none"
 
@@ -201,12 +201,12 @@ def do_standalone_install(owl_dir: Path):
     console.print(f"[dim]Settings: {settings_path}[/dim]")
 
 
-def do_captain_hook_install():
-    """Perform captain-hook installation."""
-    console.print("[bold]Installing captain-hook hooks...[/bold]")
+def do_hawk_hooks_install():
+    """Perform hawk-hooks installation."""
+    console.print("[bold]Installing hawk-hooks hooks...[/bold]")
 
     for event in HOOK_EVENTS:
-        event_dir = CAPTAIN_HOOK_DIR / event
+        event_dir = HAWK_HOOKS_DIR / event
         event_dir.mkdir(parents=True, exist_ok=True)
 
         hook_config = HOOK_CONFIG[event]
@@ -233,25 +233,25 @@ def do_captain_hook_install():
         wrapper_path.chmod(0o755)
         console.print(f"  [green]✓[/green] {event}/{wrapper_name}")
 
-    # Enable hooks via captain-hook CLI
+    # Enable hooks via hawk-hooks CLI
     console.print()
     console.print("Enabling hooks...")
     hook_names = [f"{event}/owl-{event}" for event in HOOK_EVENTS]
     try:
         subprocess.run(
-            ["captain-hook", "enable"] + hook_names,
+            ["hawk-hooks", "enable"] + hook_names,
             check=True,
             capture_output=True,
         )
         subprocess.run(
-            ["captain-hook", "toggle"],
+            ["hawk-hooks", "toggle"],
             check=True,
             capture_output=True,
         )
         console.print("[green]Done![/green]")
     except subprocess.CalledProcessError as e:
         console.print(f"[yellow]Warning:[/yellow] Failed to auto-enable: {e}")
-        console.print("Run [cyan]captain-hook toggle[/cyan] to enable owl hooks.")
+        console.print("Run [cyan]hawk-hooks toggle[/cyan] to enable owl hooks.")
     except FileNotFoundError:
-        console.print("[yellow]Warning:[/yellow] captain-hook CLI not found")
-        console.print("Run [cyan]captain-hook toggle[/cyan] to enable owl hooks.")
+        console.print("[yellow]Warning:[/yellow] hawk-hooks CLI not found")
+        console.print("Run [cyan]hawk-hooks toggle[/cyan] to enable owl hooks.")

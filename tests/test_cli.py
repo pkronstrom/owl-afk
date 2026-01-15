@@ -260,45 +260,45 @@ class TestTelegramCommand:
         assert result.returncode in [0, 1]
 
 
-class TestCaptainHookCommands:
-    """Tests for captain-hook integration commands."""
+class TestHawkHooksCommands:
+    """Tests for hawk-hooks integration commands."""
 
-    def test_captain_hook_install_creates_config(self, cli_env, tmp_path):
-        """Captain-hook install creates hook configuration."""
+    def test_hawk_hooks_install_creates_config(self, cli_env, tmp_path):
+        """Hawk-hooks install creates hook configuration."""
         import os
 
         env = os.environ.copy()
         env["OWL_DIR"] = str(cli_env)
         env["HOME"] = str(tmp_path)
 
-        # Create captain-hook config directory
-        captain_dir = tmp_path / ".captain-hook"
-        captain_dir.mkdir()
-        (captain_dir / "hooks.json").write_text("{}")
+        # Create hawk-hooks config directory
+        hawk_dir = tmp_path / ".hawk-hooks"
+        hawk_dir.mkdir()
+        (hawk_dir / "hooks.json").write_text("{}")
 
-        result = run_cli("captain-hook", "install", env=env)
+        result = run_cli("hawk-hooks", "install", env=env)
 
-        # May fail if captain-hook not installed, but shouldn't crash
+        # May fail if hawk-hooks not installed, but shouldn't crash
         assert result.returncode in [0, 1]
 
-    def test_captain_hook_uninstall_removes_config(self, cli_env, tmp_path):
-        """Captain-hook uninstall removes hook configuration."""
+    def test_hawk_hooks_uninstall_removes_config(self, cli_env, tmp_path):
+        """Hawk-hooks uninstall removes hook configuration."""
         import os
 
         env = os.environ.copy()
         env["OWL_DIR"] = str(cli_env)
         env["HOME"] = str(tmp_path)
 
-        # Create captain-hook config with owl hooks
-        captain_dir = tmp_path / ".captain-hook"
-        captain_dir.mkdir()
-        (captain_dir / "hooks.json").write_text(
+        # Create hawk-hooks config with owl hooks
+        hawk_dir = tmp_path / ".hawk-hooks"
+        hawk_dir.mkdir()
+        (hawk_dir / "hooks.json").write_text(
             json.dumps({"PreToolUse": [{"command": "owl hook PreToolUse"}]})
         )
 
-        result = run_cli("captain-hook", "uninstall", env=env)
+        result = run_cli("hawk-hooks", "uninstall", env=env)
 
-        # May fail if captain-hook not installed, but shouldn't crash
+        # May fail if hawk-hooks not installed, but shouldn't crash
         assert result.returncode in [0, 1]
 
 

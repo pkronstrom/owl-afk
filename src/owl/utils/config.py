@@ -55,7 +55,7 @@ class Config:
         self.auto_approve_notify = False  # Notify on auto-approvals
         # Polling grace period - how long to keep polling after request resolves (seconds)
         self.polling_grace_period = 900  # 15 minutes default
-        # Env var overrides (like captain-hook)
+        # Env var overrides (like hawk-hooks)
         self.env: dict[str, str] = {}
         # Editor for text input
         self.editor = os.environ.get("EDITOR", "vim")

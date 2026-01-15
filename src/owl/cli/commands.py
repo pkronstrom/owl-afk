@@ -6,10 +6,10 @@ import sys
 
 from owl.cli.helpers import add_rule, do_telegram_test, get_rules, remove_rule
 from owl.cli.install import (
-    CAPTAIN_HOOK_DIR,
+    HAWK_HOOKS_DIR,
     HOOK_EVENTS,
     check_hooks_installed,
-    do_captain_hook_install,
+    do_hawk_hooks_install,
     do_standalone_install,
     get_owl_hooks,
     is_owl_hook,
@@ -358,23 +358,23 @@ def cmd_telegram_test(args):
     do_telegram_test(config)
 
 
-def cmd_captain_hook_install(args):
-    """Install owl hooks for captain-hook."""
-    if not CAPTAIN_HOOK_DIR.exists():
-        print(f"Error: captain-hook not found at {CAPTAIN_HOOK_DIR}")
-        print("Run 'captain-hook' first to initialize.")
+def cmd_hawk_hooks_install(args):
+    """Install owl hooks for hawk-hooks."""
+    if not HAWK_HOOKS_DIR.exists():
+        print(f"Error: hawk-hooks not found at {HAWK_HOOKS_DIR}")
+        print("Run 'hawk-hooks' first to initialize.")
         sys.exit(1)
 
-    do_captain_hook_install()
+    do_hawk_hooks_install()
 
 
-def cmd_captain_hook_uninstall(args):
-    """Remove owl hooks from captain-hook."""
+def cmd_hawk_hooks_uninstall(args):
+    """Remove owl hooks from hawk-hooks."""
     removed = False
 
     for event in HOOK_EVENTS:
         wrapper_name = f"owl-{event}.sh"
-        wrapper_path = CAPTAIN_HOOK_DIR / event / wrapper_name
+        wrapper_path = HAWK_HOOKS_DIR / event / wrapper_name
         if wrapper_path.exists():
             wrapper_path.unlink()
             print(f"Removed: {event}/{wrapper_name}")
@@ -382,9 +382,9 @@ def cmd_captain_hook_uninstall(args):
 
     if removed:
         print()
-        print("Done! Run 'captain-hook toggle' to update runners.")
+        print("Done! Run 'hawk-hooks toggle' to update runners.")
     else:
-        print("No owl hooks found in captain-hook.")
+        print("No owl hooks found in hawk-hooks.")
 
 
 def cmd_env_list(args):

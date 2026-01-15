@@ -113,9 +113,9 @@ owl uses Claude Code hooks to intercept tool calls:
 - `Stop` - Interactive confirmation before Claude stops
 - `SubagentStop` - Notifies when subagents complete
 
-## Captain-Hook Integration
+## Hawk-Hooks Integration
 
-owl can also be used with [captain-hook](https://github.com/pkronstrom/captain-hook) as the hook manager. See [extras/captain-hook/README.md](extras/captain-hook/README.md) for setup instructions.
+owl can also be used with [hawk-hooks](https://github.com/pkronstrom/hawk-hooks) as the hook manager. See [extras/hawk-hooks/README.md](extras/hawk-hooks/README.md) for setup instructions.
 
 ## Requirements
 

@@ -627,8 +627,8 @@ def run_wizard() -> None:
     """First-time setup wizard."""
     from owl.cli.helpers import do_telegram_test
     from owl.cli.install import (
-        CAPTAIN_HOOK_DIR,
-        do_captain_hook_install,
+        HAWK_HOOKS_DIR,
+        do_hawk_hooks_install,
         do_standalone_install,
     )
 
@@ -660,13 +660,13 @@ def run_wizard() -> None:
     clear_screen()
     console.print("[bold]Install Hooks[/bold]\n")
 
-    captain_available = CAPTAIN_HOOK_DIR.exists()
+    hawk_available = HAWK_HOOKS_DIR.exists()
 
     options = ["Standalone         Write to ~/.claude/settings.json"]
-    if captain_available:
-        options.append("Captain-hook       Use hook manager")
+    if hawk_available:
+        options.append("Hawk-hooks         Use hook manager")
     else:
-        options.append("[dim]Captain-hook       (not installed)[/dim]")
+        options.append("[dim]Hawk-hooks         (not installed)[/dim]")
 
     console.print("[dim]Enter select • q cancel[/dim]\n")
     choice = menu.select(options)
@@ -676,8 +676,8 @@ def run_wizard() -> None:
 
     if choice == 0:
         do_standalone_install(owl_dir)
-    elif choice == 1 and captain_available:
-        do_captain_hook_install()
+    elif choice == 1 and hawk_available:
+        do_hawk_hooks_install()
 
     console.print()
 

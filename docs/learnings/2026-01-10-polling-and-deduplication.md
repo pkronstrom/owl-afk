@@ -40,7 +40,7 @@ When running owl (multiple hook processes polling Telegram independently), sever
 3. **Request Deduplication** (`storage.py`, `manager.py`):
    - `find_duplicate_pending_request()` checks for existing pending request with same tool_name, tool_input, session_id
    - If duplicate found, wait for existing request instead of creating new one
-   - Prevents duplicate Telegram messages when multiple hooks (captain-hook + direct owl) call owl
+   - Prevents duplicate Telegram messages when multiple hooks (hawk-hooks + direct owl) call owl
 
 4. **Idempotent Callbacks** (`approval.py`, `chain.py`):
    - Check `request.status != "pending"` before processing
@@ -67,7 +67,7 @@ When running owl (multiple hook processes polling Telegram independently), sever
 |-------|------------|------------|
 | "Any in /dodo/" pattern didn't match worktree paths | Pattern used absolute path `/Users/.../dodo/*` but worktree was at `/Users/.../dodo-formatters/` | Changed to `*/dodo/*` wildcard prefix |
 | Last command in chain hung in standalone mode | Hook finished polling, no one picked up callback | Leader election with retry - hooks retry becoming leader when their task finishes |
-| Duplicate Telegram messages | Two hooks (captain-hook + direct owl) both calling owl | Request deduplication - check for existing pending request before creating |
+| Duplicate Telegram messages | Two hooks (hawk-hooks + direct owl) both calling owl | Request deduplication - check for existing pending request before creating |
 | Same callback processed multiple times | Multiple pollers received same Telegram update | Idempotent handlers - skip if `request.status != "pending"` |
 | 409 Conflict errors from Telegram | Multiple processes calling `getUpdates` simultaneously | Leader election ensures only one process polls at a time |
 
@@ -75,7 +75,7 @@ When running owl (multiple hook processes polling Telegram independently), sever
 
 - **Lock files persist** - If a process crashes while holding `poll.lock`, the lock file remains. The `PollLock` class handles this by opening file fresh each time, but stale lock files can cause confusion during debugging
 
-- **captain-hook can chain to owl** - Users may have owl in both captain-hook hooks AND direct Claude settings. Must handle this gracefully via deduplication
+- **hawk-hooks can chain to owl** - Users may have owl in both hawk-hooks hooks AND direct Claude settings. Must handle this gracefully via deduplication
 
 - **`tool_input IS ?` in SQLite** - Using `IS` instead of `=` for NULL-safe comparison when deduplicating requests
 
