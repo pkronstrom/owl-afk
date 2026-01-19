@@ -7,6 +7,9 @@ from typing import Any, Optional
 from owl.core.storage import Storage
 
 
+MAX_PATTERN_LENGTH = 500  # Limit pattern length to prevent ReDoS attacks
+
+
 def matches_pattern(tool_call: str, pattern: str) -> bool:
     """Check if a tool call matches a pattern.
 
@@ -16,6 +19,10 @@ def matches_pattern(tool_call: str, pattern: str) -> bool:
     - Glob: "Read(*.py)" matches "Read(/path/to/file.py)"
     """
     if not pattern:
+        return False
+
+    # Limit pattern length to prevent ReDoS
+    if len(pattern) > MAX_PATTERN_LENGTH:
         return False
 
     # Convert pattern to regex
@@ -104,6 +111,8 @@ class RulesEngine:
             raise ValueError(f"Invalid action: {action}")
         if not pattern:
             raise ValueError("Pattern cannot be empty")
+        if len(pattern) > MAX_PATTERN_LENGTH:
+            raise ValueError(f"Pattern too long (max {MAX_PATTERN_LENGTH} chars)")
 
         # Check for existing rule with same pattern and action
         existing = await self.storage.get_rule_by_pattern(pattern, action)

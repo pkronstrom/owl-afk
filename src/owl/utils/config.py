@@ -131,7 +131,10 @@ class Config:
         apply_env_dict(shell_env)
 
     def save(self):
-        """Save config to file."""
+        """Save config to file.
+
+        Config contains credentials so we set restrictive permissions (0600).
+        """
         self.owl_dir.mkdir(parents=True, exist_ok=True)
         data = {
             "telegram_bot_token": self.telegram_bot_token,
@@ -150,6 +153,8 @@ class Config:
             "enabled_projects": self.enabled_projects,
         }
         self._config_file.write_text(json.dumps(data, indent=2))
+        # Restrict permissions: owner read/write only (contains credentials)
+        self._config_file.chmod(0o600)
 
     def set_env(self, key: str, value: str):
         """Set an env var override in config."""

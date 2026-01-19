@@ -1,5 +1,7 @@
 # owl
 
+![owl banner](docs/owl_banner.png)
+
 Remote approval system for Claude Code via Telegram. Approve or deny tool calls from your phone while away from your computer.
 
 ## Features
@@ -122,6 +124,34 @@ owl can also be used with [hawk-hooks](https://github.com/pkronstrom/hawk-hooks)
 - Python 3.10+
 - Claude Code CLI with hooks support
 - Telegram account
+
+## Security Considerations
+
+### Credential Storage
+
+- Telegram bot token and chat ID are stored in `~/.config/owl/config.json`
+- File permissions are automatically set to `0600` (owner read/write only)
+- Do not commit config.json to version control
+- Limit filesystem access to trusted users
+
+### Approval Security
+
+- owl intercepts and gates Claude Code tool calls
+- Commands approved by you are executed by Claude Code, not owl
+- owl cannot prevent malicious commands if you approve them
+- Review all commands carefully before approving
+
+### Debug Mode
+
+- Debug logs may contain sensitive information (commands, file paths, session data)
+- Only enable debug mode when troubleshooting
+- Debug logs stored in `~/.config/owl/debug.log`
+
+### Network Security
+
+- owl communicates with Telegram API over HTTPS
+- Telegram bot token transmitted in URL path (standard Telegram API practice)
+- No user data leaves your machine except to your own Telegram bot
 
 ## License
 
