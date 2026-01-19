@@ -81,6 +81,8 @@ owl debug off  # Disable debug logging
 
 ## Telegram Commands
 
+https://github.com/user-attachments/assets/8760e7a8-c6b0-4620-84d4-2f7bd5526579
+
 Once a request comes in, you'll see inline buttons:
 
 - **Approve** / **Approve Step**: Approve the current command
