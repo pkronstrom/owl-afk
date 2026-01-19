@@ -4,6 +4,8 @@
 
 Remote approval system for Claude Code via Telegram. Approve or deny tool calls from your phone while away from your computer.
 
+![Telegram demo](docs/tg_cap.gif)
+
 ## Features
 
 - **Telegram Integration**: Receive approval requests on Telegram with inline buttons
@@ -80,8 +82,6 @@ owl debug off  # Disable debug logging
 ```
 
 ## Telegram Commands
-
-https://github.com/user-attachments/assets/8760e7a8-c6b0-4620-84d4-2f7bd5526579
 
 Once a request comes in, you'll see inline buttons:
 
