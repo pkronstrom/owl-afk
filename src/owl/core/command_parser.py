@@ -1,5 +1,7 @@
 """Recursive command parser for bash wrappers, chains, and substitutions."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional

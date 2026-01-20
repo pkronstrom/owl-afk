@@ -55,14 +55,18 @@ def main():
     """CLI entry point for hooks."""
     import asyncio
 
+    from owl.utils.config import get_owl_dir
+    from owl.utils.debug import log_error
+
     if len(sys.argv) < 3 or sys.argv[1] != "hook":
         print(json.dumps({"error": "Usage: owl hook <HookType>"}))
         sys.exit(1)
 
     hook_type = sys.argv[2]
+    owl_dir = get_owl_dir()
 
     # Fast path check first
-    result = check_fast_path()
+    result = check_fast_path(owl_dir)
     if result == FastPathResult.APPROVE:
         print(json.dumps({"decision": "approve"}))
         sys.exit(0)
@@ -81,6 +85,16 @@ def main():
         print(json.dumps({"error": "Invalid JSON input"}))
         sys.exit(1)
 
-    # Run async handler
-    response = asyncio.run(handle_hook(hook_type, hook_input))
-    print(json.dumps(response))
+    # Run async handler with error logging
+    try:
+        response = asyncio.run(handle_hook(hook_type, hook_input, owl_dir))
+        print(json.dumps(response))
+    except Exception as e:
+        # Log the full error with traceback (always, even if debug is off)
+        log_error(
+            "hook",
+            f"Hook {hook_type} crashed: {type(e).__name__}: {e}",
+            exc=e,
+        )
+        # Return empty dict to gracefully fall back to CLI approval
+        print(json.dumps({}))

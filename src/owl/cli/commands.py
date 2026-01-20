@@ -275,7 +275,7 @@ def cmd_reset(args):
 def cmd_hook(args):
     """Internal hook handler."""
     from owl.fast_path import FastPathResult, check_fast_path
-    from owl.hooks.handler import handle_hook
+    from owl.utils.debug import log_error
 
     owl_dir = get_owl_dir()
 
@@ -296,8 +296,22 @@ def cmd_hook(args):
         print(json.dumps({"error": "Invalid JSON input"}))
         sys.exit(1)
 
-    response = asyncio.run(handle_hook(args.hook_type, hook_input, owl_dir))
-    print(json.dumps(response))
+    try:
+        # Import here to catch import errors (like missing annotations)
+        from owl.hooks.handler import handle_hook
+
+        response = asyncio.run(handle_hook(args.hook_type, hook_input, owl_dir))
+        print(json.dumps(response))
+    except Exception as e:
+        # Log the full error with traceback (always, even if debug is off)
+        log_error(
+            "hook",
+            f"Hook {args.hook_type} crashed: {type(e).__name__}: {e}",
+            exc=e,
+        )
+        # Return empty dict to gracefully fall back to CLI approval
+        # This prevents silent failures - user will see CLI prompt AND error in logs
+        print(json.dumps({}))
 
 
 def cmd_debug_on(args):

@@ -81,3 +81,38 @@ def debug_parse(message: str, **kwargs):
 def debug_api(message: str, **kwargs):
     """Log API-related debug message."""
     debug("api", message, **kwargs)
+
+
+def debug_posttool(message: str, **kwargs):
+    """Log posttool-related debug message."""
+    debug("posttool", message, **kwargs)
+
+
+def log_error(category: str, message: str, exc: Exception = None):
+    """Log error message ALWAYS (even if debug mode is off).
+
+    Critical errors should always be logged so users can diagnose issues
+    like import errors or crashes in hook handlers.
+
+    Args:
+        category: Category like 'hook', 'error'
+        message: Error message
+        exc: Optional exception to include traceback
+    """
+    import traceback
+
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    line = f"[owl:{category}] {timestamp} ERROR: {message}"
+
+    if exc:
+        tb = traceback.format_exception(type(exc), exc, exc.__traceback__)
+        line += "\n" + "".join(tb)
+
+    # Always log to file (critical errors should never be silent)
+    _log_to_file(line)
+
+    # Also print to stderr
+    try:
+        print(line, file=sys.stderr)
+    except BrokenPipeError:
+        pass
