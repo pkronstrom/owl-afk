@@ -10,6 +10,50 @@ from owl.core.storage import Storage
 MAX_PATTERN_LENGTH = 500  # Limit pattern length to prevent ReDoS attacks
 
 
+def normalize_command_for_matching(cmd: str) -> str:
+    """Normalize a command string for pattern matching.
+
+    Strips outer quotes from command arguments to match how patterns are generated.
+    For example: ssh aarni 'docker exec bouillon...' -> ssh aarni docker exec bouillon...
+
+    This ensures commands match patterns regardless of quoting style.
+    """
+    # Use the same smart split logic as CommandParser to handle quotes properly
+    tokens = []
+    current_token = []
+    in_double_quote = False
+    in_single_quote = False
+    i = 0
+
+    while i < len(cmd):
+        char = cmd[i]
+
+        # Handle quotes
+        if char == '"' and not in_single_quote:
+            in_double_quote = not in_double_quote
+            # Don't include the quote in the token
+            i += 1
+        elif char == "'" and not in_double_quote:
+            in_single_quote = not in_single_quote
+            # Don't include the quote in the token
+            i += 1
+        # Handle whitespace as token separator (only outside quotes)
+        elif char.isspace() and not in_double_quote and not in_single_quote:
+            if current_token:
+                tokens.append("".join(current_token))
+                current_token = []
+            i += 1
+        else:
+            current_token.append(char)
+            i += 1
+
+    # Don't forget the last token
+    if current_token:
+        tokens.append("".join(current_token))
+
+    return " ".join(tokens)
+
+
 def matches_pattern(tool_call: str, pattern: str) -> bool:
     """Check if a tool call matches a pattern.
 
@@ -50,6 +94,7 @@ def format_tool_call(tool_name: str, tool_input: Optional[str]) -> str:
 
     Examples:
     - ("Bash", '{"command": "git status"}') -> "Bash(git status)"
+    - ("Bash", '{"command": "ssh host 'cmd'"}') -> "Bash(ssh host cmd)"  # quotes stripped
     - ("Read", '{"file_path": "/foo/bar.py"}') -> "Read(/foo/bar.py)"
     - ("Edit", '{"file_path": "/x.py", "old": "a"}') -> "Edit(/x.py)"
     - ("TodoWrite", '{"todos": [...]}') -> "TodoWrite(...)"
@@ -64,7 +109,9 @@ def format_tool_call(tool_name: str, tool_input: Optional[str]) -> str:
 
     # Extract the most relevant field for matching
     if "command" in data:
-        return f"{tool_name}({data['command']})"
+        # Normalize command to strip quotes for consistent pattern matching
+        normalized_cmd = normalize_command_for_matching(data["command"])
+        return f"{tool_name}({normalized_cmd})"
     elif "file_path" in data:
         return f"{tool_name}({data['file_path']})"
     elif "path" in data:

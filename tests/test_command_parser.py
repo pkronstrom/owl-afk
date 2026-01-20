@@ -195,9 +195,11 @@ def test_generate_patterns_simple_command():
 
     patterns = parser.generate_patterns(node)
 
-    assert len(patterns) == 2
+    # Simplified: exact, "rm file.txt *", "rm *"
+    assert len(patterns) == 3
     assert patterns[0] == "rm file.txt"
-    assert patterns[1] == "rm *"
+    assert patterns[1] == "rm file.txt *"
+    assert patterns[2] == "rm *"
 
 
 def test_generate_patterns_file_op():
@@ -221,10 +223,11 @@ def test_generate_patterns_vcs():
 
     patterns = parser.generate_patterns(node)
 
-    # Should generate: exact, "git *"
-    assert len(patterns) == 2
+    # Simplified: exact, "git log *", "git *"
+    assert len(patterns) == 3
     assert patterns[0] == "git log"
-    assert patterns[1] == "git *"
+    assert patterns[1] == "git log *"
+    assert patterns[2] == "git *"
 
 
 def test_generate_patterns_generic():
@@ -234,10 +237,11 @@ def test_generate_patterns_generic():
 
     patterns = parser.generate_patterns(node)
 
-    # Should generate: exact, "npm *"
-    assert len(patterns) == 2
+    # Simplified: exact, "npm test *", "npm *"
+    assert len(patterns) == 3
     assert patterns[0] == "npm test"
-    assert patterns[1] == "npm *"
+    assert patterns[1] == "npm test *"
+    assert patterns[2] == "npm *"
 
 
 def test_generate_patterns_wrapper_ssh():
@@ -247,12 +251,11 @@ def test_generate_patterns_wrapper_ssh():
 
     patterns = parser.generate_patterns(node)
 
-    assert len(patterns) == 5
+    # Simplified wrappers: exact, full chain + *, outer + *
+    assert len(patterns) == 3
     assert patterns[0] == "ssh aarni git log"
-    assert patterns[1] == "ssh aarni git *"
+    assert patterns[1] == "ssh aarni git log *"
     assert patterns[2] == "ssh aarni *"
-    assert patterns[3] == "git log"
-    assert patterns[4] == "git *"
 
 
 def test_generate_patterns_wrapper_docker():
@@ -262,9 +265,8 @@ def test_generate_patterns_wrapper_docker():
 
     patterns = parser.generate_patterns(node)
 
-    assert len(patterns) == 5
+    # Simplified wrappers: exact, full chain + *, outer + *
+    assert len(patterns) == 3
     assert patterns[0] == "docker exec myapp npm test"
-    assert patterns[1] == "docker exec myapp npm *"
+    assert patterns[1] == "docker exec myapp npm test *"
     assert patterns[2] == "docker exec myapp *"
-    assert patterns[3] == "npm test"
-    assert patterns[4] == "npm *"

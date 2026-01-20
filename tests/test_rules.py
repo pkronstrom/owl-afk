@@ -2,7 +2,12 @@
 
 import pytest
 
-from owl.core.rules import RulesEngine, matches_pattern
+from owl.core.rules import (
+    RulesEngine,
+    format_tool_call,
+    matches_pattern,
+    normalize_command_for_matching,
+)
 
 
 def test_matches_pattern_exact():
@@ -102,4 +107,51 @@ async def test_rules_engine_priority(mock_owl_dir):
 
         # ls command should be approved
         result = await engine.check("Bash", '{"command": "ls"}')
+        assert result == "approve"
+
+
+def test_normalize_command_strips_quotes():
+    """Quote normalization for consistent pattern matching."""
+    # Single quotes
+    assert normalize_command_for_matching("ssh host 'cmd arg'") == "ssh host cmd arg"
+    # Double quotes
+    assert normalize_command_for_matching('ssh host "cmd arg"') == "ssh host cmd arg"
+    # Nested wrappers with quotes
+    assert (
+        normalize_command_for_matching("ssh aarni 'docker exec bouillon bash -c crontab'")
+        == "ssh aarni docker exec bouillon bash -c crontab"
+    )
+    # No quotes - unchanged
+    assert normalize_command_for_matching("git status") == "git status"
+
+
+def test_format_tool_call_normalizes_quotes():
+    """format_tool_call strips quotes for consistent matching."""
+    # Command with single quotes
+    tool_input = '{"command": "ssh aarni \'docker exec bouillon bash\'"}'
+    result = format_tool_call("Bash", tool_input)
+    assert result == "Bash(ssh aarni docker exec bouillon bash)"
+    assert "'" not in result  # No quotes in formatted output
+
+
+@pytest.mark.asyncio
+async def test_rules_engine_matches_quoted_commands(mock_owl_dir):
+    """Rules match commands regardless of quoting style."""
+    from owl.core.storage import Storage
+
+    db_path = mock_owl_dir / "test.db"
+    async with Storage(db_path) as storage:
+        # Add rule without quotes (as pattern generator creates)
+        await storage._conn.execute(
+            "INSERT INTO auto_approve_rules (pattern, action, priority, created_at) VALUES (?, ?, ?, ?)",
+            ("Bash(ssh aarni docker exec bouillon *)", "approve", 0, 0),
+        )
+        await storage._conn.commit()
+
+        engine = RulesEngine(storage)
+
+        # Command WITH quotes should still match
+        result = await engine.check(
+            "Bash", '{"command": "ssh aarni \'docker exec bouillon bash -c crontab\'"}'
+        )
         assert result == "approve"

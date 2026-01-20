@@ -298,6 +298,11 @@ class CommandParser:
     def _generate_simple_patterns(self, node: CommandNode) -> List[str]:
         """Generate patterns for non-wrapper commands.
 
+        Simplified to 3 patterns max:
+        1. Exact match
+        2. Command + first arg + wildcard (subcommand level)
+        3. Command + wildcard (broadest)
+
         Args:
             node: The CommandNode to generate patterns from.
 
@@ -306,23 +311,14 @@ class CommandParser:
         """
         patterns = []
 
-        # Full command pattern
+        # Pattern 1: Exact match
         patterns.append(node.full_cmd)
 
-        # Generate intermediate patterns by progressively wildcarding args
-        # For "git branch -a --no-merged", generate:
-        # - "git branch -a --no-merged" (exact)
-        # - "git branch -a *"
-        # - "git branch *"
-        # - "git *"
         if node.name and node.args:
-            # Generate patterns from most specific to most general
-            for i in range(len(node.args) - 1, 0, -1):
-                # Include first i args + wildcard
-                partial_args = " ".join(node.args[:i])
-                patterns.append(f"{node.name} {partial_args} *")
+            # Pattern 2: Command + first arg + wildcard (e.g., "git branch *")
+            patterns.append(f"{node.name} {node.args[0]} *")
 
-        # Final wildcard pattern: command_name *
+        # Pattern 3: Command + wildcard (e.g., "git *")
         if node.name:
             patterns.append(f"{node.name} *")
 
@@ -331,6 +327,13 @@ class CommandParser:
     def _generate_wrapper_patterns(self, node: CommandNode) -> List[str]:
         """Generate patterns for wrapper commands.
 
+        Simplified pattern generation for wrappers:
+        1. Exact command (for exact-match rules)
+        2. Full wrapper chain + wildcard (e.g., "ssh host docker exec container *")
+        3. Outermost wrapper + wildcard (e.g., "ssh host *")
+
+        This avoids exponential pattern growth with nested wrappers.
+
         Args:
             node: The CommandNode to generate patterns from.
 
@@ -339,35 +342,54 @@ class CommandParser:
         """
         patterns = []
 
-        if not node.nested:
-            # Wrapper with no nested command, just full command and wildcard
-            patterns.append(node.full_cmd)
-            if node.name:
-                patterns.append(f"{node.name} *")
-            return patterns
+        # Pattern 1: Exact match (needed for rule checking in check_chain_rules)
+        patterns.append(node.full_cmd)
 
-        # Get nested command patterns
-        nested_patterns = self.generate_patterns(node.nested)
+        # Build the full wrapper chain prefix by traversing nested wrappers
+        full_prefix = self._build_full_wrapper_prefix(node)
 
-        # Build wrapper context: "wrapper_name param1 param2 ..."
-        wrapper_parts = [node.name]
-        for param_key in WRAPPERS[node.name]["param_keys"]:
-            if param_key in node.params:
-                wrapper_parts.append(node.params[param_key])
+        # Pattern 2: Full wrapper chain + wildcard
+        patterns.append(f"{full_prefix} *")
 
-        wrapper_prefix = " ".join(wrapper_parts)
-
-        # Add patterns with wrapper context
-        for nested_pattern in nested_patterns:
-            patterns.append(f"{wrapper_prefix} {nested_pattern}")
-
-        # Add wrapper with wildcard for nested command
-        patterns.append(f"{wrapper_prefix} *")
-
-        # Add unwrapped nested patterns
-        patterns.extend(nested_patterns)
+        # Pattern 3: Outermost wrapper + wildcard (if different from full prefix)
+        outer_prefix = self._build_outer_wrapper_prefix(node)
+        if outer_prefix != full_prefix:
+            patterns.append(f"{outer_prefix} *")
 
         return patterns
+
+    def _build_full_wrapper_prefix(self, node: CommandNode) -> str:
+        """Build the full wrapper chain prefix including all nested wrappers.
+
+        For "ssh host 'docker exec container cmd'", returns "ssh host docker exec container".
+        """
+        parts = [node.name]
+        for param_key in WRAPPERS[node.name]["param_keys"]:
+            if param_key in node.params:
+                parts.append(node.params[param_key])
+
+        # If nested is also a wrapper, recurse to include its prefix
+        if node.nested and node.nested.type == CommandType.WRAPPER:
+            nested_prefix = self._build_full_wrapper_prefix(node.nested)
+            parts.append(nested_prefix)
+        elif node.nested and node.nested.name:
+            # Nested is a simple command - include command name and first arg if present
+            parts.append(node.nested.name)
+            if node.nested.args:
+                parts.append(node.nested.args[0])
+
+        return " ".join(parts)
+
+    def _build_outer_wrapper_prefix(self, node: CommandNode) -> str:
+        """Build just the outermost wrapper prefix.
+
+        For "ssh host 'docker exec container cmd'", returns "ssh host".
+        """
+        parts = [node.name]
+        for param_key in WRAPPERS[node.name]["param_keys"]:
+            if param_key in node.params:
+                parts.append(node.params[param_key])
+        return " ".join(parts)
 
 
 @dataclass

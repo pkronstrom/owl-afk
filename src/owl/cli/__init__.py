@@ -39,10 +39,19 @@ def on(
         None,
         help="Enable for specific project only. Use '.' for cwd. Omit for global.",
     ),
+    this: bool = typer.Option(
+        False,
+        "--this",
+        "-t",
+        help="Enable for current directory (shorthand for 'owl on .')",
+    ),
 ) -> None:
     """Enable owl."""
     from owl.cli.commands import cmd_on
 
+    # --this is shorthand for owl on .
+    if this:
+        project = "."
     cmd_on(project)
 
 
@@ -52,10 +61,19 @@ def off(
         None,
         help="Disable for specific project. Use '.' for cwd. Omit for global off.",
     ),
+    this: bool = typer.Option(
+        False,
+        "--this",
+        "-t",
+        help="Disable for current directory (shorthand for 'owl off .')",
+    ),
 ) -> None:
     """Disable owl."""
     from owl.cli.commands import cmd_off
 
+    # --this is shorthand for owl off .
+    if this:
+        project = "."
     cmd_off(project)
 
 
