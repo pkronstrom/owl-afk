@@ -53,9 +53,15 @@ async def handle_pre_compact(
 
     try:
         await notifier.send_message(message, parse_mode="HTML")
-        print(f"[owl] PreCompact notification sent ({trigger})", file=sys.stderr)
+        try:
+            print(f"[owl] PreCompact notification sent ({trigger})", file=sys.stderr)
+        except BrokenPipeError:
+            pass
     except Exception as e:
-        print(f"[owl] PreCompact notification failed: {e}", file=sys.stderr)
+        try:
+            print(f"[owl] PreCompact notification failed: {e}", file=sys.stderr)
+        except BrokenPipeError:
+            pass
     finally:
         await notifier.close()
 

@@ -42,7 +42,10 @@ async def handle_pretool_use(
     tool_input = hook_input.get("tool_input")
 
     # Debug: log to stderr what we're processing
-    print(f"[owl] Processing: {tool_name}", file=sys.stderr)
+    try:
+        print(f"[owl] Processing: {tool_name}", file=sys.stderr)
+    except BrokenPipeError:
+        pass  # Parent process closed stderr, continue silently
     session_id = hook_input.get("session_id", "unknown")
     context = hook_input.get("tool_context")
 

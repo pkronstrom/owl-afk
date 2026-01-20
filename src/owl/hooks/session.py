@@ -76,9 +76,15 @@ async def handle_session_end(
 
     try:
         await notifier.send_message(message, parse_mode="HTML")
-        print(f"[owl] SessionEnd notification sent ({reason})", file=sys.stderr)
+        try:
+            print(f"[owl] SessionEnd notification sent ({reason})", file=sys.stderr)
+        except BrokenPipeError:
+            pass
     except Exception as e:
-        print(f"[owl] SessionEnd notification failed: {e}", file=sys.stderr)
+        try:
+            print(f"[owl] SessionEnd notification failed: {e}", file=sys.stderr)
+        except BrokenPipeError:
+            pass
     finally:
         await notifier.close()
 

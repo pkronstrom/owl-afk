@@ -4,6 +4,8 @@
 
 Remote approval system for Claude Code via Telegram. Approve or deny tool calls from your phone while away from your computer.
 
+Part of [**Nest-Driven Development**](https://github.com/pkronstrom/nest-driven-development) — the minimum vibable workflow.
+
 ![Telegram demo](docs/tg_cap.gif)
 
 ## Features
@@ -14,19 +16,23 @@ Remote approval system for Claude Code via Telegram. Approve or deny tool calls 
 - **Wrapper Detection**: Recognizes SSH, Docker, sudo, and other wrapper commands
 - **Project-Scoped Rules**: Auto-approve edits within specific projects
 - **Subagent Notifications**: Get notified when Claude's subagents complete
+- **Session Notifications**: Get notified on session start/end and context compaction
+- **Notification Forwarding**: Forward Claude's notifications to Telegram
+- **Project Filters**: Enable owl only for specific projects
 
 ## Installation
 
 ```bash
-pip install owl-afk
-```
+# With uv (recommended)
+uv tool install git+https://github.com/pkronstrom/owl-afk
 
-Or install from source:
+# With pipx
+pipx install git+https://github.com/pkronstrom/owl-afk
 
-```bash
+# Development (editable install)
 git clone https://github.com/pkronstrom/owl-afk
 cd owl-afk
-pip install -e .
+uv sync
 ```
 
 ## Setup
@@ -81,6 +87,14 @@ owl debug on   # Enable debug logging to ~/.config/owl/debug.log
 owl debug off  # Disable debug logging
 ```
 
+### Environment Overrides
+
+```bash
+owl env list           # List env var overrides
+owl env set KEY value  # Set an override
+owl env unset KEY      # Remove an override
+```
+
 ## Telegram Commands
 
 Once a request comes in, you'll see inline buttons:
@@ -114,6 +128,9 @@ Once a request comes in, you'll see inline buttons:
 owl uses Claude Code hooks to intercept tool calls:
 - `PreToolUse` - Intercepts before tool execution
 - `PostToolUse` - Delivers queued messages
+- `PermissionRequest` - Handles permission/trust prompts
+- `SessionStart` / `SessionEnd` - Session lifecycle notifications
+- `PreCompact` - Notifies before context compaction
 - `Stop` - Interactive confirmation before Claude stops
 - `SubagentStop` - Notifies when subagents complete
 

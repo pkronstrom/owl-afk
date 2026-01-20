@@ -44,7 +44,10 @@ async def handle_permission_request(
     tool_name = hook_input.get("tool_name", "Unknown")
     tool_input = hook_input.get("tool_input")
 
-    print(f"[owl] PermissionRequest: {tool_name}", file=sys.stderr)
+    try:
+        print(f"[owl] PermissionRequest: {tool_name}", file=sys.stderr)
+    except BrokenPipeError:
+        pass
     session_id = hook_input.get("session_id", "unknown")
 
     if isinstance(tool_input, dict):

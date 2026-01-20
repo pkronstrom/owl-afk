@@ -18,7 +18,7 @@ src/owl/
 │   ├── poller.py             # Telegram polling, PollLock, leader election
 │   ├── rules.py              # Pattern matching engine
 │   └── storage.py            # SQLite: requests, rules, sessions, chain state
-├── hooks/                    # Claude Code hook handlers (pretool, posttool, stop, subagent)
+├── hooks/                    # Claude Code hook handlers (pretool, posttool, permission, session, compact, stop, subagent)
 ├── notifiers/
 │   └── telegram.py           # Telegram Bot API, keyboards, message formatting
 ├── utils/
@@ -32,7 +32,7 @@ src/owl/
 ## Commands
 
 ```bash
-uv run pytest              # Run tests (191 tests)
+uv run pytest              # Run tests (194 tests)
 uv run mypy src/owl      # Type check
 owl on/off/status        # Toggle approval mode
 owl rules list/add/remove # Manage auto-approve patterns

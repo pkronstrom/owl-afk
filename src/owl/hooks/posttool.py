@@ -61,7 +61,10 @@ async def handle_posttool_use(
             + "\n".join(messages)
         )
 
-        print(f"[owl] Delivering {len(pending)} pending message(s)", file=sys.stderr)
+        try:
+            print(f"[owl] Delivering {len(pending)} pending message(s)", file=sys.stderr)
+        except BrokenPipeError:
+            pass
 
         return make_hook_response("PostToolUse", additional_context=additional_context)
 

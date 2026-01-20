@@ -4,9 +4,9 @@ Use owl's Telegram approval system with hawk-hooks as the hook manager.
 
 ## Prerequisites
 
-1. **owl installed**: `pip install owl-afk` or `pipx install owl-afk`
+1. **owl installed**: `uv tool install owl-afk` or `pipx install owl-afk`
 2. **hawk-hooks set up**: Run `hawk-hooks` to initialize
-3. **Telegram bot configured**: Run `owl telegram setup` to configure your bot token and chat ID
+3. **Telegram bot configured**: Run `owl install` to configure your bot token and chat ID (then run `owl uninstall` to remove standalone hooks)
 
 ## Switching from Standalone Mode
 
@@ -55,10 +55,9 @@ Config is stored in `~/.config/owl/`:
 └── mode             # "on" or "off"
 ```
 
-To configure:
-```bash
-owl telegram setup
-```
+To configure credentials, either:
+- Run `owl install` (then `owl uninstall` to remove standalone hooks), or
+- Edit `~/.config/owl/config.json` directly with your `telegram_bot_token` and `telegram_chat_id`
 
 ## Uninstall
 

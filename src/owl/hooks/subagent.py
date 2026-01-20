@@ -227,7 +227,10 @@ async def handle_subagent_stop(
     def log(msg: str) -> None:
         with open(debug_log, "a") as f:
             f.write(f"{time.strftime('%H:%M:%S')} {msg}\n")
-        print(f"[owl] {msg}", file=sys.stderr, flush=True)
+        try:
+            print(f"[owl] {msg}", file=sys.stderr, flush=True)
+        except BrokenPipeError:
+            pass
 
     log(
         f"SubagentStop: subagent_id={subagent_id[:8]}, stop_hook_active={stop_hook_active}"
