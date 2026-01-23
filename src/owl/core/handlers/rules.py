@@ -112,13 +112,28 @@ class AddRulePatternHandler:
 
             # Auto-approve ALL pending requests that match the new rule
             pending = await ctx.storage.get_pending_requests()
+            debug_callback(
+                "Auto-approving pending requests",
+                pending_count=len(pending),
+                pending_ids=[r.id[:8] for r in pending],
+                new_pattern=pattern,
+            )
             auto_approved_count = 0
             for pending_req in pending:
                 # Check if this pending request matches the new rule
                 rule_result = await engine.check(
                     pending_req.tool_name, pending_req.tool_input
                 )
+                debug_callback(
+                    "Checking pending request against new rule",
+                    pending_id=pending_req.id[:8],
+                    rule_result=rule_result,
+                )
                 if rule_result == "approve":
+                    debug_callback(
+                        "Auto-approving request via new rule",
+                        pending_id=pending_req.id[:8],
+                    )
                     await ctx.storage.resolve_request(
                         request_id=pending_req.id,
                         status="approved",
