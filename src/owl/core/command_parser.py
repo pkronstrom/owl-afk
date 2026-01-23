@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional
+
+# Pattern for environment variable assignments (FOO=bar, _VAR=value, VAR+=append, etc.)
+_ENV_VAR_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\+?=")
 
 
 class CommandType(Enum):
@@ -104,6 +108,35 @@ class CommandParser:
 
         return commands
 
+    def _is_env_assignment(self, token: str) -> bool:
+        """Check if token is an environment variable assignment (FOO=bar).
+
+        Args:
+            token: The token to check.
+
+        Returns:
+            True if token matches pattern like VAR=value.
+        """
+        return bool(_ENV_VAR_PATTERN.match(token))
+
+    def _skip_env_vars(self, tokens: List[str]) -> List[str]:
+        """Skip leading environment variable assignments from token list.
+
+        In bash, 'FOO=bar BAZ=qux command args' runs command with FOO and BAZ
+        set only for that command. This method strips the env var prefixes
+        so we can identify the actual command.
+
+        Args:
+            tokens: List of command tokens.
+
+        Returns:
+            Tokens starting from first non-env-var token.
+        """
+        idx = 0
+        while idx < len(tokens) and self._is_env_assignment(tokens[idx]):
+            idx += 1
+        return tokens[idx:]
+
     def _smart_split(self, cmd: str) -> List[str]:
         """Split command into tokens respecting quotes.
 
@@ -160,7 +193,12 @@ class CommandParser:
         if not tokens:
             return None
 
-        first_token = tokens[0]
+        # Skip leading env var assignments (FOO=bar ssh host cmd -> check ssh)
+        cmd_tokens = self._skip_env_vars(tokens)
+        if not cmd_tokens:
+            return None
+
+        first_token = cmd_tokens[0]
         if first_token not in WRAPPERS:
             return None
 
@@ -169,25 +207,25 @@ class CommandParser:
         param_keys = wrapper_info["param_keys"]
 
         # Check if we have enough tokens for parameters + nested command
-        if len(tokens) < param_count + 1:
+        if len(cmd_tokens) < param_count + 1:
             return None
 
         # Check subcommand whitelist if present (e.g., docker only wraps exec/run)
         if "subcommands" in wrapper_info:
             # First param is typically the subcommand (action)
-            if len(tokens) > 1:
-                subcommand = tokens[1]
+            if len(cmd_tokens) > 1:
+                subcommand = cmd_tokens[1]
                 if subcommand not in wrapper_info["subcommands"]:
                     # Not a wrapper subcommand, treat as regular command
                     return None
 
         params = {}
         for i, key in enumerate(param_keys):
-            if i + 1 < len(tokens):
-                params[key] = tokens[i + 1]
+            if i + 1 < len(cmd_tokens):
+                params[key] = cmd_tokens[i + 1]
 
         # Reconstruct nested command from remaining tokens
-        remaining_tokens = tokens[param_count + 1 :]
+        remaining_tokens = cmd_tokens[param_count + 1 :]
         nested_cmd = " ".join(remaining_tokens) if remaining_tokens else None
 
         # Strip surrounding quotes from nested command if present
@@ -232,6 +270,14 @@ class CommandParser:
         """
         cmd = cmd.strip()
 
+        # Handle comment-only commands (lines starting with #)
+        if cmd.startswith("#"):
+            return CommandNode(
+                type=CommandType.GENERIC,
+                name="",
+                full_cmd=cmd,
+            )
+
         # Check if it's a wrapper
         wrapper_result = self._parse_wrapper(cmd)
         if wrapper_result:
@@ -261,8 +307,19 @@ class CommandParser:
                 full_cmd=cmd,
             )
 
-        cmd_name = tokens[0]
-        args = tokens[1:]
+        # Skip leading env var assignments (FOO=bar cmd args -> cmd is the command)
+        cmd_tokens = self._skip_env_vars(tokens)
+        if not cmd_tokens:
+            # All tokens were env vars (unusual but valid: just sets vars)
+            return CommandNode(
+                type=CommandType.GENERIC,
+                name="",
+                args=[],
+                full_cmd=cmd,
+            )
+
+        cmd_name = cmd_tokens[0]
+        args = cmd_tokens[1:]
 
         # Determine command type
         if cmd_name in self.FILE_OPS:

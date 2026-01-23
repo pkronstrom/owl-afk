@@ -270,3 +270,132 @@ def test_generate_patterns_wrapper_docker():
     assert patterns[0] == "docker exec myapp npm test"
     assert patterns[1] == "docker exec myapp npm test *"
     assert patterns[2] == "docker exec myapp *"
+
+
+# --- Tests for ENV variable prefixes ---
+
+
+def test_parse_command_with_single_env_var():
+    """parse_single_command should skip leading env var and identify actual command."""
+    parser = CommandParser()
+    node = parser.parse_single_command("FOO=bar uv run python script.py")
+
+    assert node.type == CommandType.GENERIC
+    assert node.name == "uv"
+    assert node.args == ["run", "python", "script.py"]
+    assert node.full_cmd == "FOO=bar uv run python script.py"
+
+
+def test_parse_command_with_multiple_env_vars():
+    """parse_single_command should skip multiple leading env vars."""
+    parser = CommandParser()
+    node = parser.parse_single_command(
+        "REPORT_SERVER_PORT=8099 ARTIFACTS_DIR=./artifacts DATA_DIR=./data uv run python scripts/server.py"
+    )
+
+    assert node.type == CommandType.GENERIC
+    assert node.name == "uv"
+    assert node.args == ["run", "python", "scripts/server.py"]
+
+
+def test_parse_env_var_with_wrapper():
+    """parse_single_command should handle env vars before wrapper commands."""
+    parser = CommandParser()
+    node = parser.parse_single_command("MY_VAR=test ssh host git status")
+
+    assert node.type == CommandType.WRAPPER
+    assert node.name == "ssh"
+    assert node.params.get("host") == "host"
+    assert node.nested is not None
+    assert node.nested.name == "git"
+    assert node.nested.type == CommandType.VCS
+
+
+def test_generate_patterns_with_env_var():
+    """generate_patterns should work correctly when command has env var prefix."""
+    parser = CommandParser()
+    node = parser.parse_single_command("FOO=bar git status")
+
+    patterns = parser.generate_patterns(node)
+
+    # Should generate patterns for git, not FOO=bar
+    assert len(patterns) == 3
+    assert patterns[0] == "FOO=bar git status"  # exact match still includes env vars
+    assert patterns[1] == "git status *"
+    assert patterns[2] == "git *"
+
+
+def test_parse_env_var_only():
+    """parse_single_command should handle commands that are only env vars."""
+    parser = CommandParser()
+    node = parser.parse_single_command("FOO=bar BAZ=qux")
+
+    # All tokens are env vars - no actual command
+    assert node.type == CommandType.GENERIC
+    assert node.name == ""
+    assert node.args == []
+
+
+def test_is_env_assignment():
+    """_is_env_assignment should correctly identify env var patterns."""
+    parser = CommandParser()
+
+    # Valid env var assignments
+    assert parser._is_env_assignment("FOO=bar") is True
+    assert parser._is_env_assignment("_VAR=value") is True
+    assert parser._is_env_assignment("MY_VAR_123=test") is True
+    assert parser._is_env_assignment("A=b") is True
+    assert parser._is_env_assignment("PATH+=:/usr/local/bin") is True  # Append syntax
+
+    # Not env var assignments
+    assert parser._is_env_assignment("git") is False
+    assert parser._is_env_assignment("123=bad") is False  # Can't start with digit
+    assert parser._is_env_assignment("=value") is False  # No name
+    assert parser._is_env_assignment("ssh") is False
+
+
+# --- Tests for bash comments ---
+
+
+def test_parse_comment_only():
+    """parse_single_command should handle comment-only lines."""
+    parser = CommandParser()
+    node = parser.parse_single_command("# this is a comment")
+
+    assert node.type == CommandType.GENERIC
+    assert node.name == ""
+    assert node.full_cmd == "# this is a comment"
+
+
+def test_parse_comment_with_whitespace():
+    """parse_single_command should handle comments with leading whitespace after strip."""
+    parser = CommandParser()
+    node = parser.parse_single_command("  # indented comment  ")
+
+    assert node.type == CommandType.GENERIC
+    assert node.name == ""
+
+
+def test_split_chain_preserves_newlines():
+    """split_chain does not split on newlines (only &&, ||, ;, |).
+
+    Note: Newlines in bash are statement separators, but split_chain only
+    handles explicit chain operators. Comment handling happens in parse().
+    """
+    parser = CommandParser()
+    result = parser.split_chain("# comment\ngit status")
+
+    # Newlines are NOT chain separators in split_chain
+    assert len(result) == 1
+
+
+def test_parse_chain_with_semicolon_comment():
+    """parse() should handle chains that include comments."""
+    parser = CommandParser()
+    # "true" is often used to start a chain that has comments
+    result = parser.parse("true; # just a comment; git status")
+
+    assert len(result) == 3
+    assert result[0].name == "true"
+    assert result[1].name == ""  # comment
+    assert result[2].name == "git"
