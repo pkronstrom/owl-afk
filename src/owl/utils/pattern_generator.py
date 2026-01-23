@@ -6,6 +6,33 @@ from typing import Optional
 from owl.core.command_parser import CommandParser
 
 
+def strip_leading_comments(cmd: str) -> str:
+    """Strip leading comment lines from a command.
+
+    Bash commands can have comment lines at the start for documentation:
+        # Check a sell signal's category scores
+        sqlite3 data/store.db "SELECT ..."
+
+    This strips leading lines that start with # so patterns are generated
+    from the actual command, not the comments.
+
+    Args:
+        cmd: The command string, potentially with leading comments.
+
+    Returns:
+        The command with leading comment lines removed.
+    """
+    lines = cmd.split("\n")
+    # Find first non-comment, non-empty line
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            # Return from this line onwards
+            return "\n".join(lines[i:])
+    # All lines are comments or empty - return original
+    return cmd
+
+
 def generate_rule_patterns(
     tool_name: str,
     tool_input: Optional[str],
@@ -34,6 +61,9 @@ def generate_rule_patterns(
     # For Bash commands - use CommandParser for rich pattern generation
     if tool_name == "Bash" and "command" in data:
         cmd = data["command"].strip()
+
+        # Strip leading comment lines so patterns are based on actual commands
+        cmd = strip_leading_comments(cmd)
 
         try:
             # Parse the command using CommandParser
