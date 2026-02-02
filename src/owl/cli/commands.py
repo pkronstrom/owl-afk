@@ -201,11 +201,11 @@ def cmd_off(project: str | None):
     )
 
 
-def cmd_install(args):
+def cmd_install(force: bool = False):
     """Install owl hooks."""
     owl_dir = get_owl_dir()
     owl_dir.mkdir(parents=True, exist_ok=True)
-    do_standalone_install(owl_dir)
+    do_standalone_install(owl_dir, force=force)
 
 
 def cmd_uninstall(args):
@@ -372,14 +372,14 @@ def cmd_telegram_test(args):
     do_telegram_test(config)
 
 
-def cmd_hawk_hooks_install(args):
+def cmd_hawk_hooks_install(force: bool = False):
     """Install owl hooks for hawk-hooks."""
     if not HAWK_HOOKS_DIR.exists():
         print(f"Error: hawk-hooks not found at {HAWK_HOOKS_DIR}")
         print("Run 'hawk-hooks' first to initialize.")
         sys.exit(1)
 
-    do_hawk_hooks_install()
+    do_hawk_hooks_install(force=force)
 
 
 def cmd_hawk_hooks_uninstall(args):
