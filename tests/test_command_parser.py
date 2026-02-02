@@ -399,3 +399,137 @@ def test_parse_chain_with_semicolon_comment():
     assert result[0].name == "true"
     assert result[1].name == ""  # comment
     assert result[2].name == "git"
+
+
+# --- Tests for heredoc handling ---
+
+
+def test_split_chain_heredoc_with_single_quoted_delimiter():
+    """split_chain should not split on operators inside single-quoted heredocs."""
+    parser = CommandParser()
+    cmd = """set -a; source .env; set +a; uv run python << 'EOF'
+data.filter(pl.col("a") > 0 | pl.col("b") < 0)
+EOF"""
+
+    result = parser.split_chain(cmd)
+
+    assert len(result) == 4
+    assert result[0] == "set -a"
+    assert result[1] == "source .env"
+    assert result[2] == "set +a"
+    # The heredoc content should be kept intact with the | preserved
+    assert "| pl.col" in result[3]
+    assert result[3].startswith("uv run python << 'EOF'")
+
+
+def test_split_chain_heredoc_with_double_quoted_delimiter():
+    """split_chain should not split on operators inside double-quoted heredocs."""
+    parser = CommandParser()
+    cmd = '''echo start; cat << "END"
+line with | pipe and ; semicolon && and
+END'''
+
+    result = parser.split_chain(cmd)
+
+    assert len(result) == 2
+    assert result[0] == "echo start"
+    assert "| pipe" in result[1]
+    assert "; semicolon" in result[1]
+    assert "&& and" in result[1]
+
+
+def test_split_chain_heredoc_with_unquoted_delimiter():
+    """split_chain should not split on operators inside unquoted heredocs."""
+    parser = CommandParser()
+    cmd = """cmd1; cat << MARKER
+content with | and ; and && operators
+MARKER"""
+
+    result = parser.split_chain(cmd)
+
+    assert len(result) == 2
+    assert result[0] == "cmd1"
+    assert "| and" in result[1]
+
+
+def test_split_chain_heredoc_with_dash():
+    """split_chain should handle <<- heredocs (tab stripping variant)."""
+    parser = CommandParser()
+    cmd = """cmd1; cat <<- EOF
+	content with | pipe
+	EOF"""
+
+    result = parser.split_chain(cmd)
+
+    assert len(result) == 2
+    assert result[0] == "cmd1"
+    assert "| pipe" in result[1]
+
+
+def test_split_chain_multiple_heredocs():
+    """split_chain should handle multiple heredocs in a chain."""
+    parser = CommandParser()
+    cmd = """cat << 'A'
+first | content
+A
+cat << 'B'
+second | content
+B"""
+
+    result = parser.split_chain(cmd)
+
+    # Both heredocs are separate newline-separated statements, but split_chain
+    # doesn't split on newlines alone - the newline after EOF A triggers continuation
+    # Actually, after the first EOF, we're no longer in heredoc and newline isn't a split
+    assert len(result) == 1  # Newlines alone don't split
+
+
+def test_split_chain_heredoc_followed_by_chain():
+    """split_chain should correctly split after heredoc ends."""
+    parser = CommandParser()
+    cmd = """cat << 'EOF'
+heredoc content with | pipe
+EOF
+&& echo done"""
+
+    result = parser.split_chain(cmd)
+
+    assert len(result) == 2
+    assert "| pipe" in result[0]  # pipe preserved in heredoc
+    assert result[1] == "echo done"
+
+
+def test_split_chain_single_redirect_not_heredoc():
+    """split_chain should not treat single < as heredoc."""
+    parser = CommandParser()
+    result = parser.split_chain("grep pattern < file | sort")
+
+    assert len(result) == 2
+    assert result[0] == "grep pattern < file"
+    assert result[1] == "sort"
+
+
+def test_split_chain_real_world_python_heredoc():
+    """Test with real-world Python code containing Polars expressions."""
+    parser = CommandParser()
+    cmd = """set -a; source .env; set +a; uv run python << 'EOF'
+import polars as pl
+
+df = pl.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})
+result = df.filter(
+    (pl.col("a") > 1) | (pl.col("b") < 6)
+).select([
+    pl.col("a"),
+    pl.col("b")
+])
+print(result)
+EOF"""
+
+    result = parser.split_chain(cmd)
+
+    assert len(result) == 4
+    assert result[0] == "set -a"
+    assert result[1] == "source .env"
+    assert result[2] == "set +a"
+    # All the Python code with | operators should be in the last command
+    assert "(pl.col(\"a\") > 1) | (pl.col(\"b\") < 6)" in result[3]

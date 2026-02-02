@@ -46,7 +46,7 @@ class CommandParser:
     def split_chain(self, cmd: str) -> List[str]:
         """Split a command chain into individual commands.
 
-        Respects quotes and shell operators (&&, ||, ;, |).
+        Respects quotes, heredocs, and shell operators (&&, ||, ;, |).
 
         Args:
             cmd: The command string to split.
@@ -58,10 +58,33 @@ class CommandParser:
         current_cmd = []
         in_double_quote = False
         in_single_quote = False
+        in_heredoc = False
+        heredoc_delimiter = ""
         i = 0
 
         while i < len(cmd):
             char = cmd[i]
+
+            # Handle heredoc content - skip until we find the delimiter on its own line
+            if in_heredoc:
+                current_cmd.append(char)
+                # Check if we're at the start of a line that might be the delimiter
+                if char == "\n" or (i == 0):
+                    # Look ahead for the delimiter at start of next line
+                    start = i + 1 if char == "\n" else i
+                    # Check if the delimiter appears at this position
+                    if cmd[start:].startswith(heredoc_delimiter):
+                        end_pos = start + len(heredoc_delimiter)
+                        # Delimiter must be followed by newline or end of string
+                        if end_pos >= len(cmd) or cmd[end_pos] == "\n":
+                            # Found the end of heredoc - consume the delimiter
+                            current_cmd.extend(list(cmd[start:end_pos]))
+                            i = end_pos
+                            in_heredoc = False
+                            heredoc_delimiter = ""
+                            continue
+                i += 1
+                continue
 
             # Handle quotes
             if char == '"' and not in_single_quote:
@@ -72,6 +95,49 @@ class CommandParser:
                 in_single_quote = not in_single_quote
                 current_cmd.append(char)
                 i += 1
+            # Handle heredoc start (only outside quotes)
+            elif not in_double_quote and not in_single_quote and char == "<":
+                # Check for << heredoc operator
+                if i + 1 < len(cmd) and cmd[i + 1] == "<":
+                    current_cmd.append(char)
+                    current_cmd.append(cmd[i + 1])
+                    i += 2
+                    # Skip optional - for <<-
+                    if i < len(cmd) and cmd[i] == "-":
+                        current_cmd.append(cmd[i])
+                        i += 1
+                    # Skip whitespace before delimiter
+                    while i < len(cmd) and cmd[i] in " \t":
+                        current_cmd.append(cmd[i])
+                        i += 1
+                    # Extract the delimiter (may be quoted or unquoted)
+                    if i < len(cmd):
+                        delim_char = cmd[i]
+                        if delim_char in ("'", '"'):
+                            # Quoted delimiter - find closing quote
+                            current_cmd.append(delim_char)
+                            i += 1
+                            delim_start = i
+                            while i < len(cmd) and cmd[i] != delim_char:
+                                current_cmd.append(cmd[i])
+                                i += 1
+                            heredoc_delimiter = cmd[delim_start:i]
+                            if i < len(cmd):
+                                current_cmd.append(cmd[i])  # closing quote
+                                i += 1
+                        else:
+                            # Unquoted delimiter - read until whitespace/newline
+                            delim_start = i
+                            while i < len(cmd) and cmd[i] not in " \t\n":
+                                current_cmd.append(cmd[i])
+                                i += 1
+                            heredoc_delimiter = cmd[delim_start:i]
+                        if heredoc_delimiter:
+                            in_heredoc = True
+                else:
+                    # Just a single < (input redirection)
+                    current_cmd.append(char)
+                    i += 1
             # Handle operators only when not in quotes
             elif not in_double_quote and not in_single_quote:
                 # Check for two-character operators first
