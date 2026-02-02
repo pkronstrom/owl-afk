@@ -26,19 +26,28 @@ async def handle_pretool_use(
     """
     import sys
 
+    from owl.utils.debug import debug_hook
+
+    tool_name = hook_input.get("tool_name", "Unknown")
+
+    # Log all incoming tool calls before any checks
+    debug_hook("pretool received", tool_name=tool_name)
+
     fast_result = check_fast_path(owl_dir)
     if fast_result == FastPathResult.APPROVE:
+        debug_hook("fast path approve", tool_name=tool_name)
         return make_hook_response(
             "PreToolUse", decision="allow", reason="owl fast path: approve all"
         )
     elif fast_result == FastPathResult.DENY:
+        debug_hook("fast path deny", tool_name=tool_name)
         return make_hook_response(
             "PreToolUse", decision="deny", reason="owl fast path: deny all"
         )
     elif fast_result == FastPathResult.FALLBACK:
+        debug_hook("fast path fallback (mode off)", tool_name=tool_name)
         return {}  # Fall back to Claude's CLI approval
 
-    tool_name = hook_input.get("tool_name", "Unknown")
     tool_input = hook_input.get("tool_input")
 
     # Debug: log to stderr what we're processing
@@ -67,6 +76,12 @@ async def handle_pretool_use(
     # Load config and check if enabled for this project
     config = Config(owl_dir)
     if not config.is_enabled_for_project(project_path):
+        debug_hook(
+            "project not enabled, fallback to CLI",
+            tool_name=tool_name,
+            project_path=project_path,
+            mode=config.get_mode(),
+        )
         return {}  # Fall back to CLI approval
 
     manager = ApprovalManager(
