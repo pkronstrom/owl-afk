@@ -1,6 +1,7 @@
 """Pattern generation utilities for rule creation."""
 
 import json
+import os
 from typing import Optional
 
 from owl.core.command_parser import CommandParser
@@ -80,7 +81,7 @@ def generate_rule_patterns(
 
     # For Edit/Write - file patterns
     if tool_name in ("Edit", "Write") and "file_path" in data:
-        path = data["file_path"]
+        path = os.path.expanduser(data["file_path"])
         filename = path.rsplit("/", 1)[-1] if "/" in path else path
 
         patterns.append((f"{tool_name}({path})", f"📌 {filename}"))
@@ -123,7 +124,7 @@ def generate_rule_patterns(
 
     # For Read - directory patterns
     elif tool_name == "Read" and "file_path" in data:
-        path = data["file_path"]
+        path = os.path.expanduser(data["file_path"])
         filename = path.rsplit("/", 1)[-1] if "/" in path else path
 
         patterns.append((f"Read({path})", f"📌 {filename}"))
@@ -141,6 +142,26 @@ def generate_rule_patterns(
             patterns.append((f"Read(*/{project_name}/*)", f"📂 Any in {project_name}/"))
 
         patterns.append(("Read(*)", "⚡ Any Read"))
+
+    # For Glob/Search and other tools using 'path' field
+    elif "path" in data:
+        path = os.path.expanduser(data["path"])
+
+        if "/" in path:
+            short_dir = path.rstrip("/").split("/")[-1] or path
+            # Use wildcard prefix so pattern works across worktrees/machines
+            patterns.append(
+                (f"{tool_name}(*/{short_dir}/*)", f"📁 Any in .../{short_dir}/")
+            )
+
+        # Add project-scoped pattern if project_path is available
+        if project_path and path.startswith(project_path):
+            project_name = project_path.rstrip("/").split("/")[-1]
+            patterns.append(
+                (f"{tool_name}(*/{project_name}/*)", f"📂 Any in {project_name}/")
+            )
+
+        patterns.append((f"{tool_name}(*)", f"⚡ Any {tool_name}"))
 
     # For other tools
     else:

@@ -1,6 +1,7 @@
 """Auto-approve rules engine."""
 
 import json
+import os
 import re
 from typing import Any, Optional
 
@@ -50,6 +51,10 @@ def normalize_command_for_matching(cmd: str) -> str:
     # Don't forget the last token
     if current_token:
         tokens.append("".join(current_token))
+
+    # Expand tilde in tokens (for paths like ~/Projects)
+    home = os.path.expanduser("~")
+    tokens = [t.replace("~", home) if t.startswith("~") else t for t in tokens]
 
     return " ".join(tokens)
 
@@ -113,9 +118,11 @@ def format_tool_call(tool_name: str, tool_input: Optional[str]) -> str:
         normalized_cmd = normalize_command_for_matching(data["command"])
         return f"{tool_name}({normalized_cmd})"
     elif "file_path" in data:
-        return f"{tool_name}({data['file_path']})"
+        path = os.path.expanduser(data["file_path"])
+        return f"{tool_name}({path})"
     elif "path" in data:
-        return f"{tool_name}({data['path']})"
+        path = os.path.expanduser(data["path"])
+        return f"{tool_name}({path})"
     elif "url" in data:
         return f"{tool_name}({data['url']})"
 
