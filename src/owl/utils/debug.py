@@ -88,6 +88,11 @@ def debug_posttool(message: str, **kwargs):
     debug("posttool", message, **kwargs)
 
 
+def debug_hook(message: str, **kwargs):
+    """Log hook-related debug message."""
+    debug("hook", message, **kwargs)
+
+
 def log_error(category: str, message: str, exc: Exception = None):
     """Log error message ALWAYS (even if debug mode is off).
 

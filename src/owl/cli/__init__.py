@@ -78,11 +78,13 @@ def off(
 
 
 @app.command()
-def install() -> None:
+def install(
+    force: bool = typer.Option(False, "--force", "-f", help="Override if hawk-hooks is installed"),
+) -> None:
     """Install owl hooks (standalone)."""
     from owl.cli.commands import cmd_install
 
-    cmd_install(None)
+    cmd_install(force=force)
 
 
 @app.command()
@@ -239,11 +241,13 @@ app.add_typer(hawk_app, name="hawk")  # Short alias
 
 
 @hawk_app.command("install")
-def hawk_install() -> None:
+def hawk_install(
+    force: bool = typer.Option(False, "--force", "-f", help="Override if standalone is installed"),
+) -> None:
     """Install owl hooks for hawk-hooks."""
     from owl.cli.commands import cmd_hawk_hooks_install
 
-    cmd_hawk_hooks_install(None)
+    cmd_hawk_hooks_install(force=force)
 
 
 @hawk_app.command("uninstall")

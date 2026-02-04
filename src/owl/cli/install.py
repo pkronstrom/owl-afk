@@ -154,7 +154,12 @@ def is_owl_hook(hook_entry: dict) -> bool:
 
 
 def check_hooks_installed() -> tuple[bool, str]:
-    """Check if owl hooks are installed."""
+    """Check if owl hooks are installed.
+
+    Returns:
+        Tuple of (is_installed, install_type) where install_type is
+        "standalone", "hawk-hooks", or "none".
+    """
     settings_path = get_claude_settings_path()
     if settings_path and settings_path.exists():
         settings = load_claude_settings(settings_path)
@@ -171,8 +176,46 @@ def check_hooks_installed() -> tuple[bool, str]:
     return False, "none"
 
 
-def do_standalone_install(owl_dir: Path):
-    """Perform standalone installation."""
+def check_hawk_hooks_installed() -> bool:
+    """Check if hawk-hooks owl integration is installed."""
+    hawk_hooks_dir = Path.home() / ".config" / "hawk-hooks" / "hooks"
+    return (hawk_hooks_dir / "pre_tool_use" / "owl-pre_tool_use.sh").exists()
+
+
+def check_standalone_installed() -> bool:
+    """Check if standalone owl hooks are installed."""
+    settings_path = get_claude_settings_path()
+    if settings_path and settings_path.exists():
+        settings = load_claude_settings(settings_path)
+        hooks = settings.get("hooks", {})
+        for hook_entries in hooks.values():
+            for entry in hook_entries:
+                if is_owl_hook(entry):
+                    return True
+    return False
+
+
+def do_standalone_install(owl_dir: Path, force: bool = False):
+    """Perform standalone installation.
+
+    Args:
+        owl_dir: Path to owl config directory.
+        force: If True, proceed even if hawk-hooks is installed.
+    """
+    # Check for conflict
+    if check_hawk_hooks_installed() and not force:
+        console.print(
+            "[red]Error:[/red] hawk-hooks owl integration is already installed."
+        )
+        console.print(
+            "Having both can cause duplicate approvals and notifications."
+        )
+        console.print()
+        console.print("Options:")
+        console.print("  1. Run [cyan]owl hawk-hooks uninstall[/cyan] first")
+        console.print("  2. Use [cyan]owl install --force[/cyan] to override")
+        return
+
     settings_path = get_claude_settings_path()
 
     console.print("[bold]Installing standalone hooks...[/bold]")
@@ -201,8 +244,26 @@ def do_standalone_install(owl_dir: Path):
     console.print(f"[dim]Settings: {settings_path}[/dim]")
 
 
-def do_hawk_hooks_install():
-    """Perform hawk-hooks installation."""
+def do_hawk_hooks_install(force: bool = False):
+    """Perform hawk-hooks installation.
+
+    Args:
+        force: If True, proceed even if standalone is installed.
+    """
+    # Check for conflict
+    if check_standalone_installed() and not force:
+        console.print(
+            "[red]Error:[/red] Standalone owl hooks are already installed."
+        )
+        console.print(
+            "Having both can cause duplicate approvals and notifications."
+        )
+        console.print()
+        console.print("Options:")
+        console.print("  1. Run [cyan]owl uninstall[/cyan] first")
+        console.print("  2. Use [cyan]owl hawk-hooks install --force[/cyan] to override")
+        return
+
     console.print("[bold]Installing hawk-hooks hooks...[/bold]")
 
     for event in HOOK_EVENTS:

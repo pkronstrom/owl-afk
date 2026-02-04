@@ -125,6 +125,22 @@ def test_normalize_command_strips_quotes():
     assert normalize_command_for_matching("git status") == "git status"
 
 
+def test_normalize_command_preserves_apostrophes():
+    """Apostrophes within words should be preserved (not treated as quotes)."""
+    # Apostrophe in contraction
+    assert normalize_command_for_matching("echo don't") == "echo don't"
+    # Possessive
+    assert normalize_command_for_matching("# Check a sell signal's score") == (
+        "# Check a sell signal's score"
+    )
+    # Multiple apostrophes
+    assert normalize_command_for_matching("echo it's John's file") == (
+        "echo it's John's file"
+    )
+    # Apostrophe inside quotes should still be handled correctly
+    assert normalize_command_for_matching("echo \"it's fine\"") == "echo it's fine"
+
+
 def test_format_tool_call_normalizes_quotes():
     """format_tool_call strips quotes for consistent matching."""
     # Command with single quotes

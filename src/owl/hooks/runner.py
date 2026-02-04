@@ -19,8 +19,12 @@ def run_hook(handler: Callable[[dict], Awaitable[dict[str, Any]]]) -> int:
     Returns:
         Exit code (0 for success)
     """
+    from owl.utils.debug import debug_hook
+
     # Fast path check first
     result = check_fast_path()
+    debug_hook("runner fast_path check", result=result.value)
+
     if result == FastPathResult.APPROVE:
         print(json.dumps({"decision": "approve"}))
         return 0
@@ -29,6 +33,7 @@ def run_hook(handler: Callable[[dict], Awaitable[dict[str, Any]]]) -> int:
         return 0
     elif result == FastPathResult.FALLBACK:
         # Return empty to fall back to Claude's CLI approval
+        debug_hook("runner fallback - handler not called")
         print(json.dumps({}))
         return 0
 

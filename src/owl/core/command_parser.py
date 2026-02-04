@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional
+
+# Pattern for environment variable assignments (FOO=bar, _VAR=value, VAR+=append, etc.)
+_ENV_VAR_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\+?=")
 
 
 class CommandType(Enum):
@@ -42,7 +46,7 @@ class CommandParser:
     def split_chain(self, cmd: str) -> List[str]:
         """Split a command chain into individual commands.
 
-        Respects quotes and shell operators (&&, ||, ;, |).
+        Respects quotes, heredocs, and shell operators (&&, ||, ;, |).
 
         Args:
             cmd: The command string to split.
@@ -54,10 +58,33 @@ class CommandParser:
         current_cmd = []
         in_double_quote = False
         in_single_quote = False
+        in_heredoc = False
+        heredoc_delimiter = ""
         i = 0
 
         while i < len(cmd):
             char = cmd[i]
+
+            # Handle heredoc content - skip until we find the delimiter on its own line
+            if in_heredoc:
+                current_cmd.append(char)
+                # Check if we're at the start of a line that might be the delimiter
+                if char == "\n" or (i == 0):
+                    # Look ahead for the delimiter at start of next line
+                    start = i + 1 if char == "\n" else i
+                    # Check if the delimiter appears at this position
+                    if cmd[start:].startswith(heredoc_delimiter):
+                        end_pos = start + len(heredoc_delimiter)
+                        # Delimiter must be followed by newline or end of string
+                        if end_pos >= len(cmd) or cmd[end_pos] == "\n":
+                            # Found the end of heredoc - consume the delimiter
+                            current_cmd.extend(list(cmd[start:end_pos]))
+                            i = end_pos
+                            in_heredoc = False
+                            heredoc_delimiter = ""
+                            continue
+                i += 1
+                continue
 
             # Handle quotes
             if char == '"' and not in_single_quote:
@@ -68,6 +95,49 @@ class CommandParser:
                 in_single_quote = not in_single_quote
                 current_cmd.append(char)
                 i += 1
+            # Handle heredoc start (only outside quotes)
+            elif not in_double_quote and not in_single_quote and char == "<":
+                # Check for << heredoc operator
+                if i + 1 < len(cmd) and cmd[i + 1] == "<":
+                    current_cmd.append(char)
+                    current_cmd.append(cmd[i + 1])
+                    i += 2
+                    # Skip optional - for <<-
+                    if i < len(cmd) and cmd[i] == "-":
+                        current_cmd.append(cmd[i])
+                        i += 1
+                    # Skip whitespace before delimiter
+                    while i < len(cmd) and cmd[i] in " \t":
+                        current_cmd.append(cmd[i])
+                        i += 1
+                    # Extract the delimiter (may be quoted or unquoted)
+                    if i < len(cmd):
+                        delim_char = cmd[i]
+                        if delim_char in ("'", '"'):
+                            # Quoted delimiter - find closing quote
+                            current_cmd.append(delim_char)
+                            i += 1
+                            delim_start = i
+                            while i < len(cmd) and cmd[i] != delim_char:
+                                current_cmd.append(cmd[i])
+                                i += 1
+                            heredoc_delimiter = cmd[delim_start:i]
+                            if i < len(cmd):
+                                current_cmd.append(cmd[i])  # closing quote
+                                i += 1
+                        else:
+                            # Unquoted delimiter - read until whitespace/newline
+                            delim_start = i
+                            while i < len(cmd) and cmd[i] not in " \t\n":
+                                current_cmd.append(cmd[i])
+                                i += 1
+                            heredoc_delimiter = cmd[delim_start:i]
+                        if heredoc_delimiter:
+                            in_heredoc = True
+                else:
+                    # Just a single < (input redirection)
+                    current_cmd.append(char)
+                    i += 1
             # Handle operators only when not in quotes
             elif not in_double_quote and not in_single_quote:
                 # Check for two-character operators first
@@ -103,6 +173,35 @@ class CommandParser:
             commands.append(cmd_str)
 
         return commands
+
+    def _is_env_assignment(self, token: str) -> bool:
+        """Check if token is an environment variable assignment (FOO=bar).
+
+        Args:
+            token: The token to check.
+
+        Returns:
+            True if token matches pattern like VAR=value.
+        """
+        return bool(_ENV_VAR_PATTERN.match(token))
+
+    def _skip_env_vars(self, tokens: List[str]) -> List[str]:
+        """Skip leading environment variable assignments from token list.
+
+        In bash, 'FOO=bar BAZ=qux command args' runs command with FOO and BAZ
+        set only for that command. This method strips the env var prefixes
+        so we can identify the actual command.
+
+        Args:
+            tokens: List of command tokens.
+
+        Returns:
+            Tokens starting from first non-env-var token.
+        """
+        idx = 0
+        while idx < len(tokens) and self._is_env_assignment(tokens[idx]):
+            idx += 1
+        return tokens[idx:]
 
     def _smart_split(self, cmd: str) -> List[str]:
         """Split command into tokens respecting quotes.
@@ -160,7 +259,12 @@ class CommandParser:
         if not tokens:
             return None
 
-        first_token = tokens[0]
+        # Skip leading env var assignments (FOO=bar ssh host cmd -> check ssh)
+        cmd_tokens = self._skip_env_vars(tokens)
+        if not cmd_tokens:
+            return None
+
+        first_token = cmd_tokens[0]
         if first_token not in WRAPPERS:
             return None
 
@@ -169,25 +273,25 @@ class CommandParser:
         param_keys = wrapper_info["param_keys"]
 
         # Check if we have enough tokens for parameters + nested command
-        if len(tokens) < param_count + 1:
+        if len(cmd_tokens) < param_count + 1:
             return None
 
         # Check subcommand whitelist if present (e.g., docker only wraps exec/run)
         if "subcommands" in wrapper_info:
             # First param is typically the subcommand (action)
-            if len(tokens) > 1:
-                subcommand = tokens[1]
+            if len(cmd_tokens) > 1:
+                subcommand = cmd_tokens[1]
                 if subcommand not in wrapper_info["subcommands"]:
                     # Not a wrapper subcommand, treat as regular command
                     return None
 
         params = {}
         for i, key in enumerate(param_keys):
-            if i + 1 < len(tokens):
-                params[key] = tokens[i + 1]
+            if i + 1 < len(cmd_tokens):
+                params[key] = cmd_tokens[i + 1]
 
         # Reconstruct nested command from remaining tokens
-        remaining_tokens = tokens[param_count + 1 :]
+        remaining_tokens = cmd_tokens[param_count + 1 :]
         nested_cmd = " ".join(remaining_tokens) if remaining_tokens else None
 
         # Strip surrounding quotes from nested command if present
@@ -232,6 +336,14 @@ class CommandParser:
         """
         cmd = cmd.strip()
 
+        # Handle comment-only commands (lines starting with #)
+        if cmd.startswith("#"):
+            return CommandNode(
+                type=CommandType.GENERIC,
+                name="",
+                full_cmd=cmd,
+            )
+
         # Check if it's a wrapper
         wrapper_result = self._parse_wrapper(cmd)
         if wrapper_result:
@@ -261,8 +373,19 @@ class CommandParser:
                 full_cmd=cmd,
             )
 
-        cmd_name = tokens[0]
-        args = tokens[1:]
+        # Skip leading env var assignments (FOO=bar cmd args -> cmd is the command)
+        cmd_tokens = self._skip_env_vars(tokens)
+        if not cmd_tokens:
+            # All tokens were env vars (unusual but valid: just sets vars)
+            return CommandNode(
+                type=CommandType.GENERIC,
+                name="",
+                args=[],
+                full_cmd=cmd,
+            )
+
+        cmd_name = cmd_tokens[0]
+        args = cmd_tokens[1:]
 
         # Determine command type
         if cmd_name in self.FILE_OPS:

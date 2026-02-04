@@ -17,6 +17,8 @@ def normalize_command_for_matching(cmd: str) -> str:
     Strips outer quotes from command arguments to match how patterns are generated.
     For example: ssh aarni 'docker exec bouillon...' -> ssh aarni docker exec bouillon...
 
+    Preserves apostrophes within words (e.g., "signal's" stays as "signal's").
+
     This ensures commands match patterns regardless of quoting style.
     """
     # Use the same smart split logic as CommandParser to handle quotes properly
@@ -25,6 +27,18 @@ def normalize_command_for_matching(cmd: str) -> str:
     in_double_quote = False
     in_single_quote = False
     i = 0
+
+    def is_apostrophe(pos: int) -> bool:
+        """Check if single quote at position is an apostrophe (part of a word).
+
+        An apostrophe is preceded by a letter and followed by a letter.
+        Example: signal's, don't, it's
+        """
+        if pos <= 0 or pos >= len(cmd) - 1:
+            return False
+        prev_char = cmd[pos - 1]
+        next_char = cmd[pos + 1]
+        return prev_char.isalpha() and next_char.isalpha()
 
     while i < len(cmd):
         char = cmd[i]
@@ -35,9 +49,15 @@ def normalize_command_for_matching(cmd: str) -> str:
             # Don't include the quote in the token
             i += 1
         elif char == "'" and not in_double_quote:
-            in_single_quote = not in_single_quote
-            # Don't include the quote in the token
-            i += 1
+            # Check if this is an apostrophe (part of a word) vs a quote
+            if is_apostrophe(i):
+                # Keep the apostrophe as part of the word
+                current_token.append(char)
+                i += 1
+            else:
+                in_single_quote = not in_single_quote
+                # Don't include the quote in the token
+                i += 1
         # Handle whitespace as token separator (only outside quotes)
         elif char.isspace() and not in_double_quote and not in_single_quote:
             if current_token:
