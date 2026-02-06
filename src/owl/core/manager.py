@@ -24,6 +24,7 @@ class RuleCheckResult:
     rule_result: Optional[str]  # "approve", "deny", or None
     is_chain: bool
     chain_commands: list[str]
+    chain_title: Optional[str] = None  # Custom title for compound commands
 
 
 class ApprovalManager:
@@ -93,19 +94,21 @@ class ApprovalManager:
         """Check rules for a tool call.
 
         For Bash commands, uses chain rule checking which validates
-        each command in a chain individually.
+        each command in a chain individually. Also detects compound commands
+        (for/while/if) and treats their inner commands like chains.
 
         Returns:
-            RuleCheckResult with rule_result, is_chain flag, and chain_commands
+            RuleCheckResult with rule_result, is_chain flag, chain_commands, and chain_title
         """
         rule_result = None
         is_chain = False
         chain_commands: list[str] = []
+        chain_title: Optional[str] = None
 
         debug_chain("Processing approval request", tool_name=tool_name)
 
         if tool_name == "Bash" and tool_input:
-            from owl.core.command_parser import CommandParser
+            from owl.core.command_parser import CommandParser, CommandType
             from owl.core.handlers.chain import check_chain_rules
 
             try:
@@ -126,7 +129,30 @@ class ApprovalManager:
                         count=len(chain_commands),
                         commands=chain_commands[:3],
                     )
-                    if len(chain_commands) > 1:
+
+                    # Check for compound commands (for/while/if) - treat as chain
+                    if len(chain_commands) == 1:
+                        node = parser.parse_single_command(chain_commands[0])
+                        if node.type == CommandType.COMPOUND and node.compound:
+                            # Extract inner commands for chain-style approval
+                            inner_cmds = [c.full_cmd for c in node.compound.body_commands]
+                            if node.compound.else_commands:
+                                inner_cmds.extend([c.full_cmd for c in node.compound.else_commands])
+
+                            if inner_cmds:
+                                chain_commands = inner_cmds
+                                is_chain = True
+                                # Set custom title based on compound type
+                                info = parser.get_compound_display_info(node)
+                                if info:
+                                    chain_title = f"{info['type'].capitalize()}: {info['description']}"
+                                debug_chain(
+                                    "Detected compound command",
+                                    type=node.compound.compound_type.value,
+                                    inner_count=len(inner_cmds),
+                                )
+
+                    if len(chain_commands) > 1 and not is_chain:
                         is_chain = True
                         debug_chain("Detected as chain")
             except (json.JSONDecodeError, TypeError) as e:
@@ -141,6 +167,7 @@ class ApprovalManager:
             rule_result=rule_result,
             is_chain=is_chain,
             chain_commands=chain_commands,
+            chain_title=chain_title,
         )
 
     async def _get_chain_approved_indices(self, commands: list[str]) -> list[int]:
@@ -171,6 +198,7 @@ class ApprovalManager:
         project_path: Optional[str],
         is_chain: bool,
         chain_commands: list[str],
+        chain_title: Optional[str] = None,
     ) -> Optional[int]:
         """Send approval notification via the configured notifier.
 
@@ -187,6 +215,7 @@ class ApprovalManager:
                 "Using chain approval UI",
                 command_count=len(chain_commands),
                 pre_approved=len(approved_indices),
+                chain_title=chain_title,
             )
             return await self.notifier.send_chain_approval_request(
                 request_id=request_id,
@@ -195,6 +224,7 @@ class ApprovalManager:
                 project_path=project_path,
                 description=description,
                 approved_indices=approved_indices,
+                chain_title=chain_title,
             )
         else:
             debug_chain(
@@ -297,6 +327,7 @@ class ApprovalManager:
             project_path=project_path,
             is_chain=check_result.is_chain,
             chain_commands=check_result.chain_commands,
+            chain_title=check_result.chain_title,
         )
 
         if msg_id:

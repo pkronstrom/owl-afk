@@ -533,3 +533,247 @@ EOF"""
     assert result[2] == "set +a"
     # All the Python code with | operators should be in the last command
     assert "(pl.col(\"a\") > 1) | (pl.col(\"b\") < 6)" in result[3]
+
+
+# --- Tests for compound commands (for/while/if/subshell) ---
+
+
+def test_parse_for_loop():
+    """parse_single_command should detect for loops and extract body."""
+    from owl.core.command_parser import CompoundType
+
+    parser = CommandParser()
+    node = parser.parse_single_command("for f in *.txt; do rm $f; done")
+
+    assert node.type == CommandType.COMPOUND
+    assert node.name == "for"
+    assert node.compound is not None
+    assert node.compound.compound_type == CompoundType.FOR_LOOP
+    assert node.compound.variable == "f"
+    assert node.compound.iterator == "*.txt"
+    assert node.compound.body == "rm $f"
+    assert len(node.compound.body_commands) == 1
+    assert node.compound.body_commands[0].name == "rm"
+
+
+def test_parse_for_loop_with_chain_body():
+    """For loop body with multiple chained commands."""
+    from owl.core.command_parser import CompoundType
+
+    parser = CommandParser()
+    node = parser.parse_single_command("for x in a b c; do echo $x && touch $x; done")
+
+    assert node.type == CommandType.COMPOUND
+    assert node.compound.compound_type == CompoundType.FOR_LOOP
+    assert node.compound.variable == "x"
+    assert node.compound.iterator == "a b c"
+    # Body has chain: "echo $x && touch $x" splits to 2 commands
+    assert len(node.compound.body_commands) == 2
+    assert node.compound.body_commands[0].name == "echo"
+    assert node.compound.body_commands[1].name == "touch"
+
+
+def test_parse_while_loop():
+    """parse_single_command should detect while loops."""
+    from owl.core.command_parser import CompoundType
+
+    parser = CommandParser()
+    node = parser.parse_single_command("while true; do sleep 1; done")
+
+    assert node.type == CommandType.COMPOUND
+    assert node.name == "while"
+    assert node.compound is not None
+    assert node.compound.compound_type == CompoundType.WHILE_LOOP
+    assert node.compound.condition == "true"
+    assert node.compound.body == "sleep 1"
+    assert len(node.compound.body_commands) == 1
+    assert node.compound.body_commands[0].name == "sleep"
+
+
+def test_parse_while_with_condition():
+    """While loop with a test condition."""
+    from owl.core.command_parser import CompoundType
+
+    parser = CommandParser()
+    node = parser.parse_single_command('while [ -f /tmp/lock ]; do sleep 5; done')
+
+    assert node.type == CommandType.COMPOUND
+    assert node.compound.compound_type == CompoundType.WHILE_LOOP
+    assert node.compound.condition == "[ -f /tmp/lock ]"
+    assert node.compound.body_commands[0].name == "sleep"
+
+
+def test_parse_until_loop():
+    """parse_single_command should detect until loops."""
+    from owl.core.command_parser import CompoundType
+
+    parser = CommandParser()
+    node = parser.parse_single_command("until false; do echo waiting; done")
+
+    assert node.type == CommandType.COMPOUND
+    assert node.compound.compound_type == CompoundType.UNTIL_LOOP
+    assert node.compound.condition == "false"
+    assert len(node.compound.body_commands) == 1
+    assert node.compound.body_commands[0].name == "echo"
+
+
+def test_parse_if_simple():
+    """parse_single_command should detect simple if statements."""
+    from owl.core.command_parser import CompoundType
+
+    parser = CommandParser()
+    node = parser.parse_single_command("if [ -f file ]; then cat file; fi")
+
+    assert node.type == CommandType.COMPOUND
+    assert node.name == "if"
+    assert node.compound is not None
+    assert node.compound.compound_type == CompoundType.IF_STATEMENT
+    assert node.compound.condition == "[ -f file ]"
+    assert node.compound.body == "cat file"
+    assert len(node.compound.body_commands) == 1
+    assert node.compound.body_commands[0].name == "cat"
+    assert node.compound.else_commands == []
+
+
+def test_parse_if_else():
+    """parse_single_command should detect if-else statements."""
+    from owl.core.command_parser import CompoundType
+
+    parser = CommandParser()
+    node = parser.parse_single_command("if [ -d dir ]; then ls dir; else mkdir dir; fi")
+
+    assert node.type == CommandType.COMPOUND
+    assert node.compound.compound_type == CompoundType.IF_STATEMENT
+    assert node.compound.condition == "[ -d dir ]"
+    assert len(node.compound.body_commands) == 1
+    assert node.compound.body_commands[0].name == "ls"
+    assert len(node.compound.else_commands) == 1
+    assert node.compound.else_commands[0].name == "mkdir"
+
+
+def test_parse_subshell():
+    """parse_single_command should detect subshells."""
+    from owl.core.command_parser import CompoundType
+
+    parser = CommandParser()
+    node = parser.parse_single_command("( cd /tmp && ls )")
+
+    assert node.type == CommandType.COMPOUND
+    assert node.name == "subshell"
+    assert node.compound is not None
+    assert node.compound.compound_type == CompoundType.SUBSHELL
+    assert len(node.compound.body_commands) == 2
+    assert node.compound.body_commands[0].name == "cd"
+    assert node.compound.body_commands[1].name == "ls"
+
+
+def test_parse_brace_group():
+    """parse_single_command should detect brace groups."""
+    from owl.core.command_parser import CompoundType
+
+    parser = CommandParser()
+    node = parser.parse_single_command("{ echo start; do_work; echo end; }")
+
+    assert node.type == CommandType.COMPOUND
+    assert node.name == "brace_group"
+    assert node.compound is not None
+    assert node.compound.compound_type == CompoundType.BRACE_GROUP
+    assert len(node.compound.body_commands) == 3
+    assert node.compound.body_commands[0].name == "echo"
+    assert node.compound.body_commands[1].name == "do_work"
+    assert node.compound.body_commands[2].name == "echo"
+
+
+def test_generate_patterns_for_loop():
+    """generate_patterns should include patterns for inner commands."""
+    parser = CommandParser()
+    node = parser.parse_single_command("for f in *.log; do rm $f; done")
+
+    patterns = parser.generate_patterns(node)
+
+    # Should include exact match and inner command patterns
+    assert "for f in *.log; do rm $f; done" in patterns
+    assert "rm $f" in patterns
+    assert "rm *" in patterns
+
+
+def test_generate_patterns_if_else():
+    """generate_patterns should include patterns for both branches."""
+    parser = CommandParser()
+    node = parser.parse_single_command("if [ -f x ]; then cat x; else touch x; fi")
+
+    patterns = parser.generate_patterns(node)
+
+    # Should have exact match + patterns from both branches
+    assert "if [ -f x ]; then cat x; else touch x; fi" in patterns
+    assert "cat x" in patterns
+    assert "cat *" in patterns
+    assert "touch x" in patterns
+    assert "touch *" in patterns
+
+
+def test_compound_display_info_for_loop():
+    """get_compound_display_info should return structured info for UI."""
+    parser = CommandParser()
+    node = parser.parse_single_command("for f in *.txt; do rm $f; done")
+
+    info = parser.get_compound_display_info(node)
+
+    assert info is not None
+    assert info["type"] == "for"
+    assert info["description"] == "for f in *.txt"
+    assert info["body_commands"] == ["rm $f"]
+
+
+def test_compound_display_info_while():
+    """get_compound_display_info should return info for while loops."""
+    parser = CommandParser()
+    node = parser.parse_single_command("while true; do sleep 1; done")
+
+    info = parser.get_compound_display_info(node)
+
+    assert info is not None
+    assert info["type"] == "while"
+    assert info["description"] == "while true"
+    assert info["body_commands"] == ["sleep 1"]
+
+
+def test_compound_display_info_if_else():
+    """get_compound_display_info should include else commands."""
+    parser = CommandParser()
+    node = parser.parse_single_command("if [ -f x ]; then cat x; else touch x; fi")
+
+    info = parser.get_compound_display_info(node)
+
+    assert info is not None
+    assert info["type"] == "if"
+    assert "if [ -f x ]" in info["description"]
+    assert info["body_commands"] == ["cat x"]
+    assert info["else_commands"] == ["touch x"]
+
+
+def test_compound_in_chain():
+    """Compound commands should work within chains."""
+    parser = CommandParser()
+    nodes = parser.parse("echo start && for f in *.txt; do rm $f; done && echo end")
+
+    assert len(nodes) == 3
+    assert nodes[0].name == "echo"
+    assert nodes[1].type == CommandType.COMPOUND
+    assert nodes[1].compound.compound_type.value == "for"
+    assert nodes[2].name == "echo"
+
+
+def test_non_compound_not_detected():
+    """Regular commands should not be detected as compound."""
+    parser = CommandParser()
+
+    # These look similar but aren't compound commands
+    node1 = parser.parse_single_command("fortune")
+    assert node1.type != CommandType.COMPOUND
+
+    node2 = parser.parse_single_command("while-game --level 5")
+    assert node2.type != CommandType.COMPOUND
+
+    node3 = parser.parse_single_command("if-then-else arg1 arg2")
+    assert node3.type != CommandType.COMPOUND

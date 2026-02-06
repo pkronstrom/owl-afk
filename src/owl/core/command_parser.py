@@ -18,6 +18,19 @@ class CommandType(Enum):
     FILE_OP = "file_op"
     VCS = "vcs"
     GENERIC = "generic"
+    COMPOUND = "compound"  # for/while/if/case/subshell
+
+
+class CompoundType(Enum):
+    """Types of compound commands."""
+
+    FOR_LOOP = "for"
+    WHILE_LOOP = "while"
+    UNTIL_LOOP = "until"
+    IF_STATEMENT = "if"
+    CASE_STATEMENT = "case"
+    SUBSHELL = "subshell"  # ( commands )
+    BRACE_GROUP = "brace_group"  # { commands; }
 
 
 class CommandParser:
@@ -46,7 +59,8 @@ class CommandParser:
     def split_chain(self, cmd: str) -> List[str]:
         """Split a command chain into individual commands.
 
-        Respects quotes, heredocs, and shell operators (&&, ||, ;, |).
+        Respects quotes, heredocs, compound commands (for/while/if), and shell
+        operators (&&, ||, ;, |).
 
         Args:
             cmd: The command string to split.
@@ -60,7 +74,23 @@ class CommandParser:
         in_single_quote = False
         in_heredoc = False
         heredoc_delimiter = ""
+        # Track compound command depth (for/while/until...done, if...fi, case...esac)
+        compound_depth = 0
         i = 0
+
+        def get_word_at(pos: int) -> str:
+            """Extract word starting at position."""
+            end = pos
+            while end < len(cmd) and (cmd[end].isalnum() or cmd[end] == "_"):
+                end += 1
+            return cmd[pos:end]
+
+        def is_word_boundary(pos: int) -> bool:
+            """Check if position is at word boundary (start or after whitespace/operator)."""
+            if pos == 0:
+                return True
+            prev = cmd[pos - 1]
+            return prev.isspace() or prev in ";|&"
 
         while i < len(cmd):
             char = cmd[i]
@@ -93,6 +123,18 @@ class CommandParser:
                 i += 1
             elif char == "'" and not in_double_quote:
                 in_single_quote = not in_single_quote
+                current_cmd.append(char)
+                i += 1
+            # Track compound commands (only outside quotes)
+            elif not in_double_quote and not in_single_quote and char.isalpha() and is_word_boundary(i):
+                word = get_word_at(i)
+                # Opening keywords increase depth
+                if word in ("for", "while", "until", "if", "case"):
+                    compound_depth += 1
+                # Closing keywords decrease depth
+                elif word in ("done", "fi", "esac") and compound_depth > 0:
+                    compound_depth -= 1
+                # Add the character and continue
                 current_cmd.append(char)
                 i += 1
             # Handle heredoc start (only outside quotes)
@@ -138,8 +180,8 @@ class CommandParser:
                     # Just a single < (input redirection)
                     current_cmd.append(char)
                     i += 1
-            # Handle operators only when not in quotes
-            elif not in_double_quote and not in_single_quote:
+            # Handle operators only when not in quotes AND not in compound command
+            elif not in_double_quote and not in_single_quote and compound_depth == 0:
                 # Check for two-character operators first
                 if i + 1 < len(cmd):
                     two_char = cmd[i : i + 2]
@@ -307,6 +349,125 @@ class CommandParser:
             "nested_cmd": nested_cmd,
         }
 
+    def _parse_compound(self, cmd: str) -> Optional[CompoundInfo]:
+        """Detect and parse compound commands (for/while/if/case/subshells).
+
+        Args:
+            cmd: The command string to check.
+
+        Returns:
+            CompoundInfo if this is a compound command, None otherwise.
+        """
+        cmd_stripped = cmd.strip()
+
+        # Check for subshell: ( commands )
+        if cmd_stripped.startswith("(") and cmd_stripped.endswith(")"):
+            body = cmd_stripped[1:-1].strip()
+            body_commands = [self.parse_single_command(c) for c in self.split_chain(body)]
+            return CompoundInfo(
+                compound_type=CompoundType.SUBSHELL,
+                body=body,
+                body_commands=body_commands,
+            )
+
+        # Check for brace group: { commands; }
+        if cmd_stripped.startswith("{") and cmd_stripped.endswith("}"):
+            body = cmd_stripped[1:-1].strip()
+            body_commands = [self.parse_single_command(c) for c in self.split_chain(body)]
+            return CompoundInfo(
+                compound_type=CompoundType.BRACE_GROUP,
+                body=body,
+                body_commands=body_commands,
+            )
+
+        # Check for for loop: for VAR in LIST; do BODY; done
+        for_match = re.match(
+            r"^for\s+(\w+)\s+in\s+(.+?)\s*;\s*do\s+(.+?)\s*;\s*done$",
+            cmd_stripped,
+            re.DOTALL,
+        )
+        if for_match:
+            variable, iterator, body = for_match.groups()
+            body_commands = [self.parse_single_command(c) for c in self.split_chain(body)]
+            return CompoundInfo(
+                compound_type=CompoundType.FOR_LOOP,
+                variable=variable,
+                iterator=iterator,
+                body=body,
+                body_commands=body_commands,
+            )
+
+        # Check for while loop: while CONDITION; do BODY; done
+        while_match = re.match(
+            r"^while\s+(.+?)\s*;\s*do\s+(.+?)\s*;\s*done$",
+            cmd_stripped,
+            re.DOTALL,
+        )
+        if while_match:
+            condition, body = while_match.groups()
+            body_commands = [self.parse_single_command(c) for c in self.split_chain(body)]
+            return CompoundInfo(
+                compound_type=CompoundType.WHILE_LOOP,
+                condition=condition,
+                body=body,
+                body_commands=body_commands,
+            )
+
+        # Check for until loop: until CONDITION; do BODY; done
+        until_match = re.match(
+            r"^until\s+(.+?)\s*;\s*do\s+(.+?)\s*;\s*done$",
+            cmd_stripped,
+            re.DOTALL,
+        )
+        if until_match:
+            condition, body = until_match.groups()
+            body_commands = [self.parse_single_command(c) for c in self.split_chain(body)]
+            return CompoundInfo(
+                compound_type=CompoundType.UNTIL_LOOP,
+                condition=condition,
+                body=body,
+                body_commands=body_commands,
+            )
+
+        # Check for if statement: if CONDITION; then BODY; [else ELSE_BODY;] fi
+        # IMPORTANT: Check if-else BEFORE simple if (more specific first)
+        # If with else: if CONDITION; then BODY; else ELSE_BODY; fi
+        if_else_match = re.match(
+            r"^if\s+(.+?)\s*;\s*then\s+(.+?)\s*;\s*else\s+(.+?)\s*;\s*fi$",
+            cmd_stripped,
+            re.DOTALL,
+        )
+        if if_else_match:
+            condition, body, else_body = if_else_match.groups()
+            body_commands = [self.parse_single_command(c) for c in self.split_chain(body)]
+            else_commands = [self.parse_single_command(c) for c in self.split_chain(else_body)]
+            return CompoundInfo(
+                compound_type=CompoundType.IF_STATEMENT,
+                condition=condition,
+                body=body,
+                body_commands=body_commands,
+                else_body=else_body,
+                else_commands=else_commands,
+            )
+
+        # Simple if: if CONDITION; then BODY; fi
+        if_simple_match = re.match(
+            r"^if\s+(.+?)\s*;\s*then\s+(.+?)\s*;\s*fi$",
+            cmd_stripped,
+            re.DOTALL,
+        )
+        if if_simple_match:
+            condition, body = if_simple_match.groups()
+            body_commands = [self.parse_single_command(c) for c in self.split_chain(body)]
+            return CompoundInfo(
+                compound_type=CompoundType.IF_STATEMENT,
+                condition=condition,
+                body=body,
+                body_commands=body_commands,
+            )
+
+        return None
+
     def parse(self, cmd: str) -> List[CommandNode]:
         """Parse a complete bash command string into a list of CommandNode objects.
 
@@ -341,6 +502,16 @@ class CommandParser:
             return CommandNode(
                 type=CommandType.GENERIC,
                 name="",
+                full_cmd=cmd,
+            )
+
+        # Check if it's a compound command (for/while/if/subshell)
+        compound_result = self._parse_compound(cmd)
+        if compound_result:
+            return CommandNode(
+                type=CommandType.COMPOUND,
+                name=compound_result.compound_type.value,
+                compound=compound_result,
                 full_cmd=cmd,
             )
 
@@ -417,6 +588,8 @@ class CommandParser:
         """
         if node.type == CommandType.WRAPPER:
             return self._generate_wrapper_patterns(node)
+        elif node.type == CommandType.COMPOUND:
+            return self._generate_compound_patterns(node)
         else:
             return self._generate_simple_patterns(node)
 
@@ -446,6 +619,44 @@ class CommandParser:
         # Pattern 3: Command + wildcard (e.g., "git *")
         if node.name:
             patterns.append(f"{node.name} *")
+
+        return patterns
+
+    def _generate_compound_patterns(self, node: CommandNode) -> List[str]:
+        """Generate patterns for compound commands (loops, conditionals).
+
+        For compound commands, we generate:
+        1. Exact match of the full command
+        2. Patterns for each inner command in the body
+
+        This allows approving inner commands separately from the loop structure.
+
+        Args:
+            node: The CommandNode to generate patterns from.
+
+        Returns:
+            List of patterns from specific to general.
+        """
+        patterns = []
+
+        # Pattern 1: Exact match of the full compound command
+        patterns.append(node.full_cmd)
+
+        # Generate patterns for inner body commands
+        if node.compound and node.compound.body_commands:
+            for inner_node in node.compound.body_commands:
+                inner_patterns = self.generate_patterns(inner_node)
+                for p in inner_patterns:
+                    if p not in patterns:
+                        patterns.append(p)
+
+        # Generate patterns for else commands (if present)
+        if node.compound and node.compound.else_commands:
+            for inner_node in node.compound.else_commands:
+                inner_patterns = self.generate_patterns(inner_node)
+                for p in inner_patterns:
+                    if p not in patterns:
+                        patterns.append(p)
 
         return patterns
 
@@ -516,12 +727,69 @@ class CommandParser:
                 parts.append(node.params[param_key])
         return " ".join(parts)
 
+    def get_compound_display_info(self, node: CommandNode) -> Optional[Dict]:
+        """Get display info for compound commands.
+
+        Returns structured info for UI display showing the compound structure
+        and inner commands.
+
+        Args:
+            node: The CommandNode to get display info for.
+
+        Returns:
+            Dict with display info, or None if not a compound command.
+        """
+        if node.type != CommandType.COMPOUND or not node.compound:
+            return None
+
+        info = node.compound
+        result = {
+            "type": info.compound_type.value,
+            "body_commands": [cmd.full_cmd for cmd in info.body_commands],
+        }
+
+        if info.compound_type == CompoundType.FOR_LOOP:
+            result["description"] = f"for {info.variable} in {info.iterator}"
+        elif info.compound_type == CompoundType.WHILE_LOOP:
+            result["description"] = f"while {info.condition}"
+        elif info.compound_type == CompoundType.UNTIL_LOOP:
+            result["description"] = f"until {info.condition}"
+        elif info.compound_type == CompoundType.IF_STATEMENT:
+            result["description"] = f"if {info.condition}"
+            if info.else_commands:
+                result["else_commands"] = [cmd.full_cmd for cmd in info.else_commands]
+        elif info.compound_type == CompoundType.SUBSHELL:
+            result["description"] = "subshell"
+        elif info.compound_type == CompoundType.BRACE_GROUP:
+            result["description"] = "command group"
+
+        return result
+
+
+@dataclass
+class CompoundInfo:
+    """Info about compound commands (loops, conditionals).
+
+    Stores the structure of compound commands so we can extract and display
+    the inner commands separately for approval.
+    """
+
+    compound_type: CompoundType
+    variable: Optional[str] = None  # for loop variable (e.g., "x" in "for x in ...")
+    iterator: Optional[str] = None  # for loop list (e.g., "*.txt" in "for x in *.txt")
+    condition: Optional[str] = None  # while/until/if condition
+    body: Optional[str] = None  # raw body string before parsing
+    body_commands: List["CommandNode"] = field(default_factory=list)  # parsed inner commands
+    else_body: Optional[str] = None  # else clause for if statements
+    else_commands: List["CommandNode"] = field(default_factory=list)  # parsed else commands
+
 
 @dataclass
 class CommandNode:
     """A node in the command parse tree.
 
-    Represents a single command that may contain nested commands (for wrappers).
+    Represents a single command that may contain nested commands (for wrappers)
+    or compound structures (for loops, conditionals).
     """
 
     type: CommandType
@@ -529,6 +797,7 @@ class CommandNode:
     args: List[str] = field(default_factory=list)
     params: Dict[str, str] = field(default_factory=dict)
     nested: Optional["CommandNode"] = None
+    compound: Optional[CompoundInfo] = None  # for compound commands
     full_cmd: str = ""
 
     def __post_init__(self) -> None:

@@ -716,6 +716,7 @@ class TelegramNotifier(Notifier):
         project_path: Optional[str] = None,
         description: Optional[str] = None,
         approved_indices: Optional[list[int]] = None,
+        chain_title: Optional[str] = None,
     ) -> Optional[int]:
         """Send chain approval request with stacked command list.
 
@@ -726,6 +727,7 @@ class TelegramNotifier(Notifier):
             project_path: Optional project path for display
             description: Optional description of the chain
             approved_indices: Indices of commands pre-approved by rules
+            chain_title: Custom title for compound commands (e.g., "For: for f in *.txt")
 
         Returns:
             Message ID if successful
@@ -749,7 +751,11 @@ class TelegramNotifier(Notifier):
             desc = description[:100] + "..." if len(description) > 100 else description
             lines.append(f"<i>{escape_html(desc)}</i>")
 
-        lines.append("<b>Command chain approval:</b>\n")
+        # Use custom title for compound commands, or default for chains
+        if chain_title:
+            lines.append(f"<b>{escape_html(chain_title)}</b>\n")
+        else:
+            lines.append("<b>Command chain approval:</b>\n")
 
         # Show all commands with progress markers
         # Handle message length limit (Telegram: 4096 chars max)

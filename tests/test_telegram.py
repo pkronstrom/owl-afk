@@ -332,3 +332,63 @@ async def test_update_chain_progress_large_command_list():
 
         # Message should not exceed Telegram limit
         assert len(text) < 4096
+
+
+@pytest.mark.asyncio
+async def test_chain_approval_with_compound_title():
+    """Should display custom title for compound commands (for/while/if)."""
+    notifier = TelegramNotifier(
+        bot_token="test-token",
+        chat_id="12345",
+    )
+
+    with patch.object(notifier, "_api_request", new_callable=AsyncMock) as mock_api:
+        mock_api.return_value = {"ok": True, "result": {"message_id": 42}}
+
+        # Send with compound command title
+        msg_id = await notifier.send_chain_approval_request(
+            request_id="req-compound",
+            session_id="session-123",
+            commands=["rm $f", "echo done"],
+            chain_title="For: for f in *.log",
+        )
+
+        assert msg_id == 42
+        data = mock_api.call_args[1]["data"]
+        text = data["text"]
+
+        # Should show the compound title instead of "Command chain approval:"
+        assert "For: for f in *.log" in text
+        assert "Command chain approval:" not in text
+        # Should still show the inner commands
+        assert "rm $f" in text
+        assert "echo done" in text
+
+
+@pytest.mark.asyncio
+async def test_chain_approval_without_title_shows_default():
+    """Should show default title when no chain_title is provided."""
+    notifier = TelegramNotifier(
+        bot_token="test-token",
+        chat_id="12345",
+    )
+
+    with patch.object(notifier, "_api_request", new_callable=AsyncMock) as mock_api:
+        mock_api.return_value = {"ok": True, "result": {"message_id": 43}}
+
+        # Send without compound command title
+        msg_id = await notifier.send_chain_approval_request(
+            request_id="req-chain",
+            session_id="session-456",
+            commands=["git add .", "git commit -m 'test'"],
+        )
+
+        assert msg_id == 43
+        data = mock_api.call_args[1]["data"]
+        text = data["text"]
+
+        # Should show the default chain title
+        assert "Command chain approval:" in text
+        # Should show the commands
+        assert "git add ." in text
+        assert "git commit" in text
