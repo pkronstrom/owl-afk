@@ -596,10 +596,15 @@ class CommandParser:
     def _generate_simple_patterns(self, node: CommandNode) -> List[str]:
         """Generate patterns for non-wrapper commands.
 
-        Simplified to 3 patterns max:
-        1. Exact match
-        2. Command + first arg + wildcard (subcommand level)
-        3. Command + wildcard (broadest)
+        Progressively trims args from the end, producing patterns at every
+        intermediate level — same algorithm as wrapper patterns.
+
+        For "git push origin main":
+        1. git push origin main      (exact)
+        2. git push origin main *    (exact + wildcard)
+        3. git push origin *         (remote-specific)
+        4. git push *                (subcommand)
+        5. git *                     (command)
 
         Args:
             node: The CommandNode to generate patterns from.
@@ -607,18 +612,18 @@ class CommandParser:
         Returns:
             List of patterns from specific to general.
         """
-        patterns = []
+        patterns = [node.full_cmd]
 
-        # Pattern 1: Exact match
-        patterns.append(node.full_cmd)
+        if not node.name:
+            return patterns
 
-        if node.name and node.args:
-            # Pattern 2: Command + first arg + wildcard (e.g., "git branch *")
-            patterns.append(f"{node.name} {node.args[0]} *")
+        parts = [node.name] + (node.args or [])
 
-        # Pattern 3: Command + wildcard (e.g., "git *")
-        if node.name:
-            patterns.append(f"{node.name} *")
+        for end in range(len(parts), 0, -1):
+            prefix = " ".join(parts[:end])
+            pattern = f"{prefix} *"
+            if pattern not in patterns:
+                patterns.append(pattern)
 
         return patterns
 
@@ -663,12 +668,22 @@ class CommandParser:
     def _generate_wrapper_patterns(self, node: CommandNode) -> List[str]:
         """Generate patterns for wrapper commands.
 
-        Simplified pattern generation for wrappers:
-        1. Exact command (for exact-match rules)
-        2. Full wrapper chain + wildcard (e.g., "ssh host docker exec container *")
-        3. Outermost wrapper + wildcard (e.g., "ssh host *")
+        Generates patterns at multiple levels of specificity by progressively
+        trimming detail from the nested command structure.
 
-        This avoids exponential pattern growth with nested wrappers.
+        For "ssh aarni docker exec container bash":
+        1. ssh aarni docker exec container bash    (exact)
+        2. ssh aarni docker exec container bash *  (full chain + wildcard)
+        3. ssh aarni docker exec container *       (inner wrapper + container)
+        4. ssh aarni docker exec *                 (inner wrapper action)
+        5. ssh aarni docker *                      (nested command name)
+        6. ssh aarni *                             (outermost wrapper)
+
+        For "ssh aarni ls /tmp":
+        1. ssh aarni ls /tmp    (exact)
+        2. ssh aarni ls /tmp *  (full chain + wildcard)
+        3. ssh aarni ls *       (wrapper + nested command)
+        4. ssh aarni *          (outermost wrapper)
 
         Args:
             node: The CommandNode to generate patterns from.
@@ -681,51 +696,57 @@ class CommandParser:
         # Pattern 1: Exact match (needed for rule checking in check_chain_rules)
         patterns.append(node.full_cmd)
 
-        # Build the full wrapper chain prefix by traversing nested wrappers
-        full_prefix = self._build_full_wrapper_prefix(node)
+        # Build flat parts list and generate patterns by progressively trimming
+        parts = self._build_wrapper_parts(node)
 
-        # Pattern 2: Full wrapper chain + wildcard
-        patterns.append(f"{full_prefix} *")
+        # Minimum prefix length = wrapper name + its param count
+        # (e.g., "ssh aarni" = 2, "docker exec container" = 3, "sudo" = 1)
+        min_prefix_len = 1 + len(WRAPPERS[node.name]["param_keys"])
 
-        # Pattern 3: Outermost wrapper + wildcard (if different from full prefix)
-        outer_prefix = self._build_outer_wrapper_prefix(node)
-        if outer_prefix != full_prefix:
-            patterns.append(f"{outer_prefix} *")
+        # Generate patterns from most specific to least specific
+        for end in range(len(parts), min_prefix_len - 1, -1):
+            prefix = " ".join(parts[:end])
+            pattern = f"{prefix} *"
+            if pattern not in patterns:
+                patterns.append(pattern)
 
         return patterns
 
-    def _build_full_wrapper_prefix(self, node: CommandNode) -> str:
-        """Build the full wrapper chain prefix including all nested wrappers.
+    def _build_wrapper_parts(self, node: CommandNode) -> List[str]:
+        """Build flat list of parts from wrapper chain for pattern generation.
 
-        For "ssh host 'docker exec container cmd'", returns "ssh host docker exec container".
+        Traverses the nested wrapper structure and builds a flat list of
+        meaningful parts (wrapper names, parameters, nested command name,
+        and first argument).
+
+        For "ssh aarni docker exec container bash":
+        Returns: ["ssh", "aarni", "docker", "exec", "container", "bash"]
+
+        For "ssh aarni ls /tmp":
+        Returns: ["ssh", "aarni", "ls", "/tmp"]
+
+        Args:
+            node: The wrapper CommandNode to build parts from.
+
+        Returns:
+            Flat list of command parts.
         """
         parts = [node.name]
         for param_key in WRAPPERS[node.name]["param_keys"]:
             if param_key in node.params:
                 parts.append(node.params[param_key])
 
-        # If nested is also a wrapper, recurse to include its prefix
-        if node.nested and node.nested.type == CommandType.WRAPPER:
-            nested_prefix = self._build_full_wrapper_prefix(node.nested)
-            parts.append(nested_prefix)
-        elif node.nested and node.nested.name:
-            # Nested is a simple command - include command name and first arg if present
-            parts.append(node.nested.name)
-            if node.nested.args:
-                parts.append(node.nested.args[0])
+        if node.nested:
+            if node.nested.type == CommandType.WRAPPER:
+                # Recurse into nested wrapper
+                parts.extend(self._build_wrapper_parts(node.nested))
+            elif node.nested.name:
+                # Simple nested command - include name and first arg
+                parts.append(node.nested.name)
+                if node.nested.args:
+                    parts.append(node.nested.args[0])
 
-        return " ".join(parts)
-
-    def _build_outer_wrapper_prefix(self, node: CommandNode) -> str:
-        """Build just the outermost wrapper prefix.
-
-        For "ssh host 'docker exec container cmd'", returns "ssh host".
-        """
-        parts = [node.name]
-        for param_key in WRAPPERS[node.name]["param_keys"]:
-            if param_key in node.params:
-                parts.append(node.params[param_key])
-        return " ".join(parts)
+        return parts
 
     def get_compound_display_info(self, node: CommandNode) -> Optional[Dict]:
         """Get display info for compound commands.
@@ -764,6 +785,159 @@ class CommandParser:
             result["description"] = "command group"
 
         return result
+
+    def analyze_chain(self, cmd: str) -> ChainAnalysis:
+        """Analyze a bash command's chain structure for approval.
+
+        Single source of truth for how a command should be split into
+        individually-approvable steps. Handles 3 cases in priority order:
+
+        1. Single wrapper with inner chain → expand wrapper around each inner cmd
+        2. Single compound command → extract inner commands
+        3. Regular chain or single command → as-is
+
+        Args:
+            cmd: The complete bash command string.
+
+        Returns:
+            ChainAnalysis with steps, each containing a command string and parsed node.
+        """
+        # First, split at the top level
+        top_parts = self.split_chain(cmd)
+
+        # Case 1: Single command that might be a wrapper with inner chain
+        if len(top_parts) == 1:
+            result = self._expand_wrapper_chain(cmd)
+            if result:
+                return result
+
+            # Case 2: Single compound command
+            result = self._expand_compound(cmd)
+            if result:
+                return result
+
+        # Case 3: Regular chain or single command — as-is
+        steps = []
+        for part in top_parts:
+            node = self.parse_single_command(part)
+            steps.append(ChainStep(command=part, node=node))
+
+        return ChainAnalysis(original_cmd=cmd, steps=steps)
+
+    def _expand_wrapper_chain(self, cmd: str) -> Optional[ChainAnalysis]:
+        """Expand a wrapper command with an inner chain.
+
+        For 'ssh aarni "cd /tmp && ls -la"', produces steps:
+        - "ssh aarni cd /tmp" (wrapped)
+        - "ssh aarni ls -la" (wrapped)
+        With chain_title="ssh aarni".
+
+        Returns None if not a wrapper or inner command is not a chain.
+        """
+        wrapper_info = self._parse_wrapper(cmd)
+        if not wrapper_info or not wrapper_info["nested_cmd"]:
+            return None
+
+        nested_cmd = wrapper_info["nested_cmd"]
+
+        # Guard: empty or whitespace-only nested command
+        if not nested_cmd.strip():
+            return None
+
+        inner_parts = self.split_chain(nested_cmd)
+        if len(inner_parts) <= 1:
+            return None  # No inner chain to expand
+
+        # Build wrapper prefix: "ssh aarni", "docker exec app", etc.
+        wrapper_name = wrapper_info["name"]
+        prefix_parts = [wrapper_name]
+        for key in WRAPPERS[wrapper_name]["param_keys"]:
+            if key in wrapper_info["params"]:
+                prefix_parts.append(wrapper_info["params"][key])
+        wrapper_prefix = " ".join(prefix_parts)
+
+        # Build a ChainStep for each inner command, wrapped with prefix
+        steps = []
+        for inner_cmd in inner_parts:
+            wrapped_cmd = f"{wrapper_prefix} {inner_cmd}"
+            node = self.parse_single_command(wrapped_cmd)
+            steps.append(ChainStep(command=wrapped_cmd, node=node))
+
+        return ChainAnalysis(
+            original_cmd=cmd,
+            steps=steps,
+            chain_title=wrapper_prefix,
+        )
+
+    def _expand_compound(self, cmd: str) -> Optional[ChainAnalysis]:
+        """Expand a compound command (for/while/if) into inner commands.
+
+        For 'for f in *.txt; do rm $f; done', produces steps for each
+        inner body command, with chain_title describing the compound structure.
+
+        Returns None if not a compound command.
+        """
+        node = self.parse_single_command(cmd)
+        if node.type != CommandType.COMPOUND or not node.compound:
+            return None
+
+        inner_cmds = [c.full_cmd for c in node.compound.body_commands]
+        if node.compound.else_commands:
+            inner_cmds.extend([c.full_cmd for c in node.compound.else_commands])
+
+        if not inner_cmds:
+            return None
+
+        # Build chain title from compound display info
+        info = self.get_compound_display_info(node)
+        chain_title = None
+        if info:
+            chain_title = f"{info['type'].capitalize()}: {info['description']}"
+
+        steps = []
+        for inner_cmd in inner_cmds:
+            inner_node = self.parse_single_command(inner_cmd)
+            steps.append(ChainStep(command=inner_cmd, node=inner_node))
+
+        return ChainAnalysis(
+            original_cmd=cmd,
+            steps=steps,
+            chain_title=chain_title,
+        )
+
+
+@dataclass
+class ChainStep:
+    """A single command in a chain analysis."""
+
+    command: str  # Command string (wrapped for wrapper chains)
+    node: CommandNode  # Parsed node for pattern generation
+
+
+@dataclass
+class ChainAnalysis:
+    """Result of analyzing a bash command's chain structure.
+
+    Single source of truth for how a command should be split into
+    individually-approvable steps. Used by all 3 call sites:
+    _check_rules(), check_chain_rules(), get_or_init_state().
+    """
+
+    original_cmd: str
+    steps: List[ChainStep]
+    chain_title: Optional[str] = None  # Wrapper prefix or compound description
+
+    @property
+    def is_chain(self) -> bool:
+        return len(self.steps) > 1 or self.chain_title is not None
+
+    @property
+    def commands(self) -> List[str]:
+        return [s.command for s in self.steps]
+
+    @property
+    def nodes(self) -> List[CommandNode]:
+        return [s.node for s in self.steps]
 
 
 @dataclass

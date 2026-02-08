@@ -170,6 +170,7 @@ class TelegramCallbackNotifier(Protocol):
         description: Optional[str] = None,
         final_approve: bool = False,
         denied: bool = False,
+        chain_title: Optional[str] = None,
     ) -> None:
         """Update chain approval message with progress markers."""
         ...

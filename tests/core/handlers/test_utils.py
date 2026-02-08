@@ -34,5 +34,5 @@ class TestFormatResolvedMessage:
             tool_summary="npm test",
             rule_label="Any npm",
         )
-        assert "📝" in result
+        assert "+" in result
         assert "Any npm" in result

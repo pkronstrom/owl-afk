@@ -29,6 +29,6 @@ def format_resolved_message(
 
     if rule_label:
         action = "Always" if approved else "Never"
-        base += f"\n📝 {action}: {rule_label}"
+        base += f"\n+ {action}: {rule_label}"
 
     return base

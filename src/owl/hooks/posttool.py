@@ -57,7 +57,7 @@ async def handle_posttool_use(
             debug("posttool", f"Delivering: {msg_text[:50]}")
 
         additional_context = (
-            "📨 The user sent you a message via remote approval:\n"
+            "▸ The user sent you a message via remote approval:\n"
             + "\n".join(messages)
         )
 

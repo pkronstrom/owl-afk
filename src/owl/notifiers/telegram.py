@@ -208,30 +208,30 @@ class TelegramNotifier(Notifier):
     ) -> dict[str, list[list[dict[str, str]]]]:
         """Build standard approval keyboard."""
         # Smart pattern for Bash: "All git *" instead of "All Bash"
-        all_button_text = f"⏩ All {tool_name}"
+        all_button_text = f"» All {tool_name}"
         if tool_name == "Bash" and tool_input:
             try:
                 data = json.loads(tool_input)
                 cmd = data.get("command", "")
                 first_word = cmd.split()[0] if cmd.split() else ""
                 if first_word:
-                    all_button_text = f"⏩ All {first_word} *"
+                    all_button_text = f"» All {first_word} *"
             except (json.JSONDecodeError, TypeError, IndexError):
                 pass  # Fall back to "All Bash"
 
         return {
             "inline_keyboard": [
                 [
-                    {"text": "✅ Allow", "callback_data": f"approve:{request_id}"},
-                    {"text": "📝 Always...", "callback_data": f"add_rule:{request_id}"},
+                    {"text": "✓ Allow", "callback_data": f"approve:{request_id}"},
+                    {"text": "+ Always...", "callback_data": f"add_rule:{request_id}"},
                     {
                         "text": all_button_text,
                         "callback_data": f"approve_all:{session_id}:{tool_name}",
                     },
                 ],
                 [
-                    {"text": "❌ Deny", "callback_data": f"deny:{request_id}"},
-                    {"text": "💬 Deny...", "callback_data": f"deny_msg:{request_id}"},
+                    {"text": "✗ Deny", "callback_data": f"deny:{request_id}"},
+                    {"text": "✗ Deny + msg", "callback_data": f"deny_msg:{request_id}"},
                 ],
             ]
         }
@@ -244,24 +244,24 @@ class TelegramNotifier(Notifier):
             "inline_keyboard": [
                 [
                     {
-                        "text": "⏩ Approve Chain",
+                        "text": "» Approve Chain",
                         "callback_data": f"chain_approve_entire:{request_id}",
                     }
                 ],
                 [
                     {
-                        "text": "✅ Step",
+                        "text": "✓ Step",
                         "callback_data": f"chain_approve:{request_id}:{current_idx}",
                     },
                     {
-                        "text": "📝 Always...",
+                        "text": "+ Always...",
                         "callback_data": f"chain_rule:{request_id}:{current_idx}",
                     },
                 ],
                 [
-                    {"text": "❌ Deny", "callback_data": f"chain_deny:{request_id}"},
+                    {"text": "✗ Deny", "callback_data": f"chain_deny:{request_id}"},
                     {
-                        "text": "💬 Deny...",
+                        "text": "✗ Deny + msg",
                         "callback_data": f"chain_deny_msg:{request_id}",
                     },
                 ],
@@ -420,8 +420,8 @@ class TelegramNotifier(Notifier):
 
         buttons.append(
             [
-                {"text": "✅ Approve", "callback_data": f"approve:{request_id}"},
-                {"text": "↩️ Cancel", "callback_data": cancel_callback},
+                {"text": "✓ Approve", "callback_data": f"approve:{request_id}"},
+                {"text": "← Cancel", "callback_data": cancel_callback},
             ]
         )
 
@@ -435,7 +435,7 @@ class TelegramNotifier(Notifier):
             data={
                 "chat_id": self.chat_id,
                 "message_id": message_id,
-                "text": f"{escaped_text}\n\n📝 <b>Approve rule pattern:</b>",
+                "text": f"{escaped_text}\n\n+ <b>Select rule pattern:</b>",
                 "parse_mode": "HTML",
                 "reply_markup": json.dumps(keyboard),
             },
@@ -514,7 +514,7 @@ class TelegramNotifier(Notifier):
             "sendMessage",
             data={
                 "chat_id": self.chat_id,
-                "text": f"💬 Reply with feedback for denying {tool_name}:",
+                "text": f"▸ Reply with feedback for denying {tool_name}:",
                 "reply_markup": json.dumps({"force_reply": True, "selective": True}),
             },
         )
@@ -559,11 +559,11 @@ class TelegramNotifier(Notifier):
                 duration_str = f" ({secs}s)"
 
         # Build message lines (using HTML for consistency with approval messages)
-        lines = [f"<i>{project_id}</i> 🤖 <b>Done</b>{duration_str}"]
+        lines = [f"<i>{project_id}</i> ◆ <b>Done</b>{duration_str}"]
 
         if description:
             desc = description[:80] + "..." if len(description) > 80 else description
-            lines.append(f"📝 {escape_html(desc)}")
+            lines.append(f"{escape_html(desc)}")
 
         if files_modified:
             if len(files_modified) <= 3:
@@ -572,7 +572,7 @@ class TelegramNotifier(Notifier):
                 files_str = (
                     ", ".join(files_modified[:3]) + f" (+{len(files_modified) - 3})"
                 )
-            lines.append(f"📁 {escape_html(files_str)}")
+            lines.append(f"{escape_html(files_str)}")
 
         # Add brief summary (truncated)
         if output_summary:
@@ -592,15 +592,15 @@ class TelegramNotifier(Notifier):
             else (description or "task")
         )
         compact_text = (
-            f"<i>{project_id}</i> ✅ Agent: {escape_html(brief_desc)}{duration_str}"
+            f"<i>{project_id}</i> ✓ Agent: {escape_html(brief_desc)}{duration_str}"
         )
 
         keyboard = {
             "inline_keyboard": [
                 [
-                    {"text": "✅ OK", "callback_data": f"subagent_ok:{subagent_id}"},
+                    {"text": "✓ OK", "callback_data": f"subagent_ok:{subagent_id}"},
                     {
-                        "text": "💬 Continue...",
+                        "text": "▸ Continue...",
                         "callback_data": f"subagent_continue:{subagent_id}",
                     },
                 ],
@@ -631,14 +631,14 @@ class TelegramNotifier(Notifier):
         # Format project path
         project_id = format_project_id(project_path, session_id)
 
-        text = f"<i>{escape_html(project_id)}</i>\n⏸️ <b>Claude is about to stop</b>"
+        text = f"<i>{escape_html(project_id)}</i>\n‖ <b>Claude is about to stop</b>"
 
         keyboard = {
             "inline_keyboard": [
                 [
-                    {"text": "✅ OK", "callback_data": f"stop_ok:{session_id}"},
+                    {"text": "✓ OK", "callback_data": f"stop_ok:{session_id}"},
                     {
-                        "text": "💬 Comment",
+                        "text": "▸ Comment",
                         "callback_data": f"stop_comment:{session_id}",
                     },
                 ],
@@ -683,7 +683,7 @@ class TelegramNotifier(Notifier):
             "sendMessage",
             data={
                 "chat_id": self.chat_id,
-                "text": "📝 Approve rule pattern:",
+                "text": "≡ Select rule pattern:",
                 "reply_markup": json.dumps(keyboard),
             },
         )
@@ -699,7 +699,7 @@ class TelegramNotifier(Notifier):
             "sendMessage",
             data={
                 "chat_id": self.chat_id,
-                "text": "💬 Reply with instructions for the agent:",
+                "text": "▸ Reply with instructions for the agent:",
                 "reply_markup": json.dumps({"force_reply": True, "selective": True}),
             },
         )
@@ -757,6 +757,9 @@ class TelegramNotifier(Notifier):
         else:
             lines.append("<b>Command chain approval:</b>\n")
 
+        # Strip wrapper prefix from display commands for cleaner UI
+        display_prefix = (chain_title + " ") if chain_title else None
+
         # Show all commands with progress markers
         # Handle message length limit (Telegram: 4096 chars max)
         # If too many commands, truncate the middle
@@ -777,8 +780,13 @@ class TelegramNotifier(Notifier):
             else:
                 marker = " "
 
+            # Strip wrapper prefix for display if present
+            cmd_display = cmd
+            if display_prefix and cmd_display.startswith(display_prefix):
+                cmd_display = cmd_display[len(display_prefix):]
+
             # Truncate long commands
-            cmd_display = cmd if len(cmd) <= 60 else cmd[:60] + "..."
+            cmd_display = cmd_display if len(cmd_display) <= 60 else cmd_display[:60] + "..."
             cmd_lines.append(f"{marker} <code>{escape_html(cmd_display)}</code>")
 
         # Check if message would be too long
@@ -795,7 +803,10 @@ class TelegramNotifier(Notifier):
                         marker = "→"
                     else:
                         marker = " "
-                    cmd_display = cmd if len(cmd) <= 60 else cmd[:60] + "..."
+                    cmd_display = cmd
+                    if display_prefix and cmd_display.startswith(display_prefix):
+                        cmd_display = cmd_display[len(display_prefix):]
+                    cmd_display = cmd_display if len(cmd_display) <= 60 else cmd_display[:60] + "..."
                     truncated_cmd_lines.append(
                         f"{marker} <code>{escape_html(cmd_display)}</code>"
                     )
@@ -812,7 +823,10 @@ class TelegramNotifier(Notifier):
                         marker = "→"
                     else:
                         marker = " "
-                    cmd_display = cmd if len(cmd) <= 60 else cmd[:60] + "..."
+                    cmd_display = cmd
+                    if display_prefix and cmd_display.startswith(display_prefix):
+                        cmd_display = cmd_display[len(display_prefix):]
+                    cmd_display = cmd_display if len(cmd_display) <= 60 else cmd_display[:60] + "..."
                     truncated_cmd_lines.append(
                         f"{marker} <code>{escape_html(cmd_display)}</code>"
                     )
@@ -852,6 +866,7 @@ class TelegramNotifier(Notifier):
         description: Optional[str] = None,
         final_approve: bool = False,
         denied: bool = False,
+        chain_title: Optional[str] = None,
     ) -> None:
         """Update chain approval message with progress.
 
@@ -892,7 +907,14 @@ class TelegramNotifier(Notifier):
             desc = description[:100] + "..." if len(description) > 100 else description
             lines.append(f"<i>{escape_html(desc)}</i>")
 
-        lines.append("<b>Command chain approval:</b>\n")
+        # Use custom title or default
+        if chain_title:
+            lines.append(f"<b>{escape_html(chain_title)}</b>\n")
+        else:
+            lines.append("<b>Command chain approval:</b>\n")
+
+        # Strip wrapper prefix from display commands for cleaner UI
+        display_prefix = (chain_title + " ") if chain_title else None
 
         # Show all commands with progress markers
         # Handle message length limit (Telegram: 4096 chars max)
@@ -908,8 +930,13 @@ class TelegramNotifier(Notifier):
             else:
                 marker = " "
 
+            # Strip wrapper prefix for display if present
+            cmd_display = cmd
+            if display_prefix and cmd_display.startswith(display_prefix):
+                cmd_display = cmd_display[len(display_prefix):]
+
             # Truncate long commands
-            cmd_display = cmd if len(cmd) <= 60 else cmd[:60] + "..."
+            cmd_display = cmd_display if len(cmd_display) <= 60 else cmd_display[:60] + "..."
             cmd_lines.append(f"{marker} <code>{escape_html(cmd_display)}</code>")
 
         # Check if message would be too long
@@ -927,7 +954,10 @@ class TelegramNotifier(Notifier):
                         marker = "→"
                     else:
                         marker = " "
-                    cmd_display = cmd if len(cmd) <= 60 else cmd[:60] + "..."
+                    cmd_display = cmd
+                    if display_prefix and cmd_display.startswith(display_prefix):
+                        cmd_display = cmd_display[len(display_prefix):]
+                    cmd_display = cmd_display if len(cmd_display) <= 60 else cmd_display[:60] + "..."
                     truncated_cmd_lines.append(
                         f"{marker} <code>{escape_html(cmd_display)}</code>"
                     )
@@ -946,7 +976,10 @@ class TelegramNotifier(Notifier):
                         marker = "→"
                     else:
                         marker = " "
-                    cmd_display = cmd if len(cmd) <= 60 else cmd[:60] + "..."
+                    cmd_display = cmd
+                    if display_prefix and cmd_display.startswith(display_prefix):
+                        cmd_display = cmd_display[len(display_prefix):]
+                    cmd_display = cmd_display if len(cmd_display) <= 60 else cmd_display[:60] + "..."
                     truncated_cmd_lines.append(
                         f"{marker} <code>{escape_html(cmd_display)}</code>"
                     )
@@ -968,11 +1001,11 @@ class TelegramNotifier(Notifier):
                 "inline_keyboard": [
                     [
                         {
-                            "text": "✅ Approve All",
+                            "text": "✓ Approve All",
                             "callback_data": f"chain_approve_all:{request_id}",
                         },
                         {
-                            "text": "❌ Cancel",
+                            "text": "✗ Cancel",
                             "callback_data": f"chain_deny:{request_id}",
                         },
                     ],

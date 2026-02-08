@@ -159,7 +159,7 @@ def cmd_off(project: str | None):
                     try:
                         await notifier.edit_message(
                             request.telegram_msg_id,
-                            "⏸️ owl off - please retry command",
+                            "‖ owl off — please retry command",
                         )
                     except Exception as e:
                         # Message edit may fail if message was deleted or too old
@@ -179,7 +179,7 @@ def cmd_off(project: str | None):
                     try:
                         await notifier.edit_message(
                             stop["telegram_msg_id"],
-                            "⏸️ owl off - session ended",
+                            "‖ owl off — session ended",
                         )
                     except Exception as e:
                         # Message edit may fail if message was deleted or too old

@@ -367,11 +367,11 @@ class Poller:
                 await self.storage.resolve_subagent(
                     subagent_id, "continue", instructions
                 )
-                await self.notifier.send_message("📨 Instructions sent to agent")
+                await self.notifier.send_message("✓ Instructions sent to agent")
                 # Update the original message to show it's been handled
                 await self.notifier.edit_message(
                     reply_msg_id,
-                    "✅ Subagent continued with instructions",
+                    "✓ Subagent continued with instructions",
                     parse_mode=None,
                 )
                 debug_callback(
@@ -385,7 +385,7 @@ class Poller:
                 followup = message.get("text", "")
                 await self.storage.add_pending_message(request.session_id, followup)
                 await self.notifier.send_message(
-                    "📝 Followup queued for next tool call"
+                    "+ Followup queued for next tool call"
                 )
                 debug_callback(
                     "Queued followup message", session_id=request.session_id[:8]
@@ -438,7 +438,7 @@ class Poller:
 
         # Delete the prompt message and send confirmation
         await self.notifier.delete_message(prompt_msg_id)
-        await self.notifier.send_message("📨 Instructions sent to agent")
+        await self.notifier.send_message("✓ Instructions sent to agent")
 
     async def _handle_msg_feedback(
         self,
@@ -468,10 +468,10 @@ class Poller:
                 else "unknown"
             )
             await self.notifier.send_message(
-                f"📨 Message queued for <code>{short_id}</code> ({project})"
+                f"✓ Message queued for <code>{short_id}</code> ({project})"
             )
         else:
-            await self.notifier.send_message("📨 Message queued")
+            await self.notifier.send_message("✓ Message queued")
 
         # Delete the prompt
         await self.notifier.delete_message(prompt_msg_id)
@@ -514,7 +514,7 @@ class Poller:
                 "sendMessage",
                 data={
                     "chat_id": self.notifier.chat_id,
-                    "text": "📨 <b>Send message to session:</b>",
+                    "text": "▸ <b>Send message to session:</b>",
                     "parse_mode": "HTML",
                     "reply_markup": json.dumps(keyboard),
                 },
@@ -552,7 +552,7 @@ class Poller:
             session.project_path.split("/")[-1] if session.project_path else "unknown"
         )
         await self.notifier.send_message(
-            f"📨 Message queued for <code>{short_id}</code> ({project})"
+            f"✓ Message queued for <code>{short_id}</code> ({project})"
         )
 
     async def _handle_msg_select(
@@ -587,7 +587,7 @@ class Poller:
             "sendMessage",
             data={
                 "chat_id": self.notifier.chat_id,
-                "text": f"💬 Type message for <b>{project}</b> ({short_id}):",
+                "text": f"▸ Type message for <b>{project}</b> ({short_id}):",
                 "parse_mode": "HTML",
                 "reply_markup": json.dumps({"force_reply": True, "selective": True}),
             },
@@ -610,7 +610,7 @@ class Poller:
         if message_id:
             await self.notifier.edit_message(
                 message_id,
-                f"📨 Sending to <b>{project}</b> ({short_id})...",
+                f"▸ Sending to <b>{project}</b> ({short_id})...",
                 remove_keyboard=True,
             )
 
@@ -623,11 +623,11 @@ class Poller:
         pending = await self.storage.get_pending_requests()
         sessions = await self.storage.get_active_sessions()
 
-        status_emoji = "🔵" if mode == "on" else "🟠"
+        status_emoji = "●" if mode == "on" else "○"
         status_text = "ON" if mode == "on" else "OFF"
 
         await self.notifier.send_message(
-            f"<b>🤖 owl - Remote Approval for Claude Code</b>\n\n"
+            f"<b>◆ owl — Remote Approval for Claude Code</b>\n\n"
             f"<b>Status:</b> {status_emoji} {status_text}\n"
             f"<b>Active sessions:</b> {len(sessions)}\n"
             f"<b>Pending requests:</b> {len(pending)}\n\n"
@@ -656,7 +656,7 @@ class Poller:
             pending = await self.storage.get_pending_requests()
             pending_count = len(pending)
             status = (
-                "🔵 ON (remote approval)" if mode == "on" else "🟠 OFF (auto-approve)"
+                "● ON (remote approval)" if mode == "on" else "○ OFF (auto-approve)"
             )
             await self.notifier.send_message(
                 f"<b>AFK Status:</b> {status}\n"
@@ -670,7 +670,7 @@ class Poller:
         if action == "on":
             config.set_mode("on")
             await self.notifier.send_message(
-                "🔵 AFK mode <b>enabled</b>\n\nRemote approval active via Telegram"
+                "● AFK mode <b>enabled</b>\n\nRemote approval active via Telegram"
             )
         elif action == "off":
             # Get pending requests count before changing mode
@@ -689,7 +689,7 @@ class Poller:
                 if request.telegram_msg_id:
                     await self.notifier.edit_message(
                         request.telegram_msg_id,
-                        "⏸️ Deferred to CLI prompt",
+                        "‖ Deferred to CLI prompt",
                         parse_mode=None,
                     )
 
@@ -796,7 +796,7 @@ class Poller:
         if request.telegram_msg_id:
             await self.notifier.edit_message(
                 request.telegram_msg_id,
-                f"✗ DENIED - {request.tool_name}\n💬 {feedback}",
+                f"✗ DENIED - {request.tool_name}\n▸ {feedback}",
             )
 
         await self.storage.log_audit(
@@ -822,9 +822,9 @@ class Poller:
 
         # Resolve the stop with the comment
         await self.storage.resolve_stop(session_id, "comment", message)
-        await self.notifier.send_message("📨 Message will be delivered to Claude")
+        await self.notifier.send_message("✓ Message will be delivered to Claude")
         await self.notifier.edit_message(
-            prompt_msg_id, "✅ Message queued", parse_mode=None
+            prompt_msg_id, "✓ Message queued", parse_mode=None
         )
 
     async def _handle_chain_deny_with_feedback(
@@ -878,7 +878,7 @@ class Poller:
             tool_summary = format_tool_summary(request.tool_name, request.tool_input)
             await self.notifier.edit_message(
                 request.telegram_msg_id,
-                f"<i>{project_id}</i>\n✗ <b>[{request.tool_name}]</b>: <code>{tool_summary}</code>\n\n💬 {feedback}",
+                f"<i>{project_id}</i>\n✗ <b>[{request.tool_name}]</b>: <code>{tool_summary}</code>\n\n▸ {feedback}",
             )
             debug_callback("Message updated for chain denial")
 

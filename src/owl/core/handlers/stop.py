@@ -20,7 +20,7 @@ class StopOkHandler:
         if ctx.message_id:
             await ctx.notifier.edit_message(
                 ctx.message_id,
-                "✅ Session ended",
+                "✓ Session ended",
             )
 
 

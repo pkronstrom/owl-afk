@@ -46,10 +46,10 @@ async def handle_pre_compact(
         chat_id=config.telegram_chat_id,
     )
 
-    emoji = "🔄" if trigger == "auto" else "📦"
+    icon = "↻" if trigger == "auto" else "▪"
     trigger_text = "Auto-compacting" if trigger == "auto" else "Manual compact"
 
-    message = f"{emoji} <b>{trigger_text}</b>\n<i>{project_name}</i> ({session_id[:8]})"
+    message = f"{icon} <b>{trigger_text}</b>\n<i>{project_name}</i> ({session_id[:8]})"
 
     try:
         await notifier.send_message(message, parse_mode="HTML")

@@ -27,7 +27,7 @@ class SubagentOkHandler:
             debug_callback("Editing message", message_id=ctx.message_id)
             await ctx.notifier.edit_message(
                 ctx.message_id,
-                "✅ Subagent finished",
+                "✓ Subagent finished",
             )
             debug_callback("Message edited")
 

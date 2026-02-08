@@ -18,7 +18,7 @@ class DenyWithMessageHandler:
         if not request:
             await ctx.notifier.answer_callback(ctx.callback_id, "Request not found")
             if ctx.message_id:
-                await ctx.notifier.edit_message(ctx.message_id, "⚠️ Request expired")
+                await ctx.notifier.edit_message(ctx.message_id, "✗ Request expired")
             return
 
         # Send feedback prompt

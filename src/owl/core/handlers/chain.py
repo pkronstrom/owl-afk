@@ -79,6 +79,9 @@ class ChainStateManager:
     ) -> Optional[tuple[dict[str, Any], int]]:
         """Get existing state or initialize from tool_input.
 
+        Uses analyze_chain() as single source of truth for chain structure,
+        ensuring consistent parsing with _check_rules() and check_chain_rules().
+
         Returns (state, version) or None if initialization fails.
         """
         result = await self.get_state(request_id)
@@ -93,23 +96,29 @@ class ChainStateManager:
             data = json.loads(tool_input)
             cmd = data.get("command", "")
             parser = CommandParser()
-            commands = parser.split_chain(cmd)
+            analysis = parser.analyze_chain(cmd)
+            commands = analysis.commands
 
-            # Pre-fill approved_indices by checking each command against existing rules
+            # Pre-fill approved_indices using pattern-based rule checking
+            # (same logic as check_chain_rules for consistency)
             approved_indices: list[int] = []
             from owl.core.rules import RulesEngine
 
             engine = RulesEngine(self.storage)
-            for idx, command in enumerate(commands):
-                cmd_input = json.dumps({"command": command})
-                rule_result = await engine.check("Bash", cmd_input)
+            for idx, node in enumerate(analysis.nodes):
+                rule_result = await check_command_rules(engine, parser, node)
                 if rule_result == "approve":
                     approved_indices.append(idx)
 
-            state = {
+            state: dict[str, Any] = {
                 "commands": commands,
                 "approved_indices": approved_indices,
             }
+
+            # Persist chain_title for consistent display across callbacks
+            if analysis.chain_title:
+                state["chain_title"] = analysis.chain_title
+
             return (state, 0)
         except Exception:
             return None
@@ -155,7 +164,7 @@ class ChainApproveHandler:
                 debug_chain("Request not found", request_id=request_id)
                 await ctx.notifier.answer_callback(ctx.callback_id, "Request not found")
                 if ctx.message_id:
-                    await ctx.notifier.edit_message(ctx.message_id, "⚠️ Request expired")
+                    await ctx.notifier.edit_message(ctx.message_id, "✗ Request expired")
                 return
 
             # Skip if already resolved - clean up stale keyboard
@@ -273,6 +282,7 @@ class ChainApproveHandler:
                         current_idx=next_idx,
                         approved_indices=chain_state["approved_indices"],
                         project_path=session.project_path if session else None,
+                        chain_title=chain_state.get("chain_title"),
                     )
         except Exception as e:
             debug_callback(
@@ -298,7 +308,7 @@ class ChainDenyHandler:
         if not request:
             await ctx.notifier.answer_callback(ctx.callback_id, "Request not found")
             if ctx.message_id:
-                await ctx.notifier.edit_message(ctx.message_id, "⚠️ Request expired")
+                await ctx.notifier.edit_message(ctx.message_id, "✗ Request expired")
             return
 
         # Resolve as denied
@@ -329,6 +339,7 @@ class ChainDenyHandler:
                     approved_indices=chain_state["approved_indices"],
                     project_path=session.project_path if session else None,
                     denied=True,
+                    chain_title=chain_state.get("chain_title"),
                 )
             else:
                 await ctx.notifier.edit_message(ctx.message_id, "✗ Chain denied")
@@ -362,7 +373,7 @@ class ChainDenyMsgHandler:
             debug_callback("Request not found", request_id=request_id)
             await ctx.notifier.answer_callback(ctx.callback_id, "Request not found")
             if ctx.message_id:
-                await ctx.notifier.edit_message(ctx.message_id, "⚠️ Request expired")
+                await ctx.notifier.edit_message(ctx.message_id, "✗ Request expired")
             return
 
         # Store chain context for when feedback arrives
@@ -397,7 +408,7 @@ class ChainApproveAllHandler:
             if not request:
                 await ctx.notifier.answer_callback(ctx.callback_id, "Request not found")
                 if ctx.message_id:
-                    await ctx.notifier.edit_message(ctx.message_id, "⚠️ Request expired")
+                    await ctx.notifier.edit_message(ctx.message_id, "✗ Request expired")
                 return
 
             # Skip if already resolved - clean up stale keyboard
@@ -486,7 +497,7 @@ class ChainApproveEntireHandler:
             if not request:
                 await ctx.notifier.answer_callback(ctx.callback_id, "Request not found")
                 if ctx.message_id:
-                    await ctx.notifier.edit_message(ctx.message_id, "⚠️ Request expired")
+                    await ctx.notifier.edit_message(ctx.message_id, "✗ Request expired")
                 return
 
             # Skip if already resolved - clean up stale keyboard
@@ -605,7 +616,7 @@ class ChainCancelRuleHandler:
         if not request:
             await ctx.notifier.answer_callback(ctx.callback_id, "Request not found")
             if ctx.message_id:
-                await ctx.notifier.edit_message(ctx.message_id, "⚠️ Request expired")
+                await ctx.notifier.edit_message(ctx.message_id, "✗ Request expired")
             return
 
         # Note: callback already answered by poller
@@ -625,6 +636,7 @@ class ChainCancelRuleHandler:
                     current_idx=command_idx,
                     approved_indices=chain_state.get("approved_indices", []),
                     project_path=session.project_path if session else None,
+                    chain_title=chain_state.get("chain_title"),
                 )
 
 
@@ -657,7 +669,7 @@ class ChainRuleHandler:
         if not request:
             await ctx.notifier.answer_callback(ctx.callback_id, "Request not found")
             if ctx.message_id:
-                await ctx.notifier.edit_message(ctx.message_id, "⚠️ Request expired")
+                await ctx.notifier.edit_message(ctx.message_id, "✗ Request expired")
             return
 
         # Get chain state
@@ -732,7 +744,7 @@ class ChainRulePatternHandler:
             if not request:
                 await ctx.notifier.answer_callback(ctx.callback_id, "Request not found")
                 if ctx.message_id:
-                    await ctx.notifier.edit_message(ctx.message_id, "⚠️ Request expired")
+                    await ctx.notifier.edit_message(ctx.message_id, "✗ Request expired")
                 return
 
             # Get chain state
@@ -764,6 +776,7 @@ class ChainRulePatternHandler:
             from owl.core.rules import RulesEngine
 
             engine = RulesEngine(ctx.storage)
+            parser = CommandParser()
             await engine.add_rule(
                 pattern, "approve", priority=0, created_via="telegram"
             )
@@ -773,16 +786,9 @@ class ChainRulePatternHandler:
                 chain_state["approved_indices"].append(command_idx)
 
             # Check if the new rule also matches other commands
-            auto_approved = []
-            for idx, other_cmd in enumerate(chain_state["commands"]):
-                if idx in chain_state["approved_indices"]:
-                    continue
-
-                other_input = json.dumps({"command": other_cmd})
-                rule_result = await engine.check("Bash", other_input)
-                if rule_result == "approve":
-                    chain_state["approved_indices"].append(idx)
-                    auto_approved.append(idx)
+            auto_approved = await _auto_approve_remaining(
+                engine, parser, chain_state
+            )
 
             # Save with optimistic locking
             if not await chain_mgr.save_state(request_id, chain_state, version):
@@ -793,15 +799,9 @@ class ChainRulePatternHandler:
                     if command_idx not in chain_state["approved_indices"]:
                         chain_state["approved_indices"].append(command_idx)
                     # Re-check auto-approvals
-                    auto_approved = []
-                    for idx, other_cmd in enumerate(chain_state["commands"]):
-                        if idx in chain_state["approved_indices"]:
-                            continue
-                        other_input = json.dumps({"command": other_cmd})
-                        rule_result = await engine.check("Bash", other_input)
-                        if rule_result == "approve":
-                            chain_state["approved_indices"].append(idx)
-                            auto_approved.append(idx)
+                    auto_approved = await _auto_approve_remaining(
+                        engine, parser, chain_state
+                    )
                     await chain_mgr.save_state(request_id, chain_state, version)
 
             # Note: callback already answered by poller
@@ -853,6 +853,7 @@ class ChainRulePatternHandler:
                             current_idx=next_idx,
                             approved_indices=chain_state["approved_indices"],
                             project_path=session.project_path if session else None,
+                            chain_title=chain_state.get("chain_title"),
                         )
         except Exception as e:
             debug_callback(
@@ -863,8 +864,59 @@ class ChainRulePatternHandler:
             await ctx.notifier.answer_callback(ctx.callback_id, "Error occurred")
 
 
+async def check_command_rules(
+    engine: "RulesEngine", parser: CommandParser, node: "CommandNode"
+) -> Optional[str]:
+    """Check if a single command node matches any rules via pattern generation.
+
+    Generates patterns from the parsed node (exact, subcommand wildcard,
+    command wildcard, etc.) and checks each against stored rules.
+
+    This is the canonical way to check rules for a command — used by
+    check_chain_rules(), get_or_init_state(), and _get_chain_approved_indices().
+
+    Returns:
+        "approve", "deny", or None if no rule matches
+    """
+    patterns = parser.generate_patterns(node)
+
+    for pattern in patterns:
+        rule_result = await engine.check("Bash", json.dumps({"command": pattern}))
+        if rule_result == "deny":
+            return "deny"
+        elif rule_result == "approve":
+            return "approve"
+
+    return None
+
+
+async def _auto_approve_remaining(
+    engine: "RulesEngine",
+    parser: CommandParser,
+    chain_state: dict[str, Any],
+) -> list[int]:
+    """Check unapproved commands against rules and auto-approve matches.
+
+    Mutates chain_state["approved_indices"] in place. Returns list of
+    newly auto-approved indices.
+    """
+    auto_approved: list[int] = []
+    for idx, cmd in enumerate(chain_state["commands"]):
+        if idx in chain_state["approved_indices"]:
+            continue
+        node = parser.parse_single_command(cmd)
+        rule_result = await check_command_rules(engine, parser, node)
+        if rule_result == "approve":
+            chain_state["approved_indices"].append(idx)
+            auto_approved.append(idx)
+    return auto_approved
+
+
 async def check_chain_rules(storage: "Storage", cmd: str) -> Optional[str]:
     """Check if a bash command chain matches any rules.
+
+    Uses analyze_chain() as the single source of truth for chain structure,
+    ensuring consistent parsing across all call sites.
 
     Args:
         storage: Storage instance for rule lookups
@@ -878,25 +930,18 @@ async def check_chain_rules(storage: "Storage", cmd: str) -> Optional[str]:
     from owl.core.rules import RulesEngine
 
     parser = CommandParser()
-    nodes = parser.parse(cmd)
+    analysis = parser.analyze_chain(cmd)
 
     engine = RulesEngine(storage)
     has_unmatched = False
 
-    for node in nodes:
-        patterns = parser.generate_patterns(node)
-
-        matched = False
-        for pattern in patterns:
-            rule_result = await engine.check("Bash", json.dumps({"command": pattern}))
-
-            if rule_result == "deny":
-                return "deny"
-            elif rule_result == "approve":
-                matched = True
-                break
-
-        if not matched:
+    for node in analysis.nodes:
+        result = await check_command_rules(engine, parser, node)
+        if result == "deny":
+            return "deny"
+        elif result == "approve":
+            pass  # matched
+        else:
             has_unmatched = True
 
     if not has_unmatched:

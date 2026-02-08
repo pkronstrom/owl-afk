@@ -136,29 +136,29 @@ class TestNestedWrappers:
 class TestSimplifiedPatternMatching:
     """Test simplified pattern generation (max 3 patterns)."""
 
-    def test_git_branch_simplified_patterns(self):
-        """git branch -a --no-merged generates simplified patterns."""
+    def test_git_branch_progressive_patterns(self):
+        """git branch -a --no-merged generates progressive patterns."""
         parser = CommandParser()
         node = parser.parse_single_command("git branch -a --no-merged")
         patterns = parser.generate_patterns(node)
 
-        # Simplified: exact, first arg + *, broadest
-        assert len(patterns) == 3
         assert patterns[0] == "git branch -a --no-merged"
-        assert patterns[1] == "git branch *"
-        assert patterns[2] == "git *"
+        assert "git branch -a --no-merged *" in patterns
+        assert "git branch -a *" in patterns
+        assert "git branch *" in patterns
+        assert patterns[-1] == "git *"
 
-    def test_npm_run_simplified_patterns(self):
-        """npm run build --verbose generates simplified patterns."""
+    def test_npm_run_progressive_patterns(self):
+        """npm run build --verbose generates progressive patterns."""
         parser = CommandParser()
         node = parser.parse_single_command("npm run build --verbose")
         patterns = parser.generate_patterns(node)
 
-        # Simplified: exact, first arg + *, broadest
-        assert len(patterns) == 3
         assert patterns[0] == "npm run build --verbose"
-        assert patterns[1] == "npm run *"
-        assert patterns[2] == "npm *"
+        assert "npm run build --verbose *" in patterns
+        assert "npm run build *" in patterns
+        assert "npm run *" in patterns
+        assert patterns[-1] == "npm *"
 
     def test_single_arg_command_patterns(self):
         """git status generates exact, first arg + *, and wildcard."""
@@ -173,16 +173,17 @@ class TestSimplifiedPatternMatching:
         assert patterns[2] == "git *"
 
     def test_ssh_wrapper_simplified_patterns(self):
-        """ssh aarni git branch -a generates simplified wrapper patterns."""
+        """ssh aarni git branch -a generates wrapper patterns at multiple levels."""
         parser = CommandParser()
         node = parser.parse_single_command("ssh aarni git branch -a")
         patterns = parser.generate_patterns(node)
 
-        # Simplified wrappers: exact, full chain + *, outer + *
-        assert len(patterns) == 3
+        # Wrapper patterns at multiple specificity levels
+        assert len(patterns) == 4
         assert patterns[0] == "ssh aarni git branch -a"
         assert patterns[1] == "ssh aarni git branch *"
-        assert patterns[2] == "ssh aarni *"
+        assert patterns[2] == "ssh aarni git *"
+        assert patterns[3] == "ssh aarni *"
 
 
 class TestMixedOperators:

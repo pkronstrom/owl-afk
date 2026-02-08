@@ -108,7 +108,7 @@ class ApprovalManager:
         debug_chain("Processing approval request", tool_name=tool_name)
 
         if tool_name == "Bash" and tool_input:
-            from owl.core.command_parser import CommandParser, CommandType
+            from owl.core.command_parser import CommandParser
             from owl.core.handlers.chain import check_chain_rules
 
             try:
@@ -117,44 +117,24 @@ class ApprovalManager:
                     cmd = data["command"]
                     debug_chain("Bash command", cmd=cmd[:100])
 
-                    # Use chain rule checking
-                    rule_result = await check_chain_rules(self.storage, cmd)
-                    debug_chain("Chain rule check result", rule_result=rule_result)
-
-                    # Check if this is actually a chain (multiple commands)
+                    # Use analyze_chain as single source of truth
                     parser = CommandParser()
-                    chain_commands = parser.split_chain(cmd)
+                    analysis = parser.analyze_chain(cmd)
+                    chain_commands = analysis.commands
+                    is_chain = analysis.is_chain
+                    chain_title = analysis.chain_title
+
                     debug_chain(
-                        "Split chain result",
+                        "Chain analysis",
                         count=len(chain_commands),
+                        is_chain=is_chain,
+                        chain_title=chain_title,
                         commands=chain_commands[:3],
                     )
 
-                    # Check for compound commands (for/while/if) - treat as chain
-                    if len(chain_commands) == 1:
-                        node = parser.parse_single_command(chain_commands[0])
-                        if node.type == CommandType.COMPOUND and node.compound:
-                            # Extract inner commands for chain-style approval
-                            inner_cmds = [c.full_cmd for c in node.compound.body_commands]
-                            if node.compound.else_commands:
-                                inner_cmds.extend([c.full_cmd for c in node.compound.else_commands])
-
-                            if inner_cmds:
-                                chain_commands = inner_cmds
-                                is_chain = True
-                                # Set custom title based on compound type
-                                info = parser.get_compound_display_info(node)
-                                if info:
-                                    chain_title = f"{info['type'].capitalize()}: {info['description']}"
-                                debug_chain(
-                                    "Detected compound command",
-                                    type=node.compound.compound_type.value,
-                                    inner_count=len(inner_cmds),
-                                )
-
-                    if len(chain_commands) > 1 and not is_chain:
-                        is_chain = True
-                        debug_chain("Detected as chain")
+                    # Use chain rule checking
+                    rule_result = await check_chain_rules(self.storage, cmd)
+                    debug_chain("Chain rule check result", rule_result=rule_result)
             except (json.JSONDecodeError, TypeError) as e:
                 debug_chain("Failed to parse tool_input", error=str(e))
 
@@ -173,15 +153,22 @@ class ApprovalManager:
     async def _get_chain_approved_indices(self, commands: list[str]) -> list[int]:
         """Check which chain commands are pre-approved by existing rules.
 
+        Uses pattern-based matching via check_command_rules() for consistency
+        with check_chain_rules() and get_or_init_state().
+
         Returns list of indices for commands that match approval rules.
         """
         if not self.rules:
             return []
 
+        from owl.core.command_parser import CommandParser
+        from owl.core.handlers.chain import check_command_rules
+
+        parser = CommandParser()
         approved_indices: list[int] = []
         for idx, cmd in enumerate(commands):
-            cmd_input = json.dumps({"command": cmd})
-            rule_result = await self.rules.check("Bash", cmd_input)
+            node = parser.parse_single_command(cmd)
+            rule_result = await check_command_rules(self.rules, parser, node)
             if rule_result == "approve":
                 approved_indices.append(idx)
 

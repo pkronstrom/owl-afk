@@ -64,15 +64,15 @@ async def handle_session_end(
         chat_id=config.telegram_chat_id,
     )
 
-    reason_emoji = {
-        "clear": "🧹",
-        "logout": "👋",
-        "prompt_input_exit": "⏹️",
-        "other": "🔚",
+    reason_icon = {
+        "clear": "×",
+        "logout": "—",
+        "prompt_input_exit": "■",
+        "other": "—",
     }
-    emoji = reason_emoji.get(reason, "🔚")
+    icon = reason_icon.get(reason, "—")
 
-    message = f"{emoji} <b>Session ended</b> ({reason})\n<i>{project_name}</i> ({session_id[:8]})"
+    message = f"{icon} <b>Session ended</b> ({reason})\n<i>{project_name}</i> ({session_id[:8]})"
 
     try:
         await notifier.send_message(message, parse_mode="HTML")

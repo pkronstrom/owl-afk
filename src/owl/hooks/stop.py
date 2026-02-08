@@ -51,7 +51,7 @@ async def handle_stop(
                 await storage.mark_message_delivered(msg_id)
 
             reason = (
-                "📨 The user sent you a message via remote approval:\n"
+                "▸ The user sent you a message via remote approval:\n"
                 + "\n".join(messages)
                 + "\n\nPlease address this before stopping."
             )
@@ -107,7 +107,7 @@ async def handle_stop(
                     if entry["status"] == "comment" and entry["response"]:
                         # User sent a comment - block and deliver
                         reason = (
-                            "📨 The user sent you a message via remote approval:\n"
+                            "▸ The user sent you a message via remote approval:\n"
                             f"- {entry['response']}\n\n"
                             "Please address this before stopping."
                         )

@@ -20,7 +20,7 @@ class AddRuleMenuHandler:
         if not request:
             await ctx.notifier.answer_callback(ctx.callback_id, "Request not found")
             if ctx.message_id:
-                await ctx.notifier.edit_message(ctx.message_id, "⚠️ Request expired")
+                await ctx.notifier.edit_message(ctx.message_id, "✗ Request expired")
             return
 
         # Get session for project_path
@@ -41,8 +41,8 @@ class AddRuleMenuHandler:
         if ctx.message_id:
             # Strip any previous rule prompt text for clean display
             base_text = (
-                ctx.original_text.split("\n\n📝")[0]
-                if "\n\n📝" in ctx.original_text
+                ctx.original_text.split("\n\n+")[0]
+                if "\n\n+" in ctx.original_text
                 else ctx.original_text
             )
             await ctx.notifier.edit_message_with_rule_keyboard(
@@ -81,7 +81,7 @@ class AddRulePatternHandler:
             if not request:
                 await ctx.notifier.answer_callback(ctx.callback_id, "Request not found")
                 if ctx.message_id:
-                    await ctx.notifier.edit_message(ctx.message_id, "⚠️ Request expired")
+                    await ctx.notifier.edit_message(ctx.message_id, "✗ Request expired")
                 return
 
             # Get session for project_path
@@ -154,7 +154,7 @@ class AddRulePatternHandler:
                         await ctx.notifier.edit_message(
                             pending_req.telegram_msg_id,
                             f"<i>{pending_project_id}</i>\n✓ <b>[{pending_req.tool_name}]</b>: "
-                            f"<code>{pending_tool_summary}</code>\n📝 Auto: {label}",
+                            f"<code>{pending_tool_summary}</code>\n+ Auto: {label}",
                         )
                     auto_approved_count += 1
 
@@ -169,7 +169,7 @@ class AddRulePatternHandler:
                 await ctx.notifier.edit_message(
                     ctx.message_id,
                     f"<i>{project_id}</i>\n✓ <b>[{request.tool_name}]</b>: "
-                    f"<code>{tool_summary}</code>\n📝 Always: {label}",
+                    f"<code>{tool_summary}</code>\n+ Always: {label}",
                 )
 
             # Show count if we auto-approved others
@@ -202,7 +202,7 @@ class CancelRuleHandler:
         if not request:
             await ctx.notifier.answer_callback(ctx.callback_id, "Request not found")
             if ctx.message_id:
-                await ctx.notifier.edit_message(ctx.message_id, "⚠️ Request expired")
+                await ctx.notifier.edit_message(ctx.message_id, "✗ Request expired")
             return
 
         await ctx.notifier.answer_callback(ctx.callback_id, "Cancelled")

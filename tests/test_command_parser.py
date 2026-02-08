@@ -209,11 +209,10 @@ def test_generate_patterns_file_op():
 
     patterns = parser.generate_patterns(node)
 
-    # Should generate: exact, "cp file1 *", "cp *"
-    assert len(patterns) == 3
     assert patterns[0] == "cp file1 file2"
-    assert patterns[1] == "cp file1 *"
-    assert patterns[2] == "cp *"
+    assert patterns[1] == "cp file1 file2 *"
+    assert patterns[2] == "cp file1 *"
+    assert patterns[3] == "cp *"
 
 
 def test_generate_patterns_vcs():
@@ -251,11 +250,12 @@ def test_generate_patterns_wrapper_ssh():
 
     patterns = parser.generate_patterns(node)
 
-    # Simplified wrappers: exact, full chain + *, outer + *
-    assert len(patterns) == 3
+    # Wrapper patterns at multiple specificity levels
+    assert len(patterns) == 4
     assert patterns[0] == "ssh aarni git log"
     assert patterns[1] == "ssh aarni git log *"
-    assert patterns[2] == "ssh aarni *"
+    assert patterns[2] == "ssh aarni git *"
+    assert patterns[3] == "ssh aarni *"
 
 
 def test_generate_patterns_wrapper_docker():
@@ -265,11 +265,167 @@ def test_generate_patterns_wrapper_docker():
 
     patterns = parser.generate_patterns(node)
 
-    # Simplified wrappers: exact, full chain + *, outer + *
-    assert len(patterns) == 3
+    # Wrapper patterns at multiple specificity levels
+    assert len(patterns) == 4
     assert patterns[0] == "docker exec myapp npm test"
     assert patterns[1] == "docker exec myapp npm test *"
-    assert patterns[2] == "docker exec myapp *"
+    assert patterns[2] == "docker exec myapp npm *"
+    assert patterns[3] == "docker exec myapp *"
+
+
+# --- Tests for intermediate wrapper pattern levels ---
+
+
+def test_generate_patterns_ssh_with_ls():
+    """ssh aarni 'ls /tmp' should produce intermediate 'ssh aarni ls *' pattern."""
+    parser = CommandParser()
+    node = parser.parse_single_command("ssh aarni 'ls /tmp'")
+
+    patterns = parser.generate_patterns(node)
+
+    assert patterns[0] == "ssh aarni 'ls /tmp'"  # exact (preserves quotes)
+    assert "ssh aarni ls /tmp *" in patterns
+    assert "ssh aarni ls *" in patterns  # intermediate: approve ls with any args
+    assert "ssh aarni *" in patterns  # broadest
+
+
+def test_generate_patterns_ssh_with_docker_ps():
+    """ssh aarni 'docker ps' should allow approving docker ps but not docker exec."""
+    parser = CommandParser()
+    node = parser.parse_single_command("ssh aarni 'docker ps'")
+
+    patterns = parser.generate_patterns(node)
+
+    # docker ps is NOT a wrapper (ps not in docker subcommands), so it's a simple nested cmd
+    assert patterns[0] == "ssh aarni 'docker ps'"
+    assert "ssh aarni docker ps *" in patterns  # approve docker ps specifically
+    assert "ssh aarni docker *" in patterns  # approve any docker subcommand
+    assert "ssh aarni *" in patterns
+
+
+def test_generate_patterns_ssh_with_docker_exec():
+    """ssh aarni 'docker exec container bash' should have many intermediate levels."""
+    parser = CommandParser()
+    node = parser.parse_single_command("ssh aarni 'docker exec myapp bash'")
+
+    patterns = parser.generate_patterns(node)
+
+    assert patterns[0] == "ssh aarni 'docker exec myapp bash'"  # exact
+    assert "ssh aarni docker exec myapp bash *" in patterns  # full chain
+    assert "ssh aarni docker exec myapp *" in patterns  # any cmd in container
+    assert "ssh aarni docker exec *" in patterns  # any docker exec
+    assert "ssh aarni docker *" in patterns  # any docker subcommand
+    assert "ssh aarni *" in patterns  # anything on host
+
+
+def test_generate_patterns_ssh_simple_command_no_args():
+    """ssh aarni ls (no args) produces wrapper + cmd + * and wrapper + *."""
+    parser = CommandParser()
+    node = parser.parse_single_command("ssh aarni ls")
+
+    patterns = parser.generate_patterns(node)
+
+    assert patterns[0] == "ssh aarni ls"
+    assert "ssh aarni ls *" in patterns
+    assert "ssh aarni *" in patterns
+
+
+def test_intermediate_patterns_enable_selective_matching():
+    """Verify that intermediate patterns enable selective approval.
+
+    'ssh aarni docker ps *' should match 'ssh aarni docker ps -a'
+    but NOT match 'ssh aarni docker exec container bash'.
+    """
+    from owl.core.rules import matches_pattern
+
+    # docker ps pattern should match docker ps variants
+    assert matches_pattern(
+        "Bash(ssh aarni docker ps -a)", "Bash(ssh aarni docker ps *)"
+    )
+    assert matches_pattern(
+        "Bash(ssh aarni docker ps --format table)", "Bash(ssh aarni docker ps *)"
+    )
+
+    # docker ps pattern should NOT match docker exec
+    assert not matches_pattern(
+        "Bash(ssh aarni docker exec myapp bash)", "Bash(ssh aarni docker ps *)"
+    )
+
+    # ssh aarni ls * should match ls with any args
+    assert matches_pattern("Bash(ssh aarni ls -la /tmp)", "Bash(ssh aarni ls *)")
+
+    # ssh aarni ls * should NOT match other commands
+    assert not matches_pattern("Bash(ssh aarni rm -rf /)", "Bash(ssh aarni ls *)")
+
+
+# --- Tests for progressive arg trimming (simple commands) ---
+
+
+def test_progressive_patterns_git_push():
+    """git push origin main should have intermediate 'git push origin *' level."""
+    parser = CommandParser()
+    node = parser.parse_single_command("git push origin main")
+
+    patterns = parser.generate_patterns(node)
+
+    assert patterns[0] == "git push origin main"
+    assert patterns[1] == "git push origin main *"
+    assert patterns[2] == "git push origin *"
+    assert patterns[3] == "git push *"
+    assert patterns[4] == "git *"
+
+
+def test_progressive_patterns_uv_run_pytest():
+    """uv run pytest tests/ should offer 'uv run pytest *' level."""
+    parser = CommandParser()
+    node = parser.parse_single_command("uv run pytest tests/")
+
+    patterns = parser.generate_patterns(node)
+
+    assert patterns[0] == "uv run pytest tests/"
+    assert "uv run pytest *" in patterns
+    assert "uv run *" in patterns
+    assert patterns[-1] == "uv *"
+
+
+def test_progressive_patterns_single_arg_unchanged():
+    """Single-arg commands still produce 3 patterns (no regression)."""
+    parser = CommandParser()
+    node = parser.parse_single_command("git status")
+
+    patterns = parser.generate_patterns(node)
+
+    assert len(patterns) == 3
+    assert patterns == ["git status", "git status *", "git *"]
+
+
+def test_progressive_patterns_no_args_unchanged():
+    """No-arg commands still produce 2 patterns (no regression)."""
+    parser = CommandParser()
+    node = parser.parse_single_command("ls")
+
+    patterns = parser.generate_patterns(node)
+
+    assert len(patterns) == 2
+    assert patterns == ["ls", "ls *"]
+
+
+def test_progressive_patterns_selective_matching():
+    """Intermediate patterns enable selective approval without over-matching."""
+    from owl.core.rules import matches_pattern
+
+    # "git push origin *" should match pushes to origin
+    assert matches_pattern("Bash(git push origin main)", "Bash(git push origin *)")
+    assert matches_pattern("Bash(git push origin dev)", "Bash(git push origin *)")
+
+    # "git push origin *" should NOT match pushes to other remotes
+    assert not matches_pattern("Bash(git push upstream main)", "Bash(git push origin *)")
+
+    # "npm run build *" should match build variants
+    assert matches_pattern("Bash(npm run build --prod)", "Bash(npm run build *)")
+
+    # "npm run build *" should NOT match other npm run commands
+    assert not matches_pattern("Bash(npm run test)", "Bash(npm run build *)")
 
 
 # --- Tests for ENV variable prefixes ---
@@ -777,3 +933,256 @@ def test_non_compound_not_detected():
 
     node3 = parser.parse_single_command("if-then-else arg1 arg2")
     assert node3.type != CommandType.COMPOUND
+
+
+# --- Tests for analyze_chain() ---
+
+
+def test_analyze_chain_regular_chain():
+    """Regular chain should produce one step per command, no title."""
+    parser = CommandParser()
+    analysis = parser.analyze_chain("git fetch && git push")
+
+    assert analysis.is_chain is True
+    assert len(analysis.steps) == 2
+    assert analysis.commands == ["git fetch", "git push"]
+    assert analysis.chain_title is None
+    assert analysis.steps[0].node.name == "git"
+    assert analysis.steps[1].node.name == "git"
+
+
+def test_analyze_chain_single_command():
+    """Single command should produce one step, not a chain."""
+    parser = CommandParser()
+    analysis = parser.analyze_chain("ls -la")
+
+    assert analysis.is_chain is False
+    assert len(analysis.steps) == 1
+    assert analysis.commands == ["ls -la"]
+    assert analysis.chain_title is None
+
+
+def test_analyze_chain_mixed_operators():
+    """Mixed chain operators should all split."""
+    parser = CommandParser()
+    analysis = parser.analyze_chain("cd /tmp ; ls && pwd")
+
+    assert analysis.is_chain is True
+    assert len(analysis.steps) == 3
+    assert analysis.chain_title is None
+
+
+def test_analyze_chain_pipe_and_chain():
+    """Pipe + chain should split into separate steps."""
+    parser = CommandParser()
+    analysis = parser.analyze_chain("git log | head -10 && echo done")
+
+    assert analysis.is_chain is True
+    assert len(analysis.steps) == 3
+    assert analysis.chain_title is None
+
+
+# --- Wrapper chain expansion ---
+
+
+def test_analyze_chain_ssh_wrapper_expansion():
+    """SSH wrapper with inner chain should expand into wrapped steps."""
+    parser = CommandParser()
+    analysis = parser.analyze_chain("ssh aarni 'cd /tmp && ls -la && rm foo'")
+
+    assert analysis.is_chain is True
+    assert len(analysis.steps) == 3
+    assert analysis.commands == [
+        "ssh aarni cd /tmp",
+        "ssh aarni ls -la",
+        "ssh aarni rm foo",
+    ]
+    assert analysis.chain_title == "ssh aarni"
+    # Each step should be parsed as a wrapper node
+    assert analysis.steps[0].node.type == CommandType.WRAPPER
+    assert analysis.steps[0].node.name == "ssh"
+    assert analysis.steps[0].node.nested.name == "cd"
+
+
+def test_analyze_chain_docker_wrapper_expansion():
+    """Docker wrapper with inner chain should expand."""
+    parser = CommandParser()
+    analysis = parser.analyze_chain("docker exec app 'npm install && npm test'")
+
+    assert analysis.is_chain is True
+    assert len(analysis.steps) == 2
+    assert analysis.commands == [
+        "docker exec app npm install",
+        "docker exec app npm test",
+    ]
+    assert analysis.chain_title == "docker exec app"
+
+
+def test_analyze_chain_ssh_no_inner_chain():
+    """SSH with single nested command should not expand."""
+    parser = CommandParser()
+    analysis = parser.analyze_chain("ssh aarni ls -la")
+
+    assert analysis.is_chain is False
+    assert len(analysis.steps) == 1
+    assert analysis.commands == ["ssh aarni ls -la"]
+    assert analysis.chain_title is None
+
+
+def test_analyze_chain_ssh_top_level_chain():
+    """SSH wrapper followed by top-level chain should NOT expand wrapper."""
+    parser = CommandParser()
+    analysis = parser.analyze_chain("ssh aarni 'ls' && echo done")
+
+    # Top-level split_chain produces 2 parts → regular chain path
+    assert analysis.is_chain is True
+    assert len(analysis.steps) == 2
+    assert analysis.commands == ["ssh aarni 'ls'", "echo done"]
+    assert analysis.chain_title is None  # No wrapper expansion
+
+
+def test_analyze_chain_ssh_double_quoted_inner():
+    """SSH wrapper with double-quoted inner chain should expand."""
+    parser = CommandParser()
+    analysis = parser.analyze_chain('ssh aarni "cd /tmp && ls"')
+
+    assert analysis.is_chain is True
+    assert len(analysis.steps) == 2
+    assert analysis.commands == ["ssh aarni cd /tmp", "ssh aarni ls"]
+    assert analysis.chain_title == "ssh aarni"
+
+
+# --- Wrapper edge cases ---
+
+
+def test_analyze_chain_ssh_empty_nested():
+    """SSH with empty quotes should not expand."""
+    parser = CommandParser()
+    analysis = parser.analyze_chain("ssh aarni ''")
+
+    assert analysis.is_chain is False
+    assert len(analysis.steps) == 1
+
+
+def test_analyze_chain_ssh_whitespace_nested():
+    """SSH with whitespace-only quotes should not expand."""
+    parser = CommandParser()
+    analysis = parser.analyze_chain("ssh aarni '  '")
+
+    assert analysis.is_chain is False
+    assert len(analysis.steps) == 1
+
+
+def test_analyze_chain_ssh_compound_inside_quotes():
+    """Compound command inside SSH quotes stays as single step."""
+    parser = CommandParser()
+    analysis = parser.analyze_chain("ssh aarni 'for f in *.txt; do rm $f; done'")
+
+    # split_chain on the inner command returns 1 part (compound depth tracking)
+    # So no wrapper expansion
+    assert analysis.is_chain is False
+    assert len(analysis.steps) == 1
+
+
+def test_analyze_chain_ssh_nested_double_quotes():
+    """Deeply nested quotes protect inner && from splitting."""
+    parser = CommandParser()
+    analysis = parser.analyze_chain('ssh aarni \'sudo bash -c "apt update && apt upgrade"\'')
+
+    # The inner && is inside double quotes within the single-quoted arg
+    # split_chain on nested_cmd: sudo bash -c "apt update && apt upgrade"
+    # The && is inside double quotes, so split_chain returns 1 part
+    assert analysis.is_chain is False
+    assert len(analysis.steps) == 1
+
+
+def test_analyze_chain_ssh_pipe_expansion():
+    """SSH with pipe in inner command should expand."""
+    parser = CommandParser()
+    analysis = parser.analyze_chain("ssh aarni 'cat file | grep pattern'")
+
+    assert analysis.is_chain is True
+    assert len(analysis.steps) == 2
+    assert analysis.commands == [
+        "ssh aarni cat file",
+        "ssh aarni grep pattern",
+    ]
+    assert analysis.chain_title == "ssh aarni"
+
+
+# --- Compound command expansion ---
+
+
+def test_analyze_chain_for_loop():
+    """For loop should expand into inner commands with title."""
+    from owl.core.command_parser import CompoundType
+
+    parser = CommandParser()
+    analysis = parser.analyze_chain("for f in *.txt; do rm $f; done")
+
+    assert analysis.is_chain is True
+    assert len(analysis.steps) == 1  # Single body command
+    assert analysis.commands == ["rm $f"]
+    assert analysis.chain_title == "For: for f in *.txt"
+
+
+def test_analyze_chain_for_loop_multiple_body():
+    """For loop with chain body should have multiple steps."""
+    parser = CommandParser()
+    analysis = parser.analyze_chain("for x in a b c; do echo $x && touch $x; done")
+
+    assert analysis.is_chain is True
+    assert len(analysis.steps) == 2
+    assert analysis.commands == ["echo $x", "touch $x"]
+    assert analysis.chain_title == "For: for x in a b c"
+
+
+def test_analyze_chain_if_else():
+    """If-else should include both branches."""
+    parser = CommandParser()
+    analysis = parser.analyze_chain("if [ -d dir ]; then ls dir; else mkdir dir; fi")
+
+    assert analysis.is_chain is True
+    assert len(analysis.steps) == 2
+    assert analysis.commands == ["ls dir", "mkdir dir"]
+    assert analysis.chain_title == "If: if [ -d dir ]"
+
+
+def test_analyze_chain_while_loop():
+    """While loop should expand."""
+    parser = CommandParser()
+    analysis = parser.analyze_chain("while true; do sleep 1; done")
+
+    assert analysis.is_chain is True
+    assert len(analysis.steps) == 1
+    assert analysis.commands == ["sleep 1"]
+    assert analysis.chain_title == "While: while true"
+
+
+def test_analyze_chain_nodes_property():
+    """The nodes property should return parsed CommandNode objects."""
+    parser = CommandParser()
+    analysis = parser.analyze_chain("git fetch && git push")
+
+    nodes = analysis.nodes
+    assert len(nodes) == 2
+    assert nodes[0].type == CommandType.VCS
+    assert nodes[0].name == "git"
+    assert nodes[1].type == CommandType.VCS
+    assert nodes[1].name == "git"
+
+
+def test_analyze_chain_wrapper_nodes_have_patterns():
+    """Expanded wrapper steps should produce correct patterns."""
+    parser = CommandParser()
+    analysis = parser.analyze_chain("ssh aarni 'cd /tmp && ls -la'")
+
+    # Each node is a wrapper node, so generate_patterns should work
+    for step in analysis.steps:
+        patterns = parser.generate_patterns(step.node)
+        assert len(patterns) > 0
+        assert "ssh aarni *" in patterns
+
+    # Second step should have ssh aarni ls patterns
+    patterns_ls = parser.generate_patterns(analysis.steps[1].node)
+    assert "ssh aarni ls *" in patterns_ls

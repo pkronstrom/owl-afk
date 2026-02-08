@@ -82,11 +82,11 @@ def generate_rule_patterns(
                 if pattern:  # Skip empty patterns
                     # Create a label based on whether it's an exact command or wildcard
                     if pattern.endswith("*"):
-                        label = f"🔧 {pattern}"
+                        label = f"~ {pattern}"
                     elif " " in pattern:
-                        label = f"📌 {pattern[:50]}"  # Truncate long commands for label
+                        label = f"· {pattern[:50]}"  # Truncate long commands for label
                     else:
-                        label = f"📌 {pattern}"
+                        label = f"· {pattern}"
 
                     patterns.append((f"Bash({pattern})", label))
 
@@ -105,8 +105,8 @@ def generate_rule_patterns(
 
         # Fallback if parsing fails or no patterns generated
         return [
-            (f"Bash({cmd})", "📌 This exact command"),
-            ("Bash(*)", "🔧 Any Bash"),
+            (f"Bash({cmd})", "· This exact command"),
+            ("Bash(*)", "~ Any Bash"),
         ]
 
     # For Edit/Write - file patterns
@@ -114,24 +114,24 @@ def generate_rule_patterns(
         path = os.path.expanduser(data["file_path"])
         filename = path.rsplit("/", 1)[-1] if "/" in path else path
 
-        patterns.append((f"{tool_name}({path})", f"📌 {filename}"))
+        patterns.append((f"{tool_name}({path})", f"· {filename}"))
 
         if "." in path:
             ext = path.rsplit(".", 1)[-1]
-            patterns.append((f"{tool_name}(*.{ext})", f"📄 Any *.{ext}"))
+            patterns.append((f"{tool_name}(*.{ext})", f"· Any *.{ext}"))
 
         if "/" in path:
             dir_path = path.rsplit("/", 1)[0]
             short_dir = dir_path.split("/")[-1] or dir_path
             # Use wildcard prefix so pattern works across worktrees/machines
             patterns.append(
-                (f"{tool_name}(*/{short_dir}/*)", f"📁 Any in .../{short_dir}/")
+                (f"{tool_name}(*/{short_dir}/*)", f"/ Any in .../{short_dir}/")
             )
             # Also add pattern for relative paths (without leading */)
             # This matches paths like "dodo/file.txt" where there's no / before the dir
             if not path.startswith("/"):
                 patterns.append(
-                    (f"{tool_name}({short_dir}/*)", f"📁 Any in {short_dir}/")
+                    (f"{tool_name}({short_dir}/*)", f"/ Any in {short_dir}/")
                 )
 
         # Add project-scoped pattern if project_path is available
@@ -142,36 +142,36 @@ def generate_rule_patterns(
                 patterns.append(
                     (
                         f"{tool_name}(*/{project_name}/*.{ext})",
-                        f"📂 Any *.{ext} in {project_name}/",
+                        f"/ Any *.{ext} in {project_name}/",
                     )
                 )
             # Use wildcard prefix so pattern works across worktrees/machines
             patterns.append(
-                (f"{tool_name}(*/{project_name}/*)", f"📂 Any in {project_name}/")
+                (f"{tool_name}(*/{project_name}/*)", f"/ Any in {project_name}/")
             )
 
-        patterns.append((f"{tool_name}(*)", f"⚡ Any {tool_name}"))
+        patterns.append((f"{tool_name}(*)", f"* Any {tool_name}"))
 
     # For Read - directory patterns
     elif tool_name == "Read" and "file_path" in data:
         path = os.path.expanduser(data["file_path"])
         filename = path.rsplit("/", 1)[-1] if "/" in path else path
 
-        patterns.append((f"Read({path})", f"📌 {filename}"))
+        patterns.append((f"Read({path})", f"· {filename}"))
 
         if "/" in path:
             dir_path = path.rsplit("/", 1)[0]
             short_dir = dir_path.split("/")[-1] or dir_path
             # Use wildcard prefix so pattern works across worktrees/machines
-            patterns.append((f"Read(*/{short_dir}/*)", f"📁 Any in .../{short_dir}/"))
+            patterns.append((f"Read(*/{short_dir}/*)", f"/ Any in .../{short_dir}/"))
 
         # Add project-scoped pattern if project_path is available
         if project_path and path.startswith(project_path):
             project_name = project_path.rstrip("/").split("/")[-1]
             # Use wildcard prefix so pattern works across worktrees/machines
-            patterns.append((f"Read(*/{project_name}/*)", f"📂 Any in {project_name}/"))
+            patterns.append((f"Read(*/{project_name}/*)", f"/ Any in {project_name}/"))
 
-        patterns.append(("Read(*)", "⚡ Any Read"))
+        patterns.append(("Read(*)", "* Any Read"))
 
     # For Glob/Search and other tools using 'path' field
     elif "path" in data:
@@ -181,21 +181,21 @@ def generate_rule_patterns(
             short_dir = path.rstrip("/").split("/")[-1] or path
             # Use wildcard prefix so pattern works across worktrees/machines
             patterns.append(
-                (f"{tool_name}(*/{short_dir}/*)", f"📁 Any in .../{short_dir}/")
+                (f"{tool_name}(*/{short_dir}/*)", f"/ Any in .../{short_dir}/")
             )
 
         # Add project-scoped pattern if project_path is available
         if project_path and path.startswith(project_path):
             project_name = project_path.rstrip("/").split("/")[-1]
             patterns.append(
-                (f"{tool_name}(*/{project_name}/*)", f"📂 Any in {project_name}/")
+                (f"{tool_name}(*/{project_name}/*)", f"/ Any in {project_name}/")
             )
 
-        patterns.append((f"{tool_name}(*)", f"⚡ Any {tool_name}"))
+        patterns.append((f"{tool_name}(*)", f"* Any {tool_name}"))
 
     # For other tools
     else:
-        patterns.append((f"{tool_name}(*)", f"⚡ Any {tool_name}"))
+        patterns.append((f"{tool_name}(*)", f"* Any {tool_name}"))
 
     # Remove duplicates while preserving order (by pattern)
     seen: set[str] = set()

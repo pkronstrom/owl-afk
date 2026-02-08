@@ -60,7 +60,7 @@ def _format_transcript_markdown(content: str, max_chars: int = 50000) -> str:
                     if isinstance(block, dict) and block.get("type") == "text":
                         text += block.get("text", "")
             if text:
-                sections.append(f"## 👤 User\n\n{text}")
+                sections.append(f"## User\n\n{text}")
 
         elif msg_type == "assistant":
             # Assistant message
@@ -77,7 +77,7 @@ def _format_transcript_markdown(content: str, max_chars: int = 50000) -> str:
                             tool_name = block.get("name", "tool")
                             texts.append(f"*[Using {tool_name}]*")
             if texts:
-                sections.append("## 🤖 Assistant\n\n" + "\n\n".join(texts))
+                sections.append("## ◆ Assistant\n\n" + "\n\n".join(texts))
 
     result = "# Agent Session Log\n\n" + "\n\n---\n\n".join(sections)
 
