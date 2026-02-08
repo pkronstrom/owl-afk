@@ -80,8 +80,8 @@ def interactive_menu() -> None:
         options.append("Manage Rules")
         actions.append("rules")
 
-        options.append("Install Safe Defaults")
-        actions.append("safe_defaults")
+        options.append("Load Preset")
+        actions.append("preset")
 
         options.append("Config")
         actions.append("config")
@@ -122,8 +122,8 @@ def interactive_menu() -> None:
             interactive_rules()
         elif action == "config":
             interactive_config()
-        elif action == "safe_defaults":
-            _install_safe_defaults_menu()
+        elif action == "preset":
+            _preset_menu()
         elif action == "install":
             clear_screen()
             cmd_install(None)
@@ -137,32 +137,37 @@ def interactive_menu() -> None:
     clear_screen()
 
 
-def _install_safe_defaults_menu() -> None:
-    """Install safe defaults from menu."""
+def _preset_menu() -> None:
+    """Load a rule preset from the interactive menu."""
     import asyncio
 
-    from owl.core.safe_defaults import install_safe_defaults
+    from owl.core.presets import list_presets, load_preset
     from owl.core.storage import Storage
 
     clear_screen()
-    console.print("[bold]Install Safe Defaults[/bold]\n")
+    console.print("[bold]Load Rule Preset[/bold]\n")
     console.print(
-        "This will add rules to auto-approve read-only operations\n"
-        "like file reads, searches, git status, etc.\n"
+        "Presets auto-approve common operations at different trust levels.\n"
+        "Rules are added alongside your existing rules (never removed).\n"
     )
 
+    presets = list_presets()
+    options = [f"{p['name']:<15} {p['description']}" for p in presets]
+
     menu = RichTerminalMenu()
-    if not menu.confirm("Install safe defaults?", default=True):
+    choice = menu.select(options, title="Select a preset:")
+    if choice is None:
         return
 
+    preset = presets[choice]
     owl_dir = get_owl_dir()
     db_path = owl_dir / "owl.db"
 
-    async def _install():
+    async def _load():
         async with Storage(db_path) as storage:
-            return await install_safe_defaults(storage)
+            return await load_preset(storage, preset["name"])
 
-    added, skipped = asyncio.run(_install())
+    added, skipped = asyncio.run(_load())
     console.print(f"\n[green]Added {added} rules[/green]", end="")
     if skipped:
         console.print(f" [dim]({skipped} already existed)[/dim]")
