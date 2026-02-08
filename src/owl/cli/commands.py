@@ -360,6 +360,51 @@ def cmd_rules_remove(args):
         print(f"Rule [{args.rule_id}] not found")
 
 
+def cmd_rules_preset(name: str | None):
+    """Load a rule preset."""
+    import asyncio
+
+    from owl.cli.ui import console
+    from owl.core.presets import list_presets, load_preset
+    from owl.core.storage import Storage
+
+    owl_dir = get_owl_dir()
+
+    if name is None:
+        # Interactive menu
+        from owl.cli.ui import RichTerminalMenu
+
+        presets = list_presets()
+        options = [f"{p['name']:<15} {p['description']}" for p in presets]
+
+        menu = RichTerminalMenu()
+        choice = menu.select(options, title="Select a rule preset:")
+        if choice is None:
+            return
+        name = presets[choice]["name"]
+
+    # Validate preset name
+    preset_names = {p["name"] for p in list_presets()}
+    if name not in preset_names:
+        console.print(f"[red]Unknown preset: {name}[/red]")
+        console.print(f"[dim]Available: {', '.join(sorted(preset_names))}[/dim]")
+        return
+
+    db_path = owl_dir / "owl.db"
+
+    async def _load():
+        async with Storage(db_path) as storage:
+            return await load_preset(storage, name)
+
+    added, skipped = asyncio.run(_load())
+
+    console.print(f"[green]Added {added} rules[/green]", end="")
+    if skipped:
+        console.print(f" [dim]({skipped} already exist, skipped)[/dim]")
+    else:
+        console.print()
+
+
 def cmd_telegram_test(args):
     """Send a test message."""
     owl_dir = get_owl_dir()

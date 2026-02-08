@@ -325,3 +325,40 @@ class TestTyperCLI:
         runner = CliRunner()
         result = runner.invoke(app, ["status"])
         assert result.exit_code == 0
+
+
+class TestPresetCommand:
+    """Tests for rules preset command."""
+
+    def test_preset_loads_by_name(self, cli_env):
+        import os
+
+        env = os.environ.copy()
+        env["OWL_DIR"] = str(cli_env)
+
+        result = run_cli("rules", "preset", "cautious", env=env)
+
+        assert result.returncode == 0
+        assert "added" in result.stdout.lower()
+
+    def test_preset_invalid_name(self, cli_env):
+        import os
+
+        env = os.environ.copy()
+        env["OWL_DIR"] = str(cli_env)
+
+        result = run_cli("rules", "preset", "nonexistent", env=env)
+
+        assert "unknown" in result.stdout.lower()
+
+    def test_preset_skips_duplicates(self, cli_env):
+        import os
+
+        env = os.environ.copy()
+        env["OWL_DIR"] = str(cli_env)
+
+        run_cli("rules", "preset", "cautious", env=env)
+        result = run_cli("rules", "preset", "cautious", env=env)
+
+        assert result.returncode == 0
+        assert "skip" in result.stdout.lower()

@@ -162,6 +162,19 @@ def rules_remove(rule_id: int) -> None:
     cmd_rules_remove(Args())
 
 
+@rules_app.command("preset")
+def rules_preset(
+    name: str = typer.Argument(
+        None,
+        help="Preset name: cautious, standard, or permissive. Omit for interactive menu.",
+    ),
+) -> None:
+    """Load a rule preset."""
+    from owl.cli.commands import cmd_rules_preset
+
+    cmd_rules_preset(name)
+
+
 # Telegram subcommand group
 telegram_app = typer.Typer(help="Telegram configuration")
 app.add_typer(telegram_app, name="telegram")
