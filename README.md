@@ -12,8 +12,9 @@ Part of [**Nest-Driven Development**](https://github.com/pkronstrom/nest-driven-
 
 - **Telegram Integration**: Receive approval requests on Telegram with inline buttons
 - **Smart Pattern Rules**: Create rules to auto-approve commands matching patterns (e.g., `Bash(git *)`, `Edit(*.py)`)
-- **Chain Command Support**: Handle complex bash chains like `git add . && git commit -m "msg"`
-- **Wrapper Detection**: Recognizes SSH, Docker, sudo, and other wrapper commands
+- **Chain Command Support**: Handle complex bash chains like `git add . && git commit -m "msg"` with per-command approval
+- **Wrapper Chain Expansion**: Inner chains in SSH/Docker commands are expanded into individually-approvable steps (e.g., `ssh host 'cd /tmp && rm foo'`)
+- **Wrapper Detection**: Recognizes SSH, Docker, sudo, and other wrapper commands with progressive pattern matching
 - **Project-Scoped Rules**: Auto-approve edits within specific projects
 - **Subagent Notifications**: Get notified when Claude's subagents complete
 - **Session Notifications**: Get notified on session start/end and context compaction
@@ -112,17 +113,18 @@ owl env unset KEY      # Remove an override
 
 Once a request comes in, you'll see inline buttons:
 
-- **Approve** / **Approve Step**: Approve the current command
+- **Allow**: Approve the current command
 - **Approve Chain**: Approve all commands in a chain at once
-- **Rule**: Create a pattern rule for future auto-approval
-- **All [Tool]**: Approve all pending + add rule for this tool type
-- **Deny** / **Deny+Msg**: Deny with optional feedback message
+- **Step**: Approve a single step in a chain
+- **Always...**: Create a pattern rule for future auto-approval
+- **Deny** / **Deny + msg**: Deny with optional feedback message
 
 ### Pattern Examples
 
 | Pattern | Matches |
 |---------|---------|
 | `Bash(git *)` | Any git command |
+| `Bash(ssh aarni git *)` | Any git command on host "aarni" |
 | `Bash(ssh aarni *)` | Any command on host "aarni" |
 | `Edit(*.py)` | Any Python file edit |
 | `Edit(/path/to/project/*)` | Any edit in project |
