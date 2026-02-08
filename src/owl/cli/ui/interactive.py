@@ -719,28 +719,42 @@ def run_wizard() -> None:
     # Ensure config is saved
     config.save()
 
-    # Step 6: Safe defaults
+    # Step 6: Rule presets
     console.print()
+    console.print("[bold]Rule Presets[/bold]\n")
     console.print(
-        "[bold]Install Safe Defaults?[/bold]\n\n"
-        "These rules auto-approve read-only operations like\n"
-        "file reads, searches, git status, etc.\n\n"
-        "[dim]You can edit ~/.config/owl/safe_defaults.txt later.[/dim]\n"
+        "Presets auto-approve common operations so you don't have to\n"
+        "approve every read, search, or git status from your phone.\n"
     )
-    if menu.confirm("Install safe defaults?", default=True):
-        import asyncio
 
-        from owl.core.safe_defaults import install_safe_defaults
-        from owl.core.storage import Storage
+    from owl.core.presets import list_presets, load_preset
+    from owl.core.storage import Storage
+
+    presets = list_presets()
+    # Reorder: standard first (recommended for most users)
+    options = [
+        f"standard        {presets[1]['description']} (recommended)",
+        f"cautious        {presets[0]['description']}",
+        f"permissive      {presets[2]['description']}",
+        "skip            I'll add rules manually",
+    ]
+    # Map option index back to preset name
+    option_to_name = ["standard", "cautious", "permissive", None]
+
+    choice = menu.select(options, title="Select a starting preset:")
+    preset_name = option_to_name[choice] if choice is not None else None
+
+    if preset_name:
+        import asyncio
 
         db_path = owl_dir / "owl.db"
 
-        async def _install():
+        async def _load():
             async with Storage(db_path) as storage:
-                return await install_safe_defaults(storage)
+                return await load_preset(storage, preset_name)
 
-        added, _ = asyncio.run(_install())
-        console.print(f"[green]Added {added} rules[/green]")
+        added, _ = asyncio.run(_load())
+        console.print(f"[green]Loaded '{preset_name}' preset ({added} rules)[/green]")
 
     # Step 7: Done
     console.print()
