@@ -72,6 +72,19 @@ owl off  # Disable (auto-approves pending requests)
 owl status
 ```
 
+### Rule Presets
+
+Load pre-built rulesets to auto-approve common operations:
+
+```bash
+owl rules preset              # Interactive menu
+owl rules preset cautious     # Read-only tools, git reads, file inspection
+owl rules preset standard     # + file writes, git commits, dev tools, testing
+owl rules preset permissive   # + git push, docker run, network, runtimes
+```
+
+The setup wizard also offers preset selection on first run.
+
 ### Manage Rules
 
 ```bash
