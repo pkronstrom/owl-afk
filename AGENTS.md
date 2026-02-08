@@ -26,7 +26,7 @@ src/owl/
 │   ├── pattern_generator.py  # Generate rule patterns from tool calls
 │   └── debug.py              # Debug logging to ~/.config/owl/debug.log
 └── data/
-    └── safe_defaults.txt     # Default safe patterns for quick setup
+    └── presets/              # Rule presets (cautious/standard/permissive)
 ```
 
 ## Commands

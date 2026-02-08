@@ -16,6 +16,7 @@ TaskCreate(*)
 TaskUpdate(*)
 TaskOutput(*)
 TaskStop(*)
+TaskList(*)
 
 # Git reads
 Bash(git status *)
@@ -115,6 +116,7 @@ Bash(terraform show *)
 # File writes
 Edit(*)
 Write(*)
+NotebookEdit(*)
 
 # Git writes (local only)
 Bash(git add *)

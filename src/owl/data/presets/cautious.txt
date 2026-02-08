@@ -16,6 +16,7 @@ TaskCreate(*)
 TaskUpdate(*)
 TaskOutput(*)
 TaskStop(*)
+TaskList(*)
 
 # Git reads
 Bash(git status *)
