@@ -44,6 +44,6 @@ class StopCommentHandler:
         if ctx.message_id:
             await ctx.notifier.edit_message(
                 ctx.message_id,
-                "⏳ Waiting for your message...",
+                "Waiting for your message...",
                 parse_mode=None,
             )

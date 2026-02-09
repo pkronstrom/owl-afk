@@ -40,9 +40,9 @@ def format_approval_message(
         except (json.JSONDecodeError, TypeError):
             input_summary = str(tool_input)
 
-    # Truncate input if too long
-    if len(input_summary) > 200:
-        input_summary = input_summary[:200] + "..."
+    # Truncate only if exceeding Telegram message limits
+    if len(input_summary) > 1000:
+        input_summary = input_summary[:1000] + "..."
 
     # Project identifier - use working directory or short session id
     project_id = format_project_id(project_path, session_id)
@@ -514,7 +514,7 @@ class TelegramNotifier(Notifier):
             "sendMessage",
             data={
                 "chat_id": self.chat_id,
-                "text": f"▸ Reply with feedback for denying {tool_name}:",
+                "text": f"Reply with feedback for denying {tool_name}:",
                 "reply_markup": json.dumps({"force_reply": True, "selective": True}),
             },
         )
@@ -559,7 +559,7 @@ class TelegramNotifier(Notifier):
                 duration_str = f" ({secs}s)"
 
         # Build message lines (using HTML for consistency with approval messages)
-        lines = [f"<i>{project_id}</i> ◆ <b>Done</b>{duration_str}"]
+        lines = [f"<i>{project_id}</i> · <b>Done</b>{duration_str}"]
 
         if description:
             desc = description[:80] + "..." if len(description) > 80 else description
@@ -600,7 +600,7 @@ class TelegramNotifier(Notifier):
                 [
                     {"text": "✓ OK", "callback_data": f"subagent_ok:{subagent_id}"},
                     {
-                        "text": "▸ Continue...",
+                        "text": "Continue...",
                         "callback_data": f"subagent_continue:{subagent_id}",
                     },
                 ],
@@ -631,14 +631,14 @@ class TelegramNotifier(Notifier):
         # Format project path
         project_id = format_project_id(project_path, session_id)
 
-        text = f"<i>{escape_html(project_id)}</i>\n‖ <b>Claude is about to stop</b>"
+        text = f"<i>{escape_html(project_id)}</i>\n■ <b>Claude is about to stop</b>"
 
         keyboard = {
             "inline_keyboard": [
                 [
                     {"text": "✓ OK", "callback_data": f"stop_ok:{session_id}"},
                     {
-                        "text": "▸ Comment",
+                        "text": "Comment",
                         "callback_data": f"stop_comment:{session_id}",
                     },
                 ],
@@ -699,7 +699,7 @@ class TelegramNotifier(Notifier):
             "sendMessage",
             data={
                 "chat_id": self.chat_id,
-                "text": "▸ Reply with instructions for the agent:",
+                "text": "Reply with instructions for the agent:",
                 "reply_markup": json.dumps({"force_reply": True, "selective": True}),
             },
         )
@@ -785,8 +785,9 @@ class TelegramNotifier(Notifier):
             if display_prefix and cmd_display.startswith(display_prefix):
                 cmd_display = cmd_display[len(display_prefix):]
 
-            # Truncate long commands
-            cmd_display = cmd_display if len(cmd_display) <= 60 else cmd_display[:60] + "..."
+            # Truncate only extreme cases (Telegram 4096 char limit handled at message level)
+            if len(cmd_display) > 300:
+                cmd_display = cmd_display[:300] + "..."
             cmd_lines.append(f"{marker} <code>{escape_html(cmd_display)}</code>")
 
         # Check if message would be too long
@@ -806,7 +807,8 @@ class TelegramNotifier(Notifier):
                     cmd_display = cmd
                     if display_prefix and cmd_display.startswith(display_prefix):
                         cmd_display = cmd_display[len(display_prefix):]
-                    cmd_display = cmd_display if len(cmd_display) <= 60 else cmd_display[:60] + "..."
+                    if len(cmd_display) > 300:
+                        cmd_display = cmd_display[:300] + "..."
                     truncated_cmd_lines.append(
                         f"{marker} <code>{escape_html(cmd_display)}</code>"
                     )
@@ -826,7 +828,8 @@ class TelegramNotifier(Notifier):
                     cmd_display = cmd
                     if display_prefix and cmd_display.startswith(display_prefix):
                         cmd_display = cmd_display[len(display_prefix):]
-                    cmd_display = cmd_display if len(cmd_display) <= 60 else cmd_display[:60] + "..."
+                    if len(cmd_display) > 300:
+                        cmd_display = cmd_display[:300] + "..."
                     truncated_cmd_lines.append(
                         f"{marker} <code>{escape_html(cmd_display)}</code>"
                     )
@@ -935,8 +938,9 @@ class TelegramNotifier(Notifier):
             if display_prefix and cmd_display.startswith(display_prefix):
                 cmd_display = cmd_display[len(display_prefix):]
 
-            # Truncate long commands
-            cmd_display = cmd_display if len(cmd_display) <= 60 else cmd_display[:60] + "..."
+            # Truncate only extreme cases (Telegram 4096 char limit handled at message level)
+            if len(cmd_display) > 300:
+                cmd_display = cmd_display[:300] + "..."
             cmd_lines.append(f"{marker} <code>{escape_html(cmd_display)}</code>")
 
         # Check if message would be too long
@@ -957,7 +961,8 @@ class TelegramNotifier(Notifier):
                     cmd_display = cmd
                     if display_prefix and cmd_display.startswith(display_prefix):
                         cmd_display = cmd_display[len(display_prefix):]
-                    cmd_display = cmd_display if len(cmd_display) <= 60 else cmd_display[:60] + "..."
+                    if len(cmd_display) > 300:
+                        cmd_display = cmd_display[:300] + "..."
                     truncated_cmd_lines.append(
                         f"{marker} <code>{escape_html(cmd_display)}</code>"
                     )
@@ -979,7 +984,8 @@ class TelegramNotifier(Notifier):
                     cmd_display = cmd
                     if display_prefix and cmd_display.startswith(display_prefix):
                         cmd_display = cmd_display[len(display_prefix):]
-                    cmd_display = cmd_display if len(cmd_display) <= 60 else cmd_display[:60] + "..."
+                    if len(cmd_display) > 300:
+                        cmd_display = cmd_display[:300] + "..."
                     truncated_cmd_lines.append(
                         f"{marker} <code>{escape_html(cmd_display)}</code>"
                     )

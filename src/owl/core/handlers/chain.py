@@ -11,7 +11,6 @@ from owl.utils.formatting import (
     escape_html,
     format_project_id,
     format_tool_summary,
-    truncate_command,
 )
 
 if TYPE_CHECKING:
@@ -700,7 +699,7 @@ class ChainRuleHandler:
         if ctx.message_id:
             await ctx.notifier.edit_message_with_rule_keyboard(
                 ctx.message_id,
-                f"Command {command_idx + 1}: <code>{escape_html(truncate_command(cmd))}</code>",
+                f"Command {command_idx + 1}: <code>{escape_html(cmd)}</code>",
                 request_id,
                 patterns,
                 callback_prefix=f"chain_rule_pattern:{request_id}:{command_idx}",

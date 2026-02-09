@@ -90,8 +90,4 @@ def format_tool_summary(tool_name: str, tool_input: Optional[str]) -> str:
     else:
         summary = json.dumps(data)
 
-    # Truncate if too long
-    if len(summary) > 100:
-        summary = summary[:100] + "..."
-
     return escape_html(summary)

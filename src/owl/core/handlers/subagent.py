@@ -59,6 +59,6 @@ class SubagentContinueHandler:
         if ctx.message_id:
             await ctx.notifier.edit_message(
                 ctx.message_id,
-                "⏳ Waiting for instructions...",
+                "Waiting for instructions...",
                 parse_mode=None,
             )

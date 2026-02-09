@@ -514,7 +514,7 @@ class Poller:
                 "sendMessage",
                 data={
                     "chat_id": self.notifier.chat_id,
-                    "text": "▸ <b>Send message to session:</b>",
+                    "text": "<b>Send message to session:</b>",
                     "parse_mode": "HTML",
                     "reply_markup": json.dumps(keyboard),
                 },
@@ -587,7 +587,7 @@ class Poller:
             "sendMessage",
             data={
                 "chat_id": self.notifier.chat_id,
-                "text": f"▸ Type message for <b>{project}</b> ({short_id}):",
+                "text": f"Type message for <b>{project}</b> ({short_id}):",
                 "parse_mode": "HTML",
                 "reply_markup": json.dumps({"force_reply": True, "selective": True}),
             },
@@ -610,7 +610,7 @@ class Poller:
         if message_id:
             await self.notifier.edit_message(
                 message_id,
-                f"▸ Sending to <b>{project}</b> ({short_id})...",
+                f"Sending to <b>{project}</b> ({short_id})...",
                 remove_keyboard=True,
             )
 
@@ -627,7 +627,7 @@ class Poller:
         status_text = "ON" if mode == "on" else "OFF"
 
         await self.notifier.send_message(
-            f"<b>◆ owl — Remote Approval for Claude Code</b>\n\n"
+            f"<b>owl — Remote Approval for Claude Code</b>\n\n"
             f"<b>Status:</b> {status_emoji} {status_text}\n"
             f"<b>Active sessions:</b> {len(sessions)}\n"
             f"<b>Pending requests:</b> {len(pending)}\n\n"
@@ -689,7 +689,7 @@ class Poller:
                 if request.telegram_msg_id:
                     await self.notifier.edit_message(
                         request.telegram_msg_id,
-                        "‖ Deferred to CLI prompt",
+                        "■ Deferred to CLI prompt",
                         parse_mode=None,
                     )
 
@@ -796,7 +796,7 @@ class Poller:
         if request.telegram_msg_id:
             await self.notifier.edit_message(
                 request.telegram_msg_id,
-                f"✗ DENIED - {request.tool_name}\n▸ {feedback}",
+                f"✗ DENIED - {request.tool_name}\n\"{feedback}\"",
             )
 
         await self.storage.log_audit(
@@ -878,7 +878,7 @@ class Poller:
             tool_summary = format_tool_summary(request.tool_name, request.tool_input)
             await self.notifier.edit_message(
                 request.telegram_msg_id,
-                f"<i>{project_id}</i>\n✗ <b>[{request.tool_name}]</b>: <code>{tool_summary}</code>\n\n▸ {feedback}",
+                f"<i>{project_id}</i>\n✗ <b>[{request.tool_name}]</b>: <code>{tool_summary}</code>\n\n\"{feedback}\"",
             )
             debug_callback("Message updated for chain denial")
 
