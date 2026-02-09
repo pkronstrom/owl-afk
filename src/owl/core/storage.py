@@ -266,6 +266,26 @@ class Storage:
             return None
         return Request(**dict(row))
 
+    async def get_latest_resolved_request(
+        self, session_id: str
+    ) -> Optional[Request]:
+        """Get the most recently resolved request for a session."""
+        cursor = await self.conn.execute(
+            """
+            SELECT * FROM requests
+            WHERE session_id = ?
+              AND status != 'pending'
+              AND telegram_msg_id IS NOT NULL
+            ORDER BY resolved_at DESC
+            LIMIT 1
+            """,
+            (session_id,),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        return Request(**dict(row))
+
     async def resolve_request(
         self,
         request_id: str,
