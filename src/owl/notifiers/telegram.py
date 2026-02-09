@@ -55,9 +55,23 @@ def format_approval_message(
         desc = description[:100] + "..." if len(description) > 100 else description
         lines.append(f"<i>{escape_html(desc)}</i>")
 
-    lines.append(
-        f"<b>[{escape_html(tool_name)}]</b> <code>{escape_html(input_summary)}</code>"
-    )
+    from owl.utils.languages import detect_bash_language, detect_file_language
+
+    # Detect language for syntax highlighting
+    lang = None
+    if tool_name == "Bash":
+        lang = detect_bash_language(input_summary)
+    elif tool_name in ("Edit", "Write"):
+        lang = detect_file_language(input_summary)
+
+    escaped_input = escape_html(input_summary)
+    if lang:
+        lines.append(f"<b>[{escape_html(tool_name)}]</b>")
+        lines.append(f'<pre><code class="language-{lang}">{escaped_input}</code></pre>')
+    else:
+        lines.append(
+            f"<b>[{escape_html(tool_name)}]</b> <code>{escaped_input}</code>"
+        )
 
     return "\n".join(lines)
 

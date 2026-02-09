@@ -365,6 +365,43 @@ async def test_chain_approval_with_compound_title():
         assert "echo done" in text
 
 
+def test_format_approval_message_uses_pre_block():
+    """Approval message should use <pre><code> blocks for Bash tool input."""
+    msg = format_approval_message(
+        request_id="req-123",
+        session_id="session-456",
+        tool_name="Bash",
+        tool_input='{"command": "python train.py"}',
+        project_path="/home/user/myproject",
+    )
+    assert '<pre><code class="language-python">' in msg
+    assert "</code></pre>" in msg
+    assert "python train.py" in msg
+
+
+def test_format_approval_message_bash_fallback_language():
+    """Unknown commands should fall back to language-bash."""
+    msg = format_approval_message(
+        request_id="req-123",
+        session_id="s",
+        tool_name="Bash",
+        tool_input='{"command": "git status"}',
+    )
+    assert '<pre><code class="language-bash">' in msg
+
+
+def test_format_approval_message_edit_tool():
+    """Edit tool should show file path with file-extension language."""
+    msg = format_approval_message(
+        request_id="req-123",
+        session_id="s",
+        tool_name="Edit",
+        tool_input='{"file_path": "/home/user/app.py", "old_string": "foo", "new_string": "bar"}',
+    )
+    assert '<pre><code class="language-python">' in msg
+    assert "app.py" in msg
+
+
 @pytest.mark.asyncio
 async def test_chain_approval_without_title_shows_default():
     """Should show default title when no chain_title is provided."""
