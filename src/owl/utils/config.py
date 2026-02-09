@@ -24,6 +24,7 @@ class Config:
         "subagent_hook": "Notify when subagent finishes",
         "notification_hook": "Forward notifications to TG",
         "auto_approve_notify": "Notify on auto-approvals",
+        "tool_results": "Show tool results in Telegram messages",
     }
 
     def __init__(self, owl_dir: Optional[Path] = None):
@@ -53,6 +54,7 @@ class Config:
         self.subagent_hook = True
         self.notification_hook = False  # New feature, default off
         self.auto_approve_notify = False  # Notify on auto-approvals
+        self.tool_results = False  # Show tool results in Telegram messages
         # Polling grace period - how long to keep polling after request resolves (seconds)
         self.polling_grace_period = 900  # 15 minutes default
         # Env var overrides (like hawk-hooks)
@@ -88,6 +90,7 @@ class Config:
                     self.subagent_hook = not data.get("disable_subagent_hook", False)
                 self.notification_hook = data.get("notification_hook", False)
                 self.auto_approve_notify = data.get("auto_approve_notify", False)
+                self.tool_results = data.get("tool_results", False)
                 self.polling_grace_period = data.get("polling_grace_period", 900)
                 self.env = data.get("env", {})
                 self.editor = data.get("editor", os.environ.get("EDITOR", "vim"))
@@ -147,6 +150,7 @@ class Config:
             "subagent_hook": self.subagent_hook,
             "notification_hook": self.notification_hook,
             "auto_approve_notify": self.auto_approve_notify,
+            "tool_results": self.tool_results,
             "polling_grace_period": self.polling_grace_period,
             "env": self.env,
             "editor": self.editor,
