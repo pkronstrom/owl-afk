@@ -49,6 +49,20 @@ def format_auto_approval_message(
     # single commands and chains
     summary = format_tool_summary(tool_name, tool_input)
 
+    from owl.utils.languages import detect_bash_language, detect_file_language
+
+    lang = None
+    if tool_name == "Bash":
+        lang = detect_bash_language(summary)
+    elif tool_name in ("Edit", "Write"):
+        lang = detect_file_language(summary)
+
+    if lang:
+        return (
+            f"<i>{escape_html(project_id)}</i>\n"
+            f"↻ <b>[{escape_html(tool_name)}]</b>\n"
+            f'<pre><code class="language-{lang}">{summary}</code></pre>'
+        )
     return (
         f"<i>{escape_html(project_id)}</i>\n"
         f"↻ <b>[{escape_html(tool_name)}]</b>: <code>{summary}</code>"
