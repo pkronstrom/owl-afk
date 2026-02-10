@@ -151,10 +151,13 @@ class AddRulePatternHandler:
                         pending_tool_summary = format_tool_summary(
                             pending_req.tool_name, pending_req.tool_input
                         )
+                        from owl.utils.formatting import format_tool_call_html
+
                         await ctx.notifier.edit_message(
                             pending_req.telegram_msg_id,
-                            f"<i>{pending_project_id}</i>\n✓ <b>[{pending_req.tool_name}]</b>: "
-                            f"<code>{pending_tool_summary}</code>\n+ Auto: {label}",
+                            f"<i>{pending_project_id}</i>\n"
+                            f"{format_tool_call_html(pending_req.tool_name, pending_tool_summary, prefix='\u2713 ')}"
+                            f"\n+ Auto: {label}",
                         )
                     auto_approved_count += 1
 
@@ -166,10 +169,13 @@ class AddRulePatternHandler:
                 tool_summary = format_tool_summary(
                     request.tool_name, request.tool_input
                 )
+                from owl.utils.formatting import format_tool_call_html
+
                 await ctx.notifier.edit_message(
                     ctx.message_id,
-                    f"<i>{project_id}</i>\n✓ <b>[{request.tool_name}]</b>: "
-                    f"<code>{tool_summary}</code>\n+ Always: {label}",
+                    f"<i>{project_id}</i>\n"
+                    f"{format_tool_call_html(request.tool_name, tool_summary, prefix='\u2713 ')}"
+                    f"\n+ Always: {label}",
                 )
 
             # Show count if we auto-approved others

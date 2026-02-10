@@ -59,3 +59,15 @@ def test_format_auto_approval_message_escapes_html():
 
     assert "&lt;script&gt;" in msg
     assert "<script>" not in msg
+
+
+def test_format_auto_approval_uses_pre_block():
+    """Auto-approval message should use <pre><code> block."""
+    msg = format_auto_approval_message(
+        tool_name="Bash",
+        tool_input='{"command": "python train.py"}',
+        project_path="/home/user/project",
+        session_id="session-123",
+    )
+    assert '<pre><code class="language-python">' in msg
+    assert "python train.py" in msg

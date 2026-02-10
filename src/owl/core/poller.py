@@ -794,9 +794,13 @@ class Poller:
 
         # Update the original message
         if request.telegram_msg_id:
+            from owl.utils.formatting import format_tool_call_html, format_tool_summary
+
+            tool_summary = format_tool_summary(request.tool_name, request.tool_input)
             await self.notifier.edit_message(
                 request.telegram_msg_id,
-                f"✗ DENIED - {request.tool_name}\n\"{feedback}\"",
+                f"{format_tool_call_html(request.tool_name, tool_summary, prefix='\u2717 ')}"
+                f"\n\"{feedback}\"",
             )
 
         await self.storage.log_audit(
@@ -835,7 +839,7 @@ class Poller:
     ) -> None:
         """Handle chain denial with user feedback."""
         from owl.core.handlers.chain import ChainStateManager
-        from owl.utils.formatting import format_tool_summary
+        from owl.utils.formatting import format_tool_call_html, format_tool_summary
 
         debug_callback(
             "_handle_chain_deny_with_feedback called",
@@ -878,7 +882,9 @@ class Poller:
             tool_summary = format_tool_summary(request.tool_name, request.tool_input)
             await self.notifier.edit_message(
                 request.telegram_msg_id,
-                f"<i>{project_id}</i>\n✗ <b>[{request.tool_name}]</b>: <code>{tool_summary}</code>\n\n\"{feedback}\"",
+                f"<i>{project_id}</i>\n"
+                f"{format_tool_call_html(request.tool_name, tool_summary, prefix='\u2717 ')}"
+                f"\n\n\"{feedback}\"",
             )
             debug_callback("Message updated for chain denial")
 

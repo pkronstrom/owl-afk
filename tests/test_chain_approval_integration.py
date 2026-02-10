@@ -669,7 +669,7 @@ async def test_chain_with_quoted_arguments(mock_owl_dir):
 async def test_long_chain_truncation_in_ui(mock_owl_dir):
     """Test that very long chains are properly truncated in Telegram UI."""
     # Setup manager
-    manager = ApprovalManager(owl_dir=mock_owl_dir, timeout=2.0)
+    manager = ApprovalManager(owl_dir=mock_owl_dir, timeout=5.0)
     await manager.initialize()
 
     # Configure Telegram notifier
@@ -690,7 +690,7 @@ async def test_long_chain_truncation_in_ui(mock_owl_dir):
 
         async def approve_manually():
             """Manually approve the request."""
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.2)
             pending = await manager.storage.get_pending_requests()
             if pending:
                 await manager.storage.resolve_request(

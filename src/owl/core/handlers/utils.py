@@ -2,6 +2,8 @@
 
 from typing import Optional
 
+from owl.utils.formatting import escape_html, format_tool_call_html
+
 
 def format_resolved_message(
     approved: bool,
@@ -22,10 +24,8 @@ def format_resolved_message(
     Returns:
         HTML-formatted message string
     """
-    icon = "✓" if approved else "✗"
-    base = (
-        f"<i>{project_id}</i>\n{icon} <b>[{tool_name}]</b>: <code>{tool_summary}</code>"
-    )
+    icon = "\u2713" if approved else "\u2717"
+    base = f"<i>{escape_html(project_id)}</i>\n{format_tool_call_html(tool_name, tool_summary, prefix=icon + ' ')}"
 
     if rule_label:
         action = "Always" if approved else "Never"

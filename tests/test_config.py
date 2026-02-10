@@ -96,3 +96,12 @@ def test_auto_approve_notify_in_toggles():
     """auto_approve_notify should be in TOGGLES dict."""
     assert "auto_approve_notify" in Config.TOGGLES
     assert Config.TOGGLES["auto_approve_notify"] == "Notify on auto-approvals"
+
+
+def test_tool_results_toggle_exists(tmp_path):
+    """tool_results should be a recognized toggle."""
+    owl_dir = tmp_path / ".config" / "owl"
+    owl_dir.mkdir(parents=True)
+    config = Config(owl_dir)
+    toggle_names = [name for name, _, _ in config.get_toggles()]
+    assert "tool_results" in toggle_names

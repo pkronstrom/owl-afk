@@ -125,8 +125,10 @@ class ChainStateManager:
 
 def format_chain_approved_message(tool_input: Optional[str], project_id: str) -> str:
     """Format chain approved message showing original command."""
+    from owl.utils.formatting import format_tool_call_html
+
     summary = format_tool_summary("Bash", tool_input)
-    return f"<i>{escape_html(project_id)}</i>\n✓ <b>[Bash]</b>: <code>{summary}</code>"
+    return f"<i>{escape_html(project_id)}</i>\n{format_tool_call_html('Bash', summary, prefix='\u2713 ')}"
 
 
 # Import registry here to avoid circular import issues

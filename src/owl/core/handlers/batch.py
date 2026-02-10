@@ -3,7 +3,7 @@
 from owl.core.handlers.base import CallbackContext
 from owl.core.handlers.registry import HandlerRegistry
 from owl.utils.debug import debug_callback
-from owl.utils.formatting import format_project_id, format_tool_summary
+from owl.utils.formatting import format_project_id, format_tool_call_html, format_tool_summary
 
 
 @HandlerRegistry.register("approve_all")
@@ -63,8 +63,8 @@ class ApproveAllHandler:
                     )
                     await ctx.notifier.edit_message(
                         request.telegram_msg_id,
-                        f"<i>{project_id}</i>\n✓ <b>[{request.tool_name}]</b>: "
-                        f"<code>{tool_summary}</code>",
+                        f"<i>{project_id}</i>\n"
+                        f"{format_tool_call_html(request.tool_name, tool_summary, prefix='\u2713 ')}",
                     )
                 debug_callback("Request approved", request_id=request.id)
 

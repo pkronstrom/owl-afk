@@ -469,7 +469,7 @@ def interactive_config() -> None:
     PANEL_HEIGHT = 19  # Room for 3 sections + spacers + items + status + legend
 
     # Which toggles belong to which section
-    GENERAL_TOGGLES = ["debug", "auto_approve_notify"]
+    GENERAL_TOGGLES = ["debug", "auto_approve_notify", "tool_results"]
     HOOK_TOGGLES = ["stop_hook", "subagent_hook", "notification_hook"]
 
     def build_items(config):
