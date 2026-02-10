@@ -105,7 +105,7 @@ async def _maybe_edit_with_result(
         description=request.description,
     )
 
-    new_text = f"{original_msg}\n─────────\n{result_html}"
+    new_text = f"{original_msg}\n{result_html}"
 
     if len(new_text) > 4000:
         new_text = new_text[:4000] + "\n\u2026 (message truncated)"
