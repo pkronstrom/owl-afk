@@ -77,7 +77,7 @@ def _build_chain_command_block(
     escaped = escape_html(block_text)
     result = f'<pre><code class="language-bash">{escaped}</code></pre>'
 
-    if header_length + len(result) > max_message_length and len(commands) > 30:
+    if header_length + len(result) > max_message_length and len(commands) > 10:
         trunc_lines = [_line(idx, commands[idx]) for idx in range(min(20, len(commands)))]
         trunc_lines.append(f"  ... {len(commands) - 30} more commands ...")
         trunc_lines.extend(

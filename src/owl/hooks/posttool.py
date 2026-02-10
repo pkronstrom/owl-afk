@@ -87,7 +87,7 @@ async def _maybe_edit_with_result(
     if tool_response is None:
         return
 
-    request = await storage.get_latest_resolved_request(session_id)
+    request = await storage.get_latest_resolved_request(session_id, tool_name)
     if not request or not request.telegram_msg_id:
         debug("posttool", "No resolved request with telegram_msg_id found")
         return
@@ -115,10 +115,17 @@ async def _maybe_edit_with_result(
         tool_summary=tool_summary,
     )
 
-    new_text = f"{resolved_msg}\n{result_html}"
+    # Budget-aware truncation: truncate result content before combining
+    # to avoid cutting inside HTML tags
+    max_message_length = 4000
+    budget = max_message_length - len(resolved_msg) - 1  # -1 for newline
+    if budget < 20:
+        return  # Not enough room for a meaningful result
+    if len(result_html) > budget:
+        # Re-format with truncated content rather than slicing HTML
+        result_html = "\u2026 (result too long)"
 
-    if len(new_text) > 4000:
-        new_text = new_text[:4000] + "\n\u2026 (message truncated)"
+    new_text = f"{resolved_msg}\n{result_html}"
 
     notifier = TelegramNotifier(config.telegram_bot_token, config.telegram_chat_id)
     try:

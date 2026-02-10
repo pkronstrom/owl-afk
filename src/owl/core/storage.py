@@ -267,20 +267,39 @@ class Storage:
         return Request(**dict(row))
 
     async def get_latest_resolved_request(
-        self, session_id: str
+        self, session_id: str, tool_name: Optional[str] = None
     ) -> Optional[Request]:
-        """Get the most recently resolved request for a session."""
-        cursor = await self.conn.execute(
-            """
-            SELECT * FROM requests
-            WHERE session_id = ?
-              AND status != 'pending'
-              AND telegram_msg_id IS NOT NULL
-            ORDER BY resolved_at DESC
-            LIMIT 1
-            """,
-            (session_id,),
-        )
+        """Get the most recently resolved request for a session.
+
+        Args:
+            session_id: Session to search in.
+            tool_name: If provided, only match requests for this tool type.
+        """
+        if tool_name:
+            cursor = await self.conn.execute(
+                """
+                SELECT * FROM requests
+                WHERE session_id = ?
+                  AND tool_name = ?
+                  AND status != 'pending'
+                  AND telegram_msg_id IS NOT NULL
+                ORDER BY resolved_at DESC
+                LIMIT 1
+                """,
+                (session_id, tool_name),
+            )
+        else:
+            cursor = await self.conn.execute(
+                """
+                SELECT * FROM requests
+                WHERE session_id = ?
+                  AND status != 'pending'
+                  AND telegram_msg_id IS NOT NULL
+                ORDER BY resolved_at DESC
+                LIMIT 1
+                """,
+                (session_id,),
+            )
         row = await cursor.fetchone()
         if not row:
             return None
