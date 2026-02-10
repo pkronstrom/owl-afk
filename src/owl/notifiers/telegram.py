@@ -76,6 +76,50 @@ def format_approval_message(
     return "\n".join(lines)
 
 
+def _build_chain_command_block(
+    commands: list[str],
+    approved_indices: list[int],
+    active_idx: int,
+    display_prefix: str | None = None,
+    denied: bool = False,
+    header_length: int = 0,
+) -> str:
+    """Build a syntax-highlighted <pre> block for chain commands."""
+    max_message_length = 4000
+
+    def _line(idx: int, cmd: str) -> str:
+        if idx in approved_indices:
+            marker = "\u2713"
+        elif idx == active_idx and not denied:
+            marker = "\u2192"
+        else:
+            marker = " "
+        cmd_display = cmd
+        if display_prefix and cmd_display.startswith(display_prefix):
+            cmd_display = cmd_display[len(display_prefix):]
+        if len(cmd_display) > 300:
+            cmd_display = cmd_display[:300] + "..."
+        return f"{marker} {cmd_display}"
+
+    all_lines = [_line(idx, cmd) for idx, cmd in enumerate(commands)]
+    block_text = "\n".join(all_lines)
+    escaped = escape_html(block_text)
+    result = f'<pre><code class="language-bash">{escaped}</code></pre>'
+
+    if header_length + len(result) > max_message_length and len(commands) > 30:
+        trunc_lines = [_line(idx, commands[idx]) for idx in range(min(20, len(commands)))]
+        trunc_lines.append(f"  ... {len(commands) - 30} more commands ...")
+        trunc_lines.extend(
+            _line(idx, commands[idx])
+            for idx in range(len(commands) - 10, len(commands))
+        )
+        block_text = "\n".join(trunc_lines)
+        escaped = escape_html(block_text)
+        result = f'<pre><code class="language-bash">{escaped}</code></pre>'
+
+    return result
+
+
 def _truncate_pattern_label(pattern: str, max_len: int = 40) -> str:
     """Truncate pattern for button label, preserving distinctive ending."""
     if len(pattern) <= max_len:
@@ -774,83 +818,21 @@ class TelegramNotifier(Notifier):
         # Strip wrapper prefix from display commands for cleaner UI
         display_prefix = (chain_title + " ") if chain_title else None
 
-        # Show all commands with progress markers
-        # Handle message length limit (Telegram: 4096 chars max)
-        # If too many commands, truncate the middle
-        MAX_MESSAGE_LENGTH = 4000  # Leave buffer for formatting
-
         # Find first unapproved command index
         first_unapproved = 0
         while first_unapproved < len(commands) and first_unapproved in approved_indices:
             first_unapproved += 1
 
-        # Build command list first to check length
-        cmd_lines = []
-        for idx, cmd in enumerate(commands):
-            if idx in approved_indices:
-                marker = "✓"
-            elif idx == first_unapproved:
-                marker = "→"
-            else:
-                marker = " "
-
-            # Strip wrapper prefix for display if present
-            cmd_display = cmd
-            if display_prefix and cmd_display.startswith(display_prefix):
-                cmd_display = cmd_display[len(display_prefix):]
-
-            # Truncate only extreme cases (Telegram 4096 char limit handled at message level)
-            if len(cmd_display) > 300:
-                cmd_display = cmd_display[:300] + "..."
-            cmd_lines.append(f"{marker} <code>{escape_html(cmd_display)}</code>")
-
-        # Check if message would be too long
-        temp_message = "\n".join(lines + cmd_lines)
-        if len(temp_message) > MAX_MESSAGE_LENGTH:
-            # Truncate command list: show first 20, ellipsis, last 10
-            if len(commands) > 30:
-                truncated_cmd_lines = []
-                for idx in range(min(20, len(commands))):
-                    cmd = commands[idx]
-                    if idx in approved_indices:
-                        marker = "✓"
-                    elif idx == first_unapproved:
-                        marker = "→"
-                    else:
-                        marker = " "
-                    cmd_display = cmd
-                    if display_prefix and cmd_display.startswith(display_prefix):
-                        cmd_display = cmd_display[len(display_prefix):]
-                    if len(cmd_display) > 300:
-                        cmd_display = cmd_display[:300] + "..."
-                    truncated_cmd_lines.append(
-                        f"{marker} <code>{escape_html(cmd_display)}</code>"
-                    )
-
-                truncated_cmd_lines.append(
-                    f"<i>... {len(commands) - 30} more commands ...</i>"
-                )
-
-                for idx in range(len(commands) - 10, len(commands)):
-                    cmd = commands[idx]
-                    if idx in approved_indices:
-                        marker = "✓"
-                    elif idx == first_unapproved:
-                        marker = "→"
-                    else:
-                        marker = " "
-                    cmd_display = cmd
-                    if display_prefix and cmd_display.startswith(display_prefix):
-                        cmd_display = cmd_display[len(display_prefix):]
-                    if len(cmd_display) > 300:
-                        cmd_display = cmd_display[:300] + "..."
-                    truncated_cmd_lines.append(
-                        f"{marker} <code>{escape_html(cmd_display)}</code>"
-                    )
-
-                cmd_lines = truncated_cmd_lines
-
-        lines.extend(cmd_lines)
+        # Build syntax-highlighted command block
+        header_text = "\n".join(lines)
+        cmd_block = _build_chain_command_block(
+            commands=commands,
+            approved_indices=approved_indices,
+            active_idx=first_unapproved,
+            display_prefix=display_prefix,
+            header_length=len(header_text),
+        )
+        lines.append(cmd_block)
         message = "\n".join(lines)
 
         # Keyboard for first unapproved command
@@ -933,80 +915,17 @@ class TelegramNotifier(Notifier):
         # Strip wrapper prefix from display commands for cleaner UI
         display_prefix = (chain_title + " ") if chain_title else None
 
-        # Show all commands with progress markers
-        # Handle message length limit (Telegram: 4096 chars max)
-        MAX_MESSAGE_LENGTH = 4000  # Leave buffer for formatting
-
-        # Build command list first to check length
-        cmd_lines = []
-        for idx, cmd in enumerate(commands):
-            if idx in approved_indices:
-                marker = "✓"
-            elif idx == current_idx and not denied:
-                marker = "→"
-            else:
-                marker = " "
-
-            # Strip wrapper prefix for display if present
-            cmd_display = cmd
-            if display_prefix and cmd_display.startswith(display_prefix):
-                cmd_display = cmd_display[len(display_prefix):]
-
-            # Truncate only extreme cases (Telegram 4096 char limit handled at message level)
-            if len(cmd_display) > 300:
-                cmd_display = cmd_display[:300] + "..."
-            cmd_lines.append(f"{marker} <code>{escape_html(cmd_display)}</code>")
-
-        # Check if message would be too long
-        temp_message = "\n".join(lines + cmd_lines)
-        if len(temp_message) > MAX_MESSAGE_LENGTH:
-            # Truncate command list: show first 20, current, last 10
-            if len(commands) > 30:
-                truncated_cmd_lines = []
-                # First 20 commands
-                for idx in range(min(20, len(commands))):
-                    cmd = commands[idx]
-                    if idx in approved_indices:
-                        marker = "✓"
-                    elif idx == current_idx and not denied:
-                        marker = "→"
-                    else:
-                        marker = " "
-                    cmd_display = cmd
-                    if display_prefix and cmd_display.startswith(display_prefix):
-                        cmd_display = cmd_display[len(display_prefix):]
-                    if len(cmd_display) > 300:
-                        cmd_display = cmd_display[:300] + "..."
-                    truncated_cmd_lines.append(
-                        f"{marker} <code>{escape_html(cmd_display)}</code>"
-                    )
-
-                # Add ellipsis
-                truncated_cmd_lines.append(
-                    f"<i>... {len(commands) - 30} more commands ...</i>"
-                )
-
-                # Last 10 commands
-                for idx in range(len(commands) - 10, len(commands)):
-                    cmd = commands[idx]
-                    if idx in approved_indices:
-                        marker = "✓"
-                    elif idx == current_idx and not denied:
-                        marker = "→"
-                    else:
-                        marker = " "
-                    cmd_display = cmd
-                    if display_prefix and cmd_display.startswith(display_prefix):
-                        cmd_display = cmd_display[len(display_prefix):]
-                    if len(cmd_display) > 300:
-                        cmd_display = cmd_display[:300] + "..."
-                    truncated_cmd_lines.append(
-                        f"{marker} <code>{escape_html(cmd_display)}</code>"
-                    )
-
-                cmd_lines = truncated_cmd_lines
-
-        lines.extend(cmd_lines)
+        # Build syntax-highlighted command block
+        header_text = "\n".join(lines)
+        cmd_block = _build_chain_command_block(
+            commands=commands,
+            approved_indices=approved_indices,
+            active_idx=current_idx,
+            display_prefix=display_prefix,
+            denied=denied,
+            header_length=len(header_text),
+        )
+        lines.append(cmd_block)
         message = "\n".join(lines)
 
         # Determine keyboard based on state
