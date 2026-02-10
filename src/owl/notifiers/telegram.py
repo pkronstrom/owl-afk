@@ -7,7 +7,7 @@ import httpx
 
 from owl.notifiers.base import Notifier
 from owl.utils.debug import debug_api, debug_chain
-from owl.utils.formatting import escape_html, format_project_id
+from owl.utils.formatting import escape_html, format_project_id, format_tool_call_html
 
 
 def format_approval_message(
@@ -55,23 +55,7 @@ def format_approval_message(
         desc = description[:100] + "..." if len(description) > 100 else description
         lines.append(f"<i>{escape_html(desc)}</i>")
 
-    from owl.utils.languages import detect_bash_language, detect_file_language
-
-    # Detect language for syntax highlighting
-    lang = None
-    if tool_name == "Bash":
-        lang = detect_bash_language(input_summary)
-    elif tool_name in ("Edit", "Write"):
-        lang = detect_file_language(input_summary)
-
-    escaped_input = escape_html(input_summary)
-    if lang:
-        lines.append(f"<b>[{escape_html(tool_name)}]</b>")
-        lines.append(f'<pre><code class="language-{lang}">{escaped_input}</code></pre>')
-    else:
-        lines.append(
-            f"<b>[{escape_html(tool_name)}]</b> <code>{escaped_input}</code>"
-        )
+    lines.append(format_tool_call_html(tool_name, input_summary))
 
     return "\n".join(lines)
 

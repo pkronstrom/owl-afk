@@ -49,6 +49,27 @@ def format_auto_approval_message(
     # single commands and chains
     summary = format_tool_summary(tool_name, tool_input)
 
+    return (
+        f"<i>{escape_html(project_id)}</i>\n"
+        f"{format_tool_call_html(tool_name, summary, prefix='\u21bb ')}"
+    )
+
+
+def format_tool_call_html(tool_name: str, summary: str, prefix: str = "") -> str:
+    """Format a tool call as HTML with syntax highlighting.
+
+    Returns the tool name + summary as highlighted HTML. Used by all message
+    types (approval, resolved, auto-approval, chain, denial) for consistent
+    formatting.
+
+    Args:
+        tool_name: Name of the tool (Bash, Edit, etc.)
+        summary: Raw tool input summary (will be HTML-escaped internally)
+        prefix: Optional prefix icon (e.g. "✓ ", "✗ ", "↻ ")
+
+    Returns:
+        HTML string with <pre><code> block or inline <code>.
+    """
     from owl.utils.languages import detect_bash_language, detect_file_language
 
     lang = None
@@ -57,29 +78,26 @@ def format_auto_approval_message(
     elif tool_name in ("Edit", "Write"):
         lang = detect_file_language(summary)
 
+    escaped = escape_html(summary)
+    tool_label = f"{prefix}<b>[{escape_html(tool_name)}]</b>"
+
     if lang:
-        return (
-            f"<i>{escape_html(project_id)}</i>\n"
-            f"↻ <b>[{escape_html(tool_name)}]</b>\n"
-            f'<pre><code class="language-{lang}">{summary}</code></pre>'
-        )
-    return (
-        f"<i>{escape_html(project_id)}</i>\n"
-        f"↻ <b>[{escape_html(tool_name)}]</b>: <code>{summary}</code>"
-    )
+        return f"{tool_label}\n" f'<pre><code class="language-{lang}">{escaped}</code></pre>'
+    return f"{tool_label}: <code>{escaped}</code>"
 
 
 def format_tool_summary(tool_name: str, tool_input: Optional[str]) -> str:
-    """Format tool input for display.
+    """Extract the most relevant field from tool_input JSON.
 
-    Extracts the most relevant field from tool_input JSON and escapes HTML.
+    Returns raw (unescaped) summary string. Callers should pass the result
+    to format_tool_call_html() which handles HTML escaping.
 
     Args:
         tool_name: Name of the tool (Bash, Edit, etc.)
         tool_input: JSON string of tool input
 
     Returns:
-        Formatted and escaped summary string (max 100 chars).
+        Raw summary string.
     """
     import json
 
@@ -89,7 +107,7 @@ def format_tool_summary(tool_name: str, tool_input: Optional[str]) -> str:
     try:
         data = json.loads(tool_input)
     except (json.JSONDecodeError, TypeError):
-        return escape_html(str(tool_input)[:100])
+        return str(tool_input)[:100]
 
     # Extract the most relevant field
     summary: str
@@ -104,4 +122,4 @@ def format_tool_summary(tool_name: str, tool_input: Optional[str]) -> str:
     else:
         summary = json.dumps(data)
 
-    return escape_html(summary)
+    return summary
