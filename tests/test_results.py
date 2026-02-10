@@ -39,7 +39,7 @@ def test_format_bash_result_with_output():
     )
     assert "Epoch 1: loss=0.3" in result
     assert "Done." in result
-    assert '<pre><code class="language-python">' in result
+    assert '<pre><code class="language-bash">' in result
 
 
 def test_format_bash_result_nonzero_exit():

@@ -22,7 +22,7 @@ def test_bash_python_full_flow():
         '{"command": "python train.py"}',
         {"stdout": "Epoch 1: loss=0.5\nEpoch 2: loss=0.3", "exit_code": 0},
     )
-    assert '<pre><code class="language-python">' in result
+    assert '<pre><code class="language-bash">' in result
     assert "loss=0.3" in result
 
     combined = f"{msg}\n─────────\n{result}"

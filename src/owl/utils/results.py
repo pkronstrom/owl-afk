@@ -4,7 +4,6 @@ import json
 from typing import Any
 
 from owl.utils.formatting import escape_html
-from owl.utils.languages import detect_bash_language
 
 RESULT_TOOLS = {"Bash", "Grep", "Glob", "Edit", "Write"}
 MAX_RESULT_LENGTH = 3000
@@ -35,8 +34,6 @@ def _format_bash_result(tool_input: str, tool_response: Any) -> str:
     except (json.JSONDecodeError, TypeError):
         pass
 
-    lang = detect_bash_language(command)
-
     output = ""
     if isinstance(tool_response, dict):
         output = tool_response.get("stdout", "") or tool_response.get("output", "") or ""
@@ -64,7 +61,7 @@ def _format_bash_result(tool_input: str, tool_response: Any) -> str:
     parts = []
     if truncated:
         parts.append("\u2026 (truncated)")
-    parts.append(f'<pre><code class="language-{lang}">{escaped}</code></pre>')
+    parts.append(f'<pre><code class="language-bash">{escaped}</code></pre>')
 
     if exit_code != 0:
         parts.append(f"exit code {exit_code}")
