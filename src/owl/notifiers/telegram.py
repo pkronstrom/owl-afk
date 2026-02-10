@@ -7,7 +7,12 @@ import httpx
 
 from owl.notifiers.base import Notifier
 from owl.utils.debug import debug_api, debug_chain
-from owl.utils.formatting import escape_html, format_project_id, format_tool_call_html
+from owl.utils.formatting import (
+    escape_html,
+    format_project_id,
+    format_tool_call_html,
+    format_tool_summary,
+)
 
 
 def format_approval_message(
@@ -22,25 +27,7 @@ def format_approval_message(
     project_path: Optional[str] = None,
 ) -> str:
     """Format a compact tool request for Telegram display."""
-    # Extract the key info from tool_input
-    input_summary = ""
-    if tool_input:
-        try:
-            data = json.loads(tool_input)
-            if "command" in data:
-                input_summary = data["command"]
-            elif "file_path" in data:
-                input_summary = data["file_path"]
-            elif "content" in data:
-                # For Write tool, show file path if available
-                input_summary = data.get("file_path", "(content)")
-            else:
-                # Show first key=value or truncated JSON
-                input_summary = json.dumps(data)
-        except (json.JSONDecodeError, TypeError):
-            input_summary = str(tool_input)
-
-    # Truncate only if exceeding Telegram message limits
+    input_summary = format_tool_summary(tool_name, tool_input)
     if len(input_summary) > 1000:
         input_summary = input_summary[:1000] + "..."
 

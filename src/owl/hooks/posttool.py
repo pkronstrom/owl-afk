@@ -129,6 +129,8 @@ async def _maybe_edit_with_result(
         debug("posttool", f"edit_message success={success} msg_id={request.telegram_msg_id}")
     except Exception as e:
         debug("posttool", f"edit_message error: {e}")
+    finally:
+        await notifier.close()
 
 
 if __name__ == "__main__":

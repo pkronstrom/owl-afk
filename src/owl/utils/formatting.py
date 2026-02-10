@@ -79,7 +79,7 @@ def format_tool_call_html(tool_name: str, summary: str, prefix: str = "") -> str
         lang = detect_file_language(summary) or "bash"
 
     escaped = escape_html(summary)
-    tool_label = f"{prefix}<b>[{escape_html(tool_name)}]</b>"
+    tool_label = f"{escape_html(prefix)}<b>[{escape_html(tool_name)}]</b>"
 
     return f"{tool_label}\n" f'<pre><code class="language-{lang}">{escaped}</code></pre>'
 
@@ -113,6 +113,8 @@ def format_tool_summary(tool_name: str, tool_input: Optional[str]) -> str:
         summary = str(data["command"])
     elif "file_path" in data:
         summary = str(data["file_path"])
+    elif "content" in data:
+        summary = str(data.get("file_path", "(content)"))
     elif "path" in data:
         summary = str(data["path"])
     elif "url" in data:
