@@ -61,7 +61,7 @@ def _format_bash_result(tool_input: str, tool_response: Any) -> str:
     parts = []
     if truncated:
         parts.append("\u2026 (truncated)")
-    parts.append(f'<pre><code class="language-bash">{escaped}</code></pre>')
+    parts.append(f'<pre><code class="language-plaintext">{escaped}</code></pre>')
 
     if exit_code != 0:
         parts.append(f"exit code {exit_code}")
@@ -94,7 +94,7 @@ def _format_search_result(tool_response: Any) -> str:
     if len(output) > MAX_RESULT_LENGTH:
         output = output[-MAX_RESULT_LENGTH:]
         escaped = escape_html(output.strip())
-        return f'\u2026 (truncated)\n<pre><code class="language-bash">{escaped}</code></pre>'
+        return f'\u2026 (truncated)\n<pre><code class="language-plaintext">{escaped}</code></pre>'
 
     escaped = escape_html(output.strip())
-    return f'<pre><code class="language-bash">{escaped}</code></pre>'
+    return f'<pre><code class="language-plaintext">{escaped}</code></pre>'

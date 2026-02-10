@@ -43,6 +43,7 @@ async def test_posttool_edits_message_with_result(tmp_path):
         mock_request.status = "approved"
         mock_request.description = None
         mock_storage.get_latest_resolved_request.return_value = mock_request
+        mock_storage.get_chain_state.return_value = None
 
         mock_tg = AsyncMock()
         MockTelegram.return_value = mock_tg

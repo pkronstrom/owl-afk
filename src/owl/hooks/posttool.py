@@ -92,6 +92,12 @@ async def _maybe_edit_with_result(
         debug("posttool", "No resolved request with telegram_msg_id found")
         return
 
+    # Skip for chain requests — chain handler manages its own message updates
+    chain_state = await storage.get_chain_state(request.telegram_msg_id)
+    if chain_state is not None:
+        debug("posttool", "Skipping result edit for chain request")
+        return
+
     tool_input = hook_input.get("tool_input")
     tool_input_str = json.dumps(tool_input) if isinstance(tool_input, dict) else str(tool_input or "")
 
