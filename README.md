@@ -19,6 +19,8 @@ Part of [**Nest-Driven Development**](https://github.com/pkronstrom/nest-driven-
 - **Subagent Notifications**: Get notified when Claude's subagents complete
 - **Session Notifications**: Get notified on session start/end and context compaction
 - **Notification Forwarding**: Forward Claude's notifications to Telegram
+- **Syntax Highlighting**: Telegram messages use `<pre><code>` blocks with language-detected highlighting for commands and tool results
+- **Tool Results**: Optionally show tool output (stdout, exit codes) in Telegram messages after approval
 - **Project Filters**: Enable owl only for specific projects
 
 ## Installation
@@ -142,7 +144,7 @@ Once a request comes in, you'll see inline buttons:
 
 owl uses Claude Code hooks to intercept tool calls:
 - `PreToolUse` - Intercepts before tool execution
-- `PostToolUse` - Delivers queued messages
+- `PostToolUse` - Delivers queued messages, optionally edits approval messages with tool results
 - `PermissionRequest` - Handles permission/trust prompts
 - `SessionStart` / `SessionEnd` - Session lifecycle notifications
 - `PreCompact` - Notifies before context compaction
