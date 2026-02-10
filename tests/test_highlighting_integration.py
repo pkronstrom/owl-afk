@@ -86,14 +86,13 @@ def test_bash_result_with_error():
     assert "exit code 1" in result
 
 
-def test_unknown_tool_keeps_inline_code():
-    """Tools without language detection should keep inline <code>."""
+def test_unknown_tool_uses_pre_block():
+    """All tools should use <pre><code> blocks for highlighting."""
     msg = format_approval_message(
         request_id="r1",
         session_id="s1",
         tool_name="WebSearch",
         tool_input='{"query": "hello world"}',
     )
-    # Should NOT have <pre> block -- uses inline <code>
-    assert "<pre>" not in msg
-    assert "<code>" in msg
+    assert "<pre>" in msg
+    assert '<code class="language-bash">' in msg

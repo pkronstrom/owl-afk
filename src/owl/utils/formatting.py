@@ -72,18 +72,16 @@ def format_tool_call_html(tool_name: str, summary: str, prefix: str = "") -> str
     """
     from owl.utils.languages import detect_bash_language, detect_file_language
 
-    lang = None
+    lang = "bash"
     if tool_name == "Bash":
         lang = detect_bash_language(summary)
     elif tool_name in ("Edit", "Write"):
-        lang = detect_file_language(summary)
+        lang = detect_file_language(summary) or "bash"
 
     escaped = escape_html(summary)
     tool_label = f"{prefix}<b>[{escape_html(tool_name)}]</b>"
 
-    if lang:
-        return f"{tool_label}\n" f'<pre><code class="language-{lang}">{escaped}</code></pre>'
-    return f"{tool_label}: <code>{escaped}</code>"
+    return f"{tool_label}\n" f'<pre><code class="language-{lang}">{escaped}</code></pre>'
 
 
 def format_tool_summary(tool_name: str, tool_input: Optional[str]) -> str:
