@@ -40,6 +40,7 @@ async def test_posttool_edits_message_with_result(tmp_path):
         mock_request.telegram_msg_id = 999
         mock_request.tool_name = "Bash"
         mock_request.tool_input = '{"command": "python train.py"}'
+        mock_request.status = "approved"
         mock_request.description = None
         mock_storage.get_latest_resolved_request.return_value = mock_request
 
@@ -53,7 +54,7 @@ async def test_posttool_edits_message_with_result(tmp_path):
         call_kwargs = mock_tg.edit_message.call_args.kwargs
         assert call_kwargs["message_id"] == 999
         assert "Done!" in call_kwargs["new_text"]
-        assert "─────────" in call_kwargs["new_text"]
+        assert "\u2713" in call_kwargs["new_text"]
 
 
 @pytest.mark.asyncio

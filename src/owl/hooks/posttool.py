@@ -74,7 +74,9 @@ async def _maybe_edit_with_result(
     session_id: str,
 ) -> None:
     """Edit the original approval message to append tool result."""
-    from owl.notifiers.telegram import TelegramNotifier, format_approval_message
+    from owl.core.handlers.utils import format_resolved_message
+    from owl.notifiers.telegram import TelegramNotifier
+    from owl.utils.formatting import format_project_id, format_tool_summary
     from owl.utils.results import format_tool_result, should_show_result
 
     tool_name = hook_input.get("tool_name", "")
@@ -97,15 +99,17 @@ async def _maybe_edit_with_result(
     if not result_html:
         return
 
-    original_msg = format_approval_message(
-        request_id=request.id,
-        session_id=session_id,
+    project_path = hook_input.get("cwd")
+    project_id = format_project_id(project_path, session_id)
+    tool_summary = format_tool_summary(request.tool_name, request.tool_input)
+    resolved_msg = format_resolved_message(
+        approved=(request.status == "approved"),
+        project_id=project_id,
         tool_name=request.tool_name,
-        tool_input=request.tool_input,
-        description=request.description,
+        tool_summary=tool_summary,
     )
 
-    new_text = f"{original_msg}\n{result_html}"
+    new_text = f"{resolved_msg}\n{result_html}"
 
     if len(new_text) > 4000:
         new_text = new_text[:4000] + "\n\u2026 (message truncated)"
