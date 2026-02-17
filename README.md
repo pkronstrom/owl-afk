@@ -2,26 +2,23 @@
 
 ![owl banner](docs/owl_banner.png)
 
-Remote approval system for Claude Code via Telegram. Approve or deny tool calls from your phone while away from your computer.
+**Your AI agents, supervised from anywhere.**
 
 Part of [**Nest-Driven Development**](https://github.com/pkronstrom/nest-driven-development) — the minimum vibable workflow.
 
 ![Telegram demo](docs/tg_cap.gif)
 
+You stepped away from your laptop while Claude Code was mid-task. Now you have no idea whether it just edited a config file, ran a migration, or rewrote half your codebase — and it's been waiting on your approval the whole time.
+
+owl forwards Claude's permission requests to your phone via Telegram. See exactly what your agents are about to do, approve or deny with one tap, and let smart rules handle the rest. Stay AFK without going blind.
+
 ## Features
 
-- **Telegram Integration**: Receive approval requests on Telegram with inline buttons
-- **Smart Pattern Rules**: Create rules to auto-approve commands matching patterns (e.g., `Bash(git *)`, `Edit(*.py)`)
-- **Chain Command Support**: Handle complex bash chains like `git add . && git commit -m "msg"` with per-command approval
-- **Wrapper Chain Expansion**: Inner chains in SSH/Docker commands are expanded into individually-approvable steps (e.g., `ssh host 'cd /tmp && rm foo'`)
-- **Wrapper Detection**: Recognizes SSH, Docker, sudo, and other wrapper commands with progressive pattern matching
-- **Project-Scoped Rules**: Auto-approve edits within specific projects
-- **Subagent Notifications**: Get notified when Claude's subagents complete
-- **Session Notifications**: Get notified on session start/end and context compaction
-- **Notification Forwarding**: Forward Claude's notifications to Telegram
-- **Syntax Highlighting**: Telegram messages use `<pre><code>` blocks with language-detected highlighting for commands and tool results
-- **Tool Results**: Optionally show tool output (stdout, exit codes) in Telegram messages after approval
-- **Project Filters**: Enable owl only for specific projects
+- **Approve from anywhere**: Tool calls land in Telegram with inline buttons — approve, deny, or create a rule without touching your laptop
+- **Auto-approve the safe stuff**: Pattern rules like `Bash(git *)` or `Edit(*.py)` silently pass trusted commands so you only see what actually needs a decision
+- **Handle complex pipelines**: Bash chains are broken into individual approvable steps, and SSH/Docker wrappers are expanded so nothing slips through as a bundle
+- **Stay informed without babysitting**: Get notified when subagents finish, sessions start or end, and context gets compacted — the full picture without constant watching
+- **Keep it scoped**: Enable owl only for specific projects, so it guards the work that matters without adding noise to everything else
 
 ## Installation
 
