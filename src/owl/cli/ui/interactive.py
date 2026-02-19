@@ -633,7 +633,9 @@ def run_wizard() -> None:
     from owl.cli.helpers import do_telegram_test
     from owl.cli.install import (
         HAWK_HOOKS_DIR,
+        HAWK_V2_REGISTRY,
         do_hawk_hooks_install,
+        do_hawk_v2_install,
         do_standalone_install,
     )
 
@@ -665,7 +667,8 @@ def run_wizard() -> None:
     clear_screen()
     console.print("[bold]Install Hooks[/bold]\n")
 
-    hawk_available = HAWK_HOOKS_DIR.exists()
+    hawk_v2 = HAWK_V2_REGISTRY.exists()
+    hawk_available = hawk_v2 or HAWK_HOOKS_DIR.exists()
 
     options = ["Standalone         Write to ~/.claude/settings.json"]
     if hawk_available:
@@ -682,7 +685,10 @@ def run_wizard() -> None:
     if choice == 0:
         do_standalone_install(owl_dir)
     elif choice == 1 and hawk_available:
-        do_hawk_hooks_install()
+        if hawk_v2:
+            do_hawk_v2_install()
+        else:
+            do_hawk_hooks_install()
 
     console.print()
 

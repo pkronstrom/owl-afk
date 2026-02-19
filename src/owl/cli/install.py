@@ -8,6 +8,17 @@ from owl.cli.ui import console
 
 # Hawk-hooks integration
 HAWK_HOOKS_DIR = Path.home() / ".config" / "hawk-hooks" / "hooks"
+HAWK_V2_REGISTRY = Path.home() / ".config" / "hawk-hooks" / "registry"
+HAWK_V2_HOOK_NAMES = [
+    "owl-pre-tool-use.sh",
+    "owl-post-tool-use.sh",
+    "owl-permission-request.sh",
+    "owl-subagent-stop.sh",
+    "owl-stop.sh",
+    "owl-session-start.sh",
+    "owl-pre-compact.sh",
+    "owl-session-end.sh",
+]
 HOOK_CONFIG = {
     "pre_tool_use": {
         "type": "PreToolUse",
@@ -158,8 +169,18 @@ def check_hooks_installed() -> tuple[bool, str]:
 
     Returns:
         Tuple of (is_installed, install_type) where install_type is
-        "standalone", "hawk-hooks", or "none".
+        "standalone", "hawk-v2", "hawk-hooks", or "none".
     """
+    # Check v2 first (registry-based)
+    v2_hook = HAWK_V2_REGISTRY / "hooks" / "owl-pre-tool-use.sh"
+    if v2_hook.exists():
+        return True, "hawk-v2"
+
+    # Check v1 (directory-based)
+    if (HAWK_HOOKS_DIR / "pre_tool_use" / "owl-pre_tool_use.sh").exists():
+        return True, "hawk-hooks"
+
+    # Check standalone
     settings_path = get_claude_settings_path()
     if settings_path and settings_path.exists():
         settings = load_claude_settings(settings_path)
@@ -169,17 +190,16 @@ def check_hooks_installed() -> tuple[bool, str]:
                 if is_owl_hook(entry):
                     return True, "standalone"
 
-    hawk_hooks_dir = Path.home() / ".config" / "hawk-hooks" / "hooks"
-    if (hawk_hooks_dir / "pre_tool_use" / "owl-pre_tool_use.sh").exists():
-        return True, "hawk-hooks"
-
     return False, "none"
 
 
 def check_hawk_hooks_installed() -> bool:
-    """Check if hawk-hooks owl integration is installed."""
-    hawk_hooks_dir = Path.home() / ".config" / "hawk-hooks" / "hooks"
-    return (hawk_hooks_dir / "pre_tool_use" / "owl-pre_tool_use.sh").exists()
+    """Check if hawk-hooks owl integration is installed (v1 or v2)."""
+    # v2 registry
+    if (HAWK_V2_REGISTRY / "hooks" / "owl-pre-tool-use.sh").exists():
+        return True
+    # v1 directory
+    return (HAWK_HOOKS_DIR / "pre_tool_use" / "owl-pre_tool_use.sh").exists()
 
 
 def check_standalone_installed() -> bool:
@@ -316,3 +336,67 @@ def do_hawk_hooks_install(force: bool = False):
     except FileNotFoundError:
         console.print("[yellow]Warning:[/yellow] hawk-hooks CLI not found")
         console.print("Run [cyan]hawk-hooks toggle[/cyan] to enable owl hooks.")
+
+
+def _get_hooks_dir() -> Path:
+    """Get the path to owl's bundled hook scripts.
+
+    Uses importlib.resources for compatibility with both source checkouts
+    and installed wheels.
+    """
+    import importlib.resources as resources
+
+    return Path(str(resources.files("owl.hooks_data")))
+
+
+def do_hawk_v2_install(force: bool = False):
+    """Install owl hooks via hawk v2 (hawk scan).
+
+    Args:
+        force: If True, proceed even if standalone is installed.
+    """
+    if check_standalone_installed() and not force:
+        console.print(
+            "[red]Error:[/red] Standalone owl hooks are already installed."
+        )
+        console.print(
+            "Having both can cause duplicate approvals and notifications."
+        )
+        console.print()
+        console.print("Options:")
+        console.print("  1. Run [cyan]owl uninstall[/cyan] first")
+        console.print("  2. Use [cyan]owl hawk install --force[/cyan] to override")
+        return
+
+    hooks_dir = _get_hooks_dir()
+    if not hooks_dir.exists():
+        console.print(f"[red]Error:[/red] Hook scripts not found at {hooks_dir}")
+        console.print("Is owl installed correctly?")
+        return
+
+    console.print("[bold]Installing via hawk v2...[/bold]")
+
+    try:
+        result = subprocess.run(
+            ["hawk", "scan", str(hooks_dir), "--all"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            console.print(f"[red]Error:[/red] hawk scan failed: {result.stderr.strip()}")
+            return
+
+        result = subprocess.run(
+            ["hawk", "sync"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            console.print(f"[yellow]Warning:[/yellow] hawk sync failed: {result.stderr.strip()}")
+            console.print("Run [cyan]hawk sync[/cyan] manually.")
+            return
+
+        console.print("[green]Done![/green] Hooks registered and synced.")
+    except FileNotFoundError:
+        console.print("[red]Error:[/red] hawk CLI not found.")
+        console.print("Install hawk-hooks: [cyan]pip install hawk-hooks[/cyan]")

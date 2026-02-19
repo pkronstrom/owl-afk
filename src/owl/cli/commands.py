@@ -7,9 +7,12 @@ import sys
 from owl.cli.helpers import add_rule, do_telegram_test, get_rules, remove_rule
 from owl.cli.install import (
     HAWK_HOOKS_DIR,
+    HAWK_V2_HOOK_NAMES,
+    HAWK_V2_REGISTRY,
     HOOK_EVENTS,
     check_hooks_installed,
     do_hawk_hooks_install,
+    do_hawk_v2_install,
     do_standalone_install,
     get_owl_hooks,
     is_owl_hook,
@@ -419,9 +422,17 @@ def cmd_telegram_test(args):
 
 def cmd_hawk_hooks_install(force: bool = False):
     """Install owl hooks for hawk-hooks."""
+    import shutil
+
+    # Prefer v2 if hawk CLI and registry exist
+    if shutil.which("hawk") and HAWK_V2_REGISTRY.exists():
+        do_hawk_v2_install(force=force)
+        return
+
+    # Fall back to v1
     if not HAWK_HOOKS_DIR.exists():
-        print(f"Error: hawk-hooks not found at {HAWK_HOOKS_DIR}")
-        print("Run 'hawk-hooks' first to initialize.")
+        print("Error: hawk-hooks not found.")
+        print("Install hawk-hooks: pip install hawk-hooks")
         sys.exit(1)
 
     do_hawk_hooks_install(force=force)
@@ -429,8 +440,14 @@ def cmd_hawk_hooks_install(force: bool = False):
 
 def cmd_hawk_hooks_uninstall(args):
     """Remove owl hooks from hawk-hooks."""
-    removed = False
+    # Try v2 first — check actual install state, not just directory existence
+    _, mode = check_hooks_installed()
+    if mode == "hawk-v2":
+        _hawk_v2_uninstall()
+        return
 
+    # v1 fallback
+    removed = False
     for event in HOOK_EVENTS:
         wrapper_name = f"owl-{event}.sh"
         wrapper_path = HAWK_HOOKS_DIR / event / wrapper_name
@@ -444,6 +461,36 @@ def cmd_hawk_hooks_uninstall(args):
         print("Done! Run 'hawk-hooks toggle' to update runners.")
     else:
         print("No owl hooks found in hawk-hooks.")
+
+
+def _hawk_v2_uninstall():
+    """Remove owl hooks from hawk v2 registry."""
+    from owl.cli.ui import console
+
+    removed = False
+    for name in HAWK_V2_HOOK_NAMES:
+        try:
+            result = subprocess.run(
+                ["hawk", "remove", "hook", name],
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode == 0:
+                console.print(f"  [green]✓[/green] Removed {name}")
+                removed = True
+        except FileNotFoundError:
+            console.print("[red]Error:[/red] hawk CLI not found.")
+            return
+
+    if removed:
+        result = subprocess.run(["hawk", "sync"], capture_output=True, text=True)
+        if result.returncode != 0:
+            console.print(f"[yellow]Warning:[/yellow] hawk sync failed: {result.stderr.strip()}")
+            console.print("Run [cyan]hawk sync[/cyan] manually.")
+        else:
+            console.print("[green]Done![/green] Hooks removed and synced.")
+    else:
+        console.print("No owl hooks found in hawk v2 registry.")
 
 
 def cmd_env_list(args):

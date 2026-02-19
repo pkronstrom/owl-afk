@@ -120,3 +120,80 @@ def test_hook_matchers_include_all_expected_tools():
 
     # MCP tools should be matched via pattern
     assert "mcp__" in matcher, f"MCP pattern not in hook matcher: {matcher}"
+
+
+def test_check_hooks_installed_hawk_v2(tmp_path, monkeypatch):
+    """Detect hawk v2 registry hooks."""
+    registry = tmp_path / ".config" / "hawk-hooks" / "registry"
+    hooks_dir = registry / "hooks"
+    hooks_dir.mkdir(parents=True)
+    (hooks_dir / "owl-pre-tool-use.sh").write_text("#!/bin/bash\nexec owl hook PreToolUse")
+
+    monkeypatch.setattr("owl.cli.install.HAWK_V2_REGISTRY", registry)
+
+    from owl.cli.install import check_hooks_installed
+    installed, mode = check_hooks_installed()
+    assert installed is True
+    assert mode == "hawk-v2"
+
+
+def test_check_hooks_installed_v2_takes_priority(tmp_path, monkeypatch):
+    """v2 detection should take priority over v1 and standalone."""
+    # Set up v2
+    registry = tmp_path / ".config" / "hawk-hooks" / "registry"
+    hooks_dir = registry / "hooks"
+    hooks_dir.mkdir(parents=True)
+    (hooks_dir / "owl-pre-tool-use.sh").write_text("#!/bin/bash")
+
+    # Set up v1
+    v1_dir = tmp_path / ".config" / "hawk-hooks" / "hooks" / "pre_tool_use"
+    v1_dir.mkdir(parents=True)
+    (v1_dir / "owl-pre_tool_use.sh").write_text("#!/bin/bash")
+
+    monkeypatch.setattr("owl.cli.install.HAWK_V2_REGISTRY", registry)
+    monkeypatch.setattr("owl.cli.install.HAWK_HOOKS_DIR", tmp_path / ".config" / "hawk-hooks" / "hooks")
+
+    from owl.cli.install import check_hooks_installed
+    installed, mode = check_hooks_installed()
+    assert installed is True
+    assert mode == "hawk-v2"
+
+
+def test_check_hooks_installed_v1_fallback(tmp_path, monkeypatch):
+    """Falls back to v1 detection when v2 not present."""
+    # No v2
+    monkeypatch.setattr("owl.cli.install.HAWK_V2_REGISTRY", tmp_path / "nonexistent")
+
+    # Set up v1
+    v1_dir = tmp_path / ".config" / "hawk-hooks" / "hooks" / "pre_tool_use"
+    v1_dir.mkdir(parents=True)
+    (v1_dir / "owl-pre_tool_use.sh").write_text("#!/bin/bash")
+    monkeypatch.setattr("owl.cli.install.HAWK_HOOKS_DIR", tmp_path / ".config" / "hawk-hooks" / "hooks")
+
+    from owl.cli.install import check_hooks_installed
+    installed, mode = check_hooks_installed()
+    assert installed is True
+    assert mode == "hawk-hooks"
+
+
+def test_bundled_hooks_dir_exists():
+    """Verify bundled hooks directory exists with expected scripts."""
+    from owl.cli.install import _get_hooks_dir
+    hooks_dir = _get_hooks_dir()
+    assert hooks_dir.exists(), f"hooks/ directory not found at {hooks_dir}"
+    scripts = sorted(f.name for f in hooks_dir.glob("*.sh"))
+    assert len(scripts) == 8
+    assert "owl-pre-tool-use.sh" in scripts
+    assert "owl-session-start.sh" in scripts
+
+
+def test_bundled_hooks_have_hawk_metadata():
+    """Verify all bundled hooks have hawk-hook metadata."""
+    from owl.cli.install import _get_hooks_dir
+    hooks_dir = _get_hooks_dir()
+    for script in hooks_dir.glob("*.sh"):
+        content = script.read_text()
+        assert "# hawk-hook: events=" in content, f"{script.name} missing events metadata"
+        assert "# hawk-hook: description=" in content, f"{script.name} missing description metadata"
+        assert content.startswith("#!/usr/bin/env bash"), f"{script.name} missing shebang"
+        assert "exec owl hook " in content, f"{script.name} missing exec owl hook"
