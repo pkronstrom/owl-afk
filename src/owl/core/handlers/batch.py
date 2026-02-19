@@ -13,15 +13,23 @@ class ApproveAllHandler:
     async def handle(self, ctx: CallbackContext) -> None:
         """Approve all matching requests and add rule for future ones.
 
-        Target ID format: session_id or session_id:tool_name
+        Target ID format: request_id (looks up session_id and tool_name from storage)
         """
-        # Parse target_id: session_id or session_id:tool_name
-        parts = ctx.target_id.split(":", 1)
-        session_id = parts[0]
-        tool_name = parts[1] if len(parts) > 1 else None
+        request_id = ctx.target_id
+
+        # Look up the originating request to get session_id and tool_name
+        source_request = await ctx.storage.get_request(request_id)
+        if not source_request:
+            debug_callback("Source request not found", request_id=request_id)
+            await ctx.notifier.answer_callback(ctx.callback_id, "Request expired")
+            return
+
+        session_id = source_request.session_id
+        tool_name = source_request.tool_name
 
         debug_callback(
             "ApproveAllHandler called",
+            request_id=request_id,
             session_id=session_id,
             tool_name=tool_name,
         )

@@ -255,7 +255,7 @@ class TelegramNotifier(Notifier):
                     {"text": "+ Always...", "callback_data": f"add_rule:{request_id}"},
                     {
                         "text": all_button_text,
-                        "callback_data": f"approve_all:{session_id}:{tool_name}",
+                        "callback_data": f"approve_all:{request_id}",
                     },
                 ],
                 [

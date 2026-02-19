@@ -13,6 +13,7 @@ def mock_storage():
     storage.get_pending_requests = AsyncMock()
     storage.get_session = AsyncMock()
     storage.resolve_request = AsyncMock()
+    storage.get_request = AsyncMock()
     return storage
 
 
@@ -58,16 +59,27 @@ def mock_requests():
     return [req1, req2, req3]
 
 
+@pytest.fixture
+def source_request():
+    """The request that the approve_all button was clicked on."""
+    req = MagicMock()
+    req.id = "req1"
+    req.session_id = "sess123"
+    req.tool_name = "Bash"
+    return req
+
+
 @pytest.mark.asyncio
 async def test_approve_all_approves_matching_requests(
-    mock_storage, mock_notifier, mock_session, mock_requests
+    mock_storage, mock_notifier, mock_session, mock_requests, source_request
 ):
     """Test ApproveAllHandler approves requests matching session and tool."""
     mock_storage.get_pending_requests.return_value = mock_requests
     mock_storage.get_session.return_value = mock_session
+    mock_storage.get_request.return_value = source_request
 
     ctx = CallbackContext(
-        target_id="sess123:Bash",  # session_id:tool_name
+        target_id="req1",  # request_id - handler looks up session/tool from storage
         callback_id="cb456",
         message_id=789,
         storage=mock_storage,
@@ -88,15 +100,12 @@ async def test_approve_all_approves_matching_requests(
 
 
 @pytest.mark.asyncio
-async def test_approve_all_no_tool_filter(
-    mock_storage, mock_notifier, mock_session, mock_requests
-):
-    """Test ApproveAllHandler without tool filter approves all session requests."""
-    mock_storage.get_pending_requests.return_value = mock_requests
-    mock_storage.get_session.return_value = mock_session
+async def test_approve_all_request_not_found(mock_storage, mock_notifier):
+    """Test ApproveAllHandler handles expired/missing source request."""
+    mock_storage.get_request.return_value = None
 
     ctx = CallbackContext(
-        target_id="sess123",  # Just session_id, no tool filter
+        target_id="req_gone",
         callback_id="cb456",
         message_id=789,
         storage=mock_storage,
@@ -106,19 +115,19 @@ async def test_approve_all_no_tool_filter(
     handler = ApproveAllHandler()
     await handler.handle(ctx)
 
-    # Should approve req1 and req2 (matching session, any tool)
-    assert mock_storage.resolve_request.call_count == 2
-    # Should not add rule (no specific tool)
-    mock_notifier.answer_callback.assert_called()
+    # Should answer with "expired" and not try to approve anything
+    mock_notifier.answer_callback.assert_called_once_with("cb456", "Request expired")
+    mock_storage.resolve_request.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_approve_all_handles_empty_results(mock_storage, mock_notifier):
+async def test_approve_all_handles_empty_results(mock_storage, mock_notifier, source_request):
     """Test ApproveAllHandler handles no matching requests."""
     mock_storage.get_pending_requests.return_value = []
+    mock_storage.get_request.return_value = source_request
 
     ctx = CallbackContext(
-        target_id="sess999:Bash",
+        target_id="req1",
         callback_id="cb456",
         message_id=789,
         storage=mock_storage,
