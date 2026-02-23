@@ -9,6 +9,11 @@ from owl.cli.ui import console
 # Hawk-hooks integration
 HAWK_HOOKS_DIR = Path.home() / ".config" / "hawk-hooks" / "hooks"
 HAWK_V2_REGISTRY = Path.home() / ".config" / "hawk-hooks" / "registry"
+CLAUDE_HOOK_EVENTS = frozenset({
+    "PreToolUse", "PostToolUse", "PermissionRequest",
+    "SubagentStop", "Stop", "SessionStart", "PreCompact",
+    "SessionEnd", "Notification",
+})
 HAWK_V2_HOOK_NAMES = [
     "owl-pre-tool-use.sh",
     "owl-post-tool-use.sh",
@@ -45,7 +50,7 @@ def get_claude_settings_path() -> Path:
     return Path.home() / ".claude" / "settings.json"
 
 
-def _normalize_hooks(raw_hooks) -> dict:
+def normalize_hooks(raw_hooks) -> dict:
     """Normalize hooks to canonical dict format.
 
     Claude Code uses: {"EventType": [{matcher: ..., hooks: [...]}]}
@@ -53,17 +58,26 @@ def _normalize_hooks(raw_hooks) -> dict:
     preserving both dict-format event blocks and flat matcher entries.
     """
     if isinstance(raw_hooks, dict):
-        return raw_hooks
+        return {k: list(v) if isinstance(v, list) else v for k, v in raw_hooks.items()}
     if isinstance(raw_hooks, list):
         result = {}
         for entry in raw_hooks:
             if not isinstance(entry, dict):
                 continue
-            # Preserve flat list-form entries by treating them as PreToolUse blocks.
+            # Flat list-form entry: {matcher: X, hooks: [...]}
             if "matcher" in entry and isinstance(entry.get("hooks"), list):
-                if "PreToolUse" not in result:
-                    result["PreToolUse"] = []
-                result["PreToolUse"].append(entry)
+                matcher = entry["matcher"]
+                if matcher in CLAUDE_HOOK_EVENTS:
+                    # Matcher is an event type (e.g. "Notification", "Stop")
+                    key = matcher
+                    filed = {k: v for k, v in entry.items() if k != "matcher"}
+                else:
+                    # Matcher is a tool pattern (e.g. "Bash(git status)")
+                    key = "PreToolUse"
+                    filed = entry
+                if key not in result:
+                    result[key] = []
+                result[key].append(filed)
                 continue
             # Dict-format block: keys are event types mapping to lists
             for key, value in entry.items():
@@ -214,7 +228,7 @@ def check_hooks_installed() -> tuple[bool, str]:
     settings_path = get_claude_settings_path()
     if settings_path and settings_path.exists():
         settings = load_claude_settings(settings_path)
-        hooks = _normalize_hooks(settings.get("hooks", {}))
+        hooks = normalize_hooks(settings.get("hooks", {}))
         for hook_entries in hooks.values():
             for entry in hook_entries:
                 if is_owl_hook(entry):
@@ -237,7 +251,7 @@ def check_standalone_installed() -> bool:
     settings_path = get_claude_settings_path()
     if settings_path and settings_path.exists():
         settings = load_claude_settings(settings_path)
-        hooks = _normalize_hooks(settings.get("hooks", {}))
+        hooks = normalize_hooks(settings.get("hooks", {}))
         for hook_entries in hooks.values():
             for entry in hook_entries:
                 if is_owl_hook(entry):
@@ -271,7 +285,7 @@ def do_standalone_install(owl_dir: Path, force: bool = False):
     console.print("[bold]Installing standalone hooks...[/bold]")
 
     settings = load_claude_settings(settings_path)
-    existing_hooks = _normalize_hooks(settings.get("hooks", {}))
+    existing_hooks = normalize_hooks(settings.get("hooks", {}))
 
     owl_hooks = get_owl_hooks()
 

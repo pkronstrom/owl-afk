@@ -10,7 +10,7 @@ from owl.cli.install import (
     HAWK_V2_HOOK_NAMES,
     HAWK_V2_REGISTRY,
     HOOK_EVENTS,
-    _normalize_hooks,
+    normalize_hooks,
     check_hooks_installed,
     do_hawk_hooks_install,
     do_hawk_v2_install,
@@ -217,7 +217,7 @@ def cmd_uninstall(args):
     settings_path = get_claude_settings_path()
 
     settings = load_claude_settings(settings_path)
-    hooks = _normalize_hooks(settings.get("hooks", {}))
+    hooks = normalize_hooks(settings.get("hooks", {}))
 
     hook_types_to_clean = list(get_owl_hooks().keys())
     hooks_removed = False

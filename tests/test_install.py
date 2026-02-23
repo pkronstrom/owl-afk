@@ -297,3 +297,89 @@ def test_bundled_hooks_have_hawk_metadata():
         assert "# hawk-hook: description=" in content, f"{script.name} missing description metadata"
         assert content.startswith("#!/usr/bin/env bash"), f"{script.name} missing shebang"
         assert "exec owl hook " in content, f"{script.name} missing exec owl hook"
+
+
+# --- normalize_hooks unit tests ---
+
+
+def test_normalize_hooks_dict_returns_copy():
+    """Mutating the result must not affect the original dict."""
+    from owl.cli.install import normalize_hooks
+
+    original = {"PreToolUse": [{"hooks": [{"command": "x"}]}]}
+    result = normalize_hooks(original)
+    # Mutate the result
+    result["NewKey"] = []
+    del result["PreToolUse"]
+    # Original must be untouched
+    assert "PreToolUse" in original
+    assert "NewKey" not in original
+
+
+def test_normalize_hooks_dict_copies_lists():
+    """List values inside a dict must be independent copies."""
+    from owl.cli.install import normalize_hooks
+
+    inner_list = [{"hooks": [{"command": "x"}]}]
+    original = {"PreToolUse": inner_list}
+    result = normalize_hooks(original)
+    # Mutate the result list
+    result["PreToolUse"].append({"hooks": [{"command": "y"}]})
+    # Original list must be untouched
+    assert len(inner_list) == 1
+
+
+def test_normalize_hooks_event_type_matcher():
+    """Flat entries with event-type matchers go under their event, not PreToolUse."""
+    from owl.cli.install import normalize_hooks
+
+    raw = [
+        {"matcher": "Notification", "hooks": [{"command": "notify-cmd"}]},
+        {"matcher": "Stop", "hooks": [{"command": "stop-cmd"}]},
+        {"matcher": "Bash(git status)", "hooks": [{"command": "tool-cmd"}]},
+    ]
+    result = normalize_hooks(raw)
+    # Notification entry goes under Notification key, matcher stripped
+    assert "Notification" in result
+    assert len(result["Notification"]) == 1
+    assert "matcher" not in result["Notification"][0]
+    assert result["Notification"][0]["hooks"] == [{"command": "notify-cmd"}]
+    # Stop entry goes under Stop key, matcher stripped
+    assert "Stop" in result
+    assert len(result["Stop"]) == 1
+    assert "matcher" not in result["Stop"][0]
+    # Tool pattern goes under PreToolUse, matcher preserved
+    assert "PreToolUse" in result
+    assert len(result["PreToolUse"]) == 1
+    assert result["PreToolUse"][0]["matcher"] == "Bash(git status)"
+
+
+def test_normalize_hooks_mixed_list_with_dict_block():
+    """Real-world scenario: dict block + flat hawk entries in a list."""
+    from owl.cli.install import normalize_hooks
+
+    raw = [
+        # Dict-format block (normal Claude settings shape nested in list)
+        {"PreToolUse": [{"matcher": "Bash", "hooks": [{"command": "owl hook PreToolUse"}]}]},
+        # Flat hawk-managed entries
+        {"matcher": "Notification", "hooks": [{"command": "owl hook Notification"}]},
+        {"matcher": "Bash(git push)", "hooks": [{"command": "guard-cmd"}]},
+    ]
+    result = normalize_hooks(raw)
+    # Dict block preserved
+    assert len(result["PreToolUse"]) == 2  # from dict block + tool pattern
+    # Notification routed correctly
+    assert "Notification" in result
+    assert len(result["Notification"]) == 1
+
+
+def test_normalize_hooks_empty_and_non_dict_entries():
+    """Edge cases: None, empty list, non-dict entries are handled gracefully."""
+    from owl.cli.install import normalize_hooks
+
+    assert normalize_hooks(None) == {}
+    assert normalize_hooks([]) == {}
+    assert normalize_hooks([42, "string", None]) == {}
+    assert normalize_hooks([{"matcher": "Bash", "hooks": [{"command": "x"}]}]) == {
+        "PreToolUse": [{"matcher": "Bash", "hooks": [{"command": "x"}]}]
+    }
