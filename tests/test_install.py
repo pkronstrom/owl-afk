@@ -65,6 +65,106 @@ def test_uninstall_removes_hooks(mock_owl_dir, tmp_path):
     assert len(owl_hooks) == 0
 
 
+def test_install_preserves_flat_list_hooks_entries(mock_owl_dir, tmp_path):
+    """Install should preserve non-owl flat list-form hooks."""
+    import os
+
+    env = os.environ.copy()
+    env["OWL_DIR"] = str(mock_owl_dir)
+    env["HOME"] = str(tmp_path)
+
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    settings_file = claude_dir / "settings.json"
+    settings_file.write_text(
+        json.dumps(
+            {
+                "hooks": [
+                    {
+                        "matcher": "Bash(git status)",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "external hook command",
+                            }
+                        ],
+                    }
+                ]
+            }
+        )
+    )
+
+    result = run_cli("install", env=env, input_text="y\n")
+
+    assert result.returncode == 0
+    settings = json.loads(settings_file.read_text())
+    hooks = settings.get("hooks", {})
+    pretool_hooks = hooks.get("PreToolUse", [])
+    external_hooks = [
+        h
+        for h in pretool_hooks
+        if any(hook.get("command") == "external hook command" for hook in h.get("hooks", []))
+    ]
+    assert len(external_hooks) == 1
+
+
+def test_uninstall_preserves_non_owl_flat_list_hooks_entries(mock_owl_dir, tmp_path):
+    """Uninstall should keep non-owl flat list-form hooks."""
+    import os
+
+    env = os.environ.copy()
+    env["OWL_DIR"] = str(mock_owl_dir)
+    env["HOME"] = str(tmp_path)
+
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    settings_file = claude_dir / "settings.json"
+    settings_file.write_text(
+        json.dumps(
+            {
+                "hooks": [
+                    {
+                        "matcher": "Bash(git status)",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "external hook command",
+                            }
+                        ],
+                    },
+                    {
+                        "PreToolUse": [
+                            {
+                                "hooks": [
+                                    {
+                                        "type": "command",
+                                        "command": "owl hook PreToolUse",
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                ]
+            }
+        )
+    )
+
+    result = run_cli("uninstall", env=env, input_text="y\n")
+
+    assert result.returncode == 0
+    settings = json.loads(settings_file.read_text())
+    hooks = settings.get("hooks", {})
+    pretool_hooks = hooks.get("PreToolUse", [])
+    external_hooks = [
+        h
+        for h in pretool_hooks
+        if any(hook.get("command") == "external hook command" for hook in h.get("hooks", []))
+    ]
+    owl_hooks = [h for h in pretool_hooks if any("owl hook" in hook.get("command", "") for hook in h.get("hooks", []))]
+    assert len(external_hooks) == 1
+    assert len(owl_hooks) == 0
+
+
 def test_hook_matchers_include_websearch():
     """Verify WebSearch is included in hook matchers."""
     from owl.cli.install import get_owl_hooks

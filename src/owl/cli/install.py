@@ -45,6 +45,36 @@ def get_claude_settings_path() -> Path:
     return Path.home() / ".claude" / "settings.json"
 
 
+def _normalize_hooks(raw_hooks) -> dict:
+    """Normalize hooks to canonical dict format.
+
+    Claude Code uses: {"EventType": [{matcher: ..., hooks: [...]}]}
+    Some tools may corrupt this into a list. We convert gracefully,
+    preserving both dict-format event blocks and flat matcher entries.
+    """
+    if isinstance(raw_hooks, dict):
+        return raw_hooks
+    if isinstance(raw_hooks, list):
+        result = {}
+        for entry in raw_hooks:
+            if not isinstance(entry, dict):
+                continue
+            # Preserve flat list-form entries by treating them as PreToolUse blocks.
+            if "matcher" in entry and isinstance(entry.get("hooks"), list):
+                if "PreToolUse" not in result:
+                    result["PreToolUse"] = []
+                result["PreToolUse"].append(entry)
+                continue
+            # Dict-format block: keys are event types mapping to lists
+            for key, value in entry.items():
+                if isinstance(value, list):
+                    if key not in result:
+                        result[key] = []
+                    result[key].extend(value)
+        return result
+    return {}
+
+
 def load_claude_settings(settings_path: Path) -> dict:
     """Load Claude settings from file."""
     if settings_path.exists():
@@ -184,7 +214,7 @@ def check_hooks_installed() -> tuple[bool, str]:
     settings_path = get_claude_settings_path()
     if settings_path and settings_path.exists():
         settings = load_claude_settings(settings_path)
-        hooks = settings.get("hooks", {})
+        hooks = _normalize_hooks(settings.get("hooks", {}))
         for hook_entries in hooks.values():
             for entry in hook_entries:
                 if is_owl_hook(entry):
@@ -207,7 +237,7 @@ def check_standalone_installed() -> bool:
     settings_path = get_claude_settings_path()
     if settings_path and settings_path.exists():
         settings = load_claude_settings(settings_path)
-        hooks = settings.get("hooks", {})
+        hooks = _normalize_hooks(settings.get("hooks", {}))
         for hook_entries in hooks.values():
             for entry in hook_entries:
                 if is_owl_hook(entry):
@@ -241,7 +271,7 @@ def do_standalone_install(owl_dir: Path, force: bool = False):
     console.print("[bold]Installing standalone hooks...[/bold]")
 
     settings = load_claude_settings(settings_path)
-    existing_hooks = settings.get("hooks", {})
+    existing_hooks = _normalize_hooks(settings.get("hooks", {}))
 
     owl_hooks = get_owl_hooks()
 
