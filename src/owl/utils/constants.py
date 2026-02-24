@@ -45,6 +45,7 @@ class CallbackAction:
     BATCH_DENY_ALL = "batch_deny_all"
     # Chain-related actions
     CHAIN_APPROVE = "chain_approve"
+    MCP_ALLOW_ALL = "mcp_allow_all"
     CHAIN_APPROVE_ALL = "chain_approve_all"
     CHAIN_DENY = "chain_deny"
     CHAIN_RULE = "chain_rule"

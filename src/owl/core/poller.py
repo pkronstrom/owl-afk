@@ -753,6 +753,7 @@ class Poller:
             "add_rule_pattern",
             "cancel_rule",
             "approve_all",
+            "mcp_allow_all",
             # Chain handlers
             "chain_approve",
             "chain_deny",

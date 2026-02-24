@@ -236,9 +236,16 @@ class TelegramNotifier(Notifier):
         tool_input: Optional[str] = None,
     ) -> dict[str, list[list[dict[str, str]]]]:
         """Build standard approval keyboard."""
-        # Smart pattern for Bash: "All git *" instead of "All Bash"
+        # Smart "All X" button label
         all_button_text = f"» All {tool_name}"
-        if tool_name == "Bash" and tool_input:
+        if tool_name.startswith("mcp__"):
+            # mcp__figma__get_screenshot → "All Figma: get_screenshot"
+            parts = tool_name.split("__", 2)
+            if len(parts) >= 3:
+                server = parts[1].replace("_", " ").title()
+                method = parts[2]
+                all_button_text = f"» All {server}: {method}"
+        elif tool_name == "Bash" and tool_input:
             try:
                 data = json.loads(tool_input)
                 cmd = data.get("command", "")
@@ -248,22 +255,39 @@ class TelegramNotifier(Notifier):
             except (json.JSONDecodeError, TypeError, IndexError):
                 pass  # Fall back to "All Bash"
 
-        return {
-            "inline_keyboard": [
-                [
-                    {"text": "✓ Allow", "callback_data": f"approve:{request_id}"},
-                    {"text": "+ Always...", "callback_data": f"add_rule:{request_id}"},
+        # MCP server button: "Allow all Figma" for mcp__figma__get_screenshot etc.
+        mcp_server_row: list[dict[str, str]] = []
+        if tool_name.startswith("mcp__"):
+            parts = tool_name.split("__", 2)
+            if len(parts) >= 3:
+                server_name = parts[1]
+                label = server_name.replace("_", " ").title()
+                mcp_server_row = [
                     {
-                        "text": all_button_text,
-                        "callback_data": f"approve_all:{request_id}",
-                    },
-                ],
-                [
-                    {"text": "✗ Deny", "callback_data": f"deny:{request_id}"},
-                    {"text": "✗ Deny + msg", "callback_data": f"deny_msg:{request_id}"},
-                ],
+                        "text": f"» Allow all {label}",
+                        "callback_data": f"mcp_allow_all:{request_id}",
+                    }
+                ]
+
+        rows: list[list[dict[str, str]]] = [
+            [
+                {"text": "✓ Allow", "callback_data": f"approve:{request_id}"},
+                {"text": "+ Always...", "callback_data": f"add_rule:{request_id}"},
+                {
+                    "text": all_button_text,
+                    "callback_data": f"approve_all:{request_id}",
+                },
+            ],
+        ]
+        if mcp_server_row:
+            rows.append(mcp_server_row)
+        rows.append(
+            [
+                {"text": "✗ Deny", "callback_data": f"deny:{request_id}"},
+                {"text": "✗ Deny + msg", "callback_data": f"deny_msg:{request_id}"},
             ]
-        }
+        )
+        return {"inline_keyboard": rows}
 
     def _build_chain_keyboard(
         self, request_id: str, current_idx: int
