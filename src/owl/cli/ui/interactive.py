@@ -667,7 +667,9 @@ def run_wizard() -> None:
     clear_screen()
     console.print("[bold]Install Hooks[/bold]\n")
 
-    hawk_v2 = HAWK_V2_REGISTRY.exists()
+    import shutil
+
+    hawk_v2 = bool(shutil.which("hawk"))
     hawk_available = hawk_v2 or HAWK_HOOKS_DIR.exists()
 
     options = ["Standalone         Write to ~/.claude/settings.json"]

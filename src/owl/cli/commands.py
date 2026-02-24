@@ -425,8 +425,8 @@ def cmd_hawk_hooks_install(force: bool = False):
     """Install owl hooks for hawk-hooks."""
     import shutil
 
-    # Prefer v2 if hawk CLI and registry exist
-    if shutil.which("hawk") and HAWK_V2_REGISTRY.exists():
+    # Prefer v2 if hawk CLI is available
+    if shutil.which("hawk"):
         do_hawk_v2_install(force=force)
         return
 
@@ -440,32 +440,37 @@ def cmd_hawk_hooks_install(force: bool = False):
 
 
 def cmd_hawk_hooks_uninstall(args):
-    """Remove owl hooks from hawk-hooks."""
-    # Try v2 first — check actual install state, not just directory existence
-    _, mode = check_hooks_installed()
-    if mode == "hawk-v2":
-        _hawk_v2_uninstall()
-        return
+    """Remove owl hooks from hawk-hooks (cleans both v1 and v2)."""
+    v2_removed = _hawk_v2_uninstall()
+    v1_removed = _hawk_v1_uninstall()
 
-    # v1 fallback
+    if not v2_removed and not v1_removed:
+        print("No owl hooks found in hawk-hooks.")
+
+
+def _hawk_v1_uninstall() -> bool:
+    """Remove owl hooks from hawk v1 directory structure. Returns True if any removed."""
     removed = False
     for event in HOOK_EVENTS:
         wrapper_name = f"owl-{event}.sh"
         wrapper_path = HAWK_HOOKS_DIR / event / wrapper_name
         if wrapper_path.exists():
             wrapper_path.unlink()
-            print(f"Removed: {event}/{wrapper_name}")
+            print(f"Removed v1: {event}/{wrapper_name}")
             removed = True
 
     if removed:
-        print()
-        print("Done! Run 'hawk-hooks toggle' to update runners.")
-    else:
-        print("No owl hooks found in hawk-hooks.")
+        print("Run 'hawk-hooks toggle' to update runners.")
+    return removed
 
 
-def _hawk_v2_uninstall():
-    """Remove owl hooks from hawk v2 registry."""
+def _hawk_v2_uninstall() -> bool:
+    """Remove owl hooks from hawk v2 registry. Returns True if any removed."""
+    import shutil
+
+    if not shutil.which("hawk"):
+        return False
+
     from owl.cli.ui import console
 
     removed = False
@@ -480,8 +485,7 @@ def _hawk_v2_uninstall():
                 console.print(f"  [green]✓[/green] Removed {name}")
                 removed = True
         except FileNotFoundError:
-            console.print("[red]Error:[/red] hawk CLI not found.")
-            return
+            return removed
 
     if removed:
         result = subprocess.run(["hawk", "sync"], capture_output=True, text=True)
@@ -489,9 +493,8 @@ def _hawk_v2_uninstall():
             console.print(f"[yellow]Warning:[/yellow] hawk sync failed: {result.stderr.strip()}")
             console.print("Run [cyan]hawk sync[/cyan] manually.")
         else:
-            console.print("[green]Done![/green] Hooks removed and synced.")
-    else:
-        console.print("No owl hooks found in hawk v2 registry.")
+            console.print("[green]Done![/green] v2 hooks removed and synced.")
+    return removed
 
 
 def cmd_env_list(args):

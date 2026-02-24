@@ -58,7 +58,14 @@ def normalize_hooks(raw_hooks) -> dict:
     preserving both dict-format event blocks and flat matcher entries.
     """
     if isinstance(raw_hooks, dict):
-        return {k: list(v) if isinstance(v, list) else v for k, v in raw_hooks.items()}
+        result = {}
+        for k, v in raw_hooks.items():
+            if isinstance(v, list):
+                result[k] = list(v)
+            elif isinstance(v, dict):
+                result[k] = [v]
+            # skip non-list/non-dict values
+        return result
     if isinstance(raw_hooks, list):
         result = {}
         for entry in raw_hooks:
